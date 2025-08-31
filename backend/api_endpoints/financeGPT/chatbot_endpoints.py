@@ -274,14 +274,19 @@ def retrieve_chats_from_db(user_email):
         FROM chats
         JOIN users ON chats.user_id = users.id
         WHERE users.email = %s;
-        """
+    """
 
-    # Execute the query
-    cursor.execute(query, [user_email])
-    chat_info = cursor.fetchall()
+    try:
+        cursor.execute(query, (user_email,))
+        chat_info = cursor.fetchall()
 
-    conn.commit()
-    conn.close()
+        # Force conversion to Python-native objects
+        chat_info = [dict(row) for row in chat_info] if hasattr(cursor, "description") else chat_info
+
+    finally:
+        cursor.close()   # Always close cursor first
+        conn.close()     # Then close connection
+        # Removed conn.commit() – not needed for SELECT
 
     return chat_info
 
