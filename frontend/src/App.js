@@ -7,11 +7,9 @@ function App() {
   return (
     <ToastProvider>
       <BackendStatusToast />
-      {
         <Router>
           <Dashboard />
         </Router>
-      }
     </ToastProvider>
   );
 }
