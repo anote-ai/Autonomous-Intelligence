@@ -4,6 +4,8 @@ Autonomous Intelligence is an open-source research project by [Anote](https://an
 
 [![Watch the video](https://img.youtube.com/vi/Nf-pc4xyTBI/0.jpg)](https://www.youtube.com/watch?v=Nf-pc4xyTBI)
 
+[![Watch the video](https://img.youtube.com/vi/Nf-pc4xyTBI/maxresdefault.jpg)](https://www.youtube.com/watch?v=Nf-pc4xyTBI)
+
 
 ### Core Components
 
