@@ -2,11 +2,11 @@
 
 Autonomous Intelligence is an open source research project aimed at building collaborative multi-agent AI systems. The agentic framework provides a robust infrastructure for creating and managing multiple AI agents, and enables developers and organizations to build, deploy, and optimize AI agents that work well in dynamic, complex environments. It enables seamless collaboration between agents to tackle complex tasks, dynamically adapting to user inputs and changing conditions, where task execution is automated through dynamic selection of the best agents, tools, and workflows for the job.
 
-![alt text](https://github.com/nv78/Autonomous-Intelligence/blob/main/materials/assets/About.png?raw=true)
-
-## How It Works
+### Our Solution
 
 Autonomous Intelligence's architecture is built around a decentralized network of specialized agents that work both independently and collaboratively. These agents communicate through defined pathways, managed by an orchestrator that ensures tasks are distributed and executed efficiently.
+
+![alt text](https://github.com/nv78/Autonomous-Intelligence/blob/main/materials/assets/About.png?raw=true)
 
 ### Core Components
 
@@ -21,7 +21,7 @@ Autonomous Intelligence's architecture is built around a decentralized network o
 | **Tool**                     | A skill or function agents use to perform actions, that includes capabilities like search, computer use, data extraction, file uploading and advanced interactions. |
 | **Agent Registry**           | A structured catalog organizing agents by domain, task type, and functionality, allowing users to deploy agents seamlessly. |
 
-## Use Cases
+### Use Cases
 
 Within the Agent Registry, we will be adding many domain specific agents. Here are a few example use cases, with corresponding demos:
 
