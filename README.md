@@ -1,10 +1,8 @@
 # Autonomous Intelligence
 
-Autonomous Intelligence is an open source research project developed by [Anote](https://anote.ai/) aimed at building collaborative multi-agent AI systems. The agentic framework provides a robust infrastructure for creating and managing multiple AI agents, and enables developers and organizations to build, deploy, and optimize AI agents that work well in dynamic, complex environments.
+Autonomous Intelligence is an open-source research project by [Anote](https://anote.ai/) that enables collaborative multi-agent AI systems. The framework provides the infrastructure to create, deploy, and coordinate specialized AI agents that can operate both independently and together in dynamic environments. Agents communicate through defined pathways while an orchestrator manages task distribution, ensuring efficient execution and seamless collaboration. This architecture allows the system to adapt to changing conditions, automatically selecting the best agents, tools, and workflows to tackle complex problems.
 
 ![alt text](https://github.com/nv78/Autonomous-Intelligence/blob/main/materials/assets/About.png?raw=true)
-
-Autonomous Intelligence's architecture is built around a decentralized network of specialized agents that work both independently and collaboratively. These agents communicate through defined pathways, managed by an orchestrator that ensures tasks are distributed and executed efficiently. This enables seamless collaboration between agents to tackle complex tasks, dynamically adapting to user inputs and changing conditions, where task execution is automated through dynamic selection of the best agents, tools, and workflows for the job.
 
 
 ### Core Components
