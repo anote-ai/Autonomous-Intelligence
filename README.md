@@ -43,8 +43,4 @@ For a full example of this working end to end for this use case, please see [Ano
 
 ### Set Up
 
-We provide the setup instructions in ```CODEBASE_SETUP.md``` 
-
-### Stay Connected
-- **Slack**: [Join the community](https://join.slack.com/t/anote-ai/shared_invite/zt-2vdh1p5xt-KWvtBZEprhrCzU6wrRPwNA)
-- **GitHub**: [Explore the code](https://github.com/nv78/Autonomous-Intelligence/)
+We provide the setup instructions in ```CODEBASE_SETUP.md```. For any questions or issues, please [join our slack community](https://join.slack.com/t/anote-ai/shared_invite/zt-2vdh1p5xt-KWvtBZEprhrCzU6wrRPwNA) or [contact us](mailto:nvidra@anote.ai).
