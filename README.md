@@ -1,23 +1,8 @@
 # Autonomous Intelligence
 
-[Autonomous Intelligence](https://privatechatbot.ai/) is an open source research project aimed at building collaborative multi-agent AI systems. The agentic framework provides a robust infrastructure for creating and managing multiple AI agents, and enables developers and organizations to build, deploy, and optimize AI agents that work well in dynamic, complex environments.
-
-## Product Overview
-
-### General Purpose Multi-Agent Framework
-The framework provides a robust infrastructure for creating and managing multiple AI agents. It enables seamless collaboration between agents to tackle complex tasks, dynamically adapting to user inputs and changing conditions. Task execution is automated through dynamic selection of the best agents, tools, and workflows for the job. The system handles dependencies, monitors progress, and troubleshoots issues in real time.
+Autonomous Intelligence is an open source research project aimed at building collaborative multi-agent AI systems. The agentic framework provides a robust infrastructure for creating and managing multiple AI agents, and enables developers and organizations to build, deploy, and optimize AI agents that work well in dynamic, complex environments. The framework provides a robust infrastructure for creating and managing multiple AI agents. It enables seamless collaboration between agents to tackle complex tasks, dynamically adapting to user inputs and changing conditions. Task execution is automated through dynamic selection of the best agents, tools, and workflows for the job. The system handles dependencies, monitors progress, and troubleshoots issues in real time.
 
 ![alt text](https://github.com/nv78/Autonomous-Intelligence/blob/main/materials/assets/AgentTemplates.png?raw=true)
-
-### User Interaction
-Users can design and visualize workflows using an intuitive drag-and-drop interface or directly interact with agents through conversational natural language queries.
-
-![alt text](https://github.com/nv78/Autonomous-Intelligence/blob/main/materials/assets/AutoGPT.png?raw=true)
-
-### SDK and API Access
-Developers can leverage tools for integrating AI agent functionality into their applications. The platform supports customization and modular development for scalability and efficiency.
-
-![alt text](https://github.com/nv78/Autonomous-Intelligence/blob/main/materials/assets/SDK.png?raw=true)
 
 ## How It Works
 
@@ -81,4 +66,3 @@ We provide the setup instructions in ```CODEBASE_SETUP.md```
 ### Stay Connected
 - **Slack**: [Join the community](https://join.slack.com/t/anote-ai/shared_invite/zt-2vdh1p5xt-KWvtBZEprhrCzU6wrRPwNA)
 - **GitHub**: [Explore the code](https://github.com/nv78/Autonomous-Intelligence/)
-- **Documentation**: [See the docs](https://docs.privatechatbot.ai/)
