@@ -55,3 +55,7 @@ flask-mysql-connector
 mysqlclient
 redis
 langchain_anthropic
+
+python-docx
+nltk
+bert_score

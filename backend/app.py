@@ -65,6 +65,8 @@ from ragas.metrics import (
 from bs4 import BeautifulSoup
 from flask_mysql_connector import MySQL
 import MySQLdb.cursors
+from nltk.translate.bleu_score import sentence_bleu
+import nltk
 
 #WESLEY
 from api_endpoints.financeGPT.chatbot_endpoints import create_chat_shareable_url, access_sharable_chat, _get_model
@@ -1776,6 +1778,104 @@ def get_user_companies():
 
 api = Blueprint('api', __name__)
 app.register_blueprint(api)
+
+# Leaderboard functionality
+def get_bleu(translations, references, weights=(0.5, 0.5, 0, 0)):
+    """Calculate BLEU score for translation evaluation"""
+    bleu_scores = [
+        sentence_bleu([ref.split()], trans.split(), weights=weights)
+        for ref, trans in zip(references, translations)
+    ]
+    return sum(bleu_scores) / len(bleu_scores)
+
+def get_bertscore(predictions, references):
+    """Calculate BERTScore F1 for translation evaluation"""
+    try:
+        from bert_score import BERTScorer
+        scorer = BERTScorer(model_type='bert-base-multilingual-cased')
+        P, R, F1 = scorer.score(predictions, references)
+        return F1.mean().item()
+    except ImportError:
+        print("Warning: bert_score not installed. Install with: pip install bert_score")
+        return 0.0
+    except Exception as e:
+        print(f"Error calculating BERTScore: {str(e)}")
+        return 0.0
+
+@app.route('/public/get_leaderboard', methods=['GET'])
+def get_leaderboard():
+    """Get leaderboard showing model submissions and scores"""
+    try:
+        dataset_name = request.args.get('dataset')
+        limit = int(request.args.get('limit', 100))
+        
+        conn, cursor = get_db_connection()
+        
+        try:
+            if dataset_name:
+                query = """
+                    SELECT 
+                        ms.model_name,
+                        bd.name as dataset_name,
+                        bd.task_type,
+                        bd.evaluation_metric,
+                        er.score,
+                        ms.created as submitted_at
+                    FROM model_submissions ms
+                    JOIN benchmark_datasets bd ON ms.benchmark_dataset_id = bd.id
+                    JOIN evaluation_results er ON er.model_submission_id = ms.id
+                    WHERE bd.name = %s AND bd.active = TRUE
+                    ORDER BY er.score DESC
+                    LIMIT %s
+                """
+                cursor.execute(query, (dataset_name, limit))
+            else:
+                query = """
+                    SELECT 
+                        ms.model_name,
+                        bd.name as dataset_name,
+                        bd.task_type,
+                        bd.evaluation_metric,
+                        er.score,
+                        ms.created as submitted_at
+                    FROM model_submissions ms
+                    JOIN benchmark_datasets bd ON ms.benchmark_dataset_id = bd.id
+                    JOIN evaluation_results er ON er.model_submission_id = ms.id
+                    WHERE bd.active = TRUE
+                    ORDER BY bd.name, er.score DESC
+                    LIMIT %s
+                """
+                cursor.execute(query, (limit,))
+            
+            results = cursor.fetchall()
+            
+            leaderboard = []
+            for i, row in enumerate(results):
+                leaderboard.append({
+                    "rank": i + 1,
+                    "model_name": row['model_name'],
+                    "dataset_name": row['dataset_name'],
+                    "task_type": row['task_type'],
+                    "evaluation_metric": row['evaluation_metric'],
+                    "score": float(row['score']),
+                    "submitted_at": row['submitted_at'].isoformat() if row['submitted_at'] else None
+                })
+            
+            return jsonify({
+                "success": True,
+                "leaderboard": leaderboard
+            })
+            
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error in get_leaderboard: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": "Internal server error"
+        }), 500
 
 if __name__ == '__main__':
     debug_mode = os.getenv("FLASK_ENV") == "development"

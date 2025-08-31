@@ -26,6 +26,12 @@ export const landing = "/landing";
 export const chatbots = "/chatbots";
 export const languages = "/languages";
 export const companies = "/companies";
+
+// Leaderboard routes
+export const evaluations = "/evaluations";
+export const leaderboard = "/leaderboard";
+export const submittoleaderboardPath = "/submit-to-leaderboard";
+
 export const LANGUAGE_ROUTES = {
   japanese: "/languages/japanese",
   spanish: "/languages/spanish",
