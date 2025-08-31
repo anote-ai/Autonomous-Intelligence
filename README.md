@@ -20,7 +20,7 @@ Autonomous Intelligence is an open-source research project by [Anote](https://an
 
 ### Use Cases
 
-Within the [Agent Registry](https://anote.ai/community/agents), we have added many domain specific agents. Here are a few example use cases, with corresponding demos:
+Within the [Agent Registry](https://anote.ai/community/agents), we have added many domain specific agents. Here are a few example use cases:
 
 | **Use Case**              | **Description**                                                                  | **Link**                                              |
 |---------------------------|----------------------------------------------------------------------------------|------------------------------------------------------|
@@ -29,7 +29,7 @@ Within the [Agent Registry](https://anote.ai/community/agents), we have added ma
 | **AI Assisted Outreach**  | Automate email campaigns, sequences, and follow-ups                             | [Learn More](https://upreach.ai/)                    |
 | **Job Applications**      | Automate resume customization and job application submissions                   | [Learn More](https://roboapply.ai/)                  |
 
-### Workflow Example: AI Assisted Outreach
+### Example Use Case: AI Assisted Outreach
 
 1. **Input Query**: The user provides a task, e.g., “Reach out to a list of 10,000 New York-based heads of AI who work in mid-sized finance companies.”
 2. **Data Collection**: The orchestrator leverages an AI-powered data foundation and the web to source the most reliable leads. The agent processes the input criteria to generate a list, such as Job Title: Data Scientist, Industry: Technology, Company Size: >1,000, Location: United States
