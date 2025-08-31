@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, Response, abort, redirect, stream_with_context, Blueprint
+from flask import Flask, request, jsonify, Response, abort, redirect, stream_with_context, Blueprint, send_file
 from flask_cors import CORS, cross_origin
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -66,6 +66,7 @@ from bs4 import BeautifulSoup
 from flask_mysql_connector import MySQL
 import MySQLdb.cursors
 from nltk.translate.bleu_score import sentence_bleu
+from datasets import load_dataset
 import nltk
 
 #WESLEY
@@ -132,6 +133,7 @@ def ensure_ray_started():
 config = {
   'ORIGINS': [
     'http://localhost:3000',  # React
+    'http://localhost:3001',  # React on port 3001
     'http://localhost:5000',
     'http://localhost:8000',
     'http://localhost:5050',
@@ -1872,6 +1874,199 @@ def get_leaderboard():
             
     except Exception as e:
         print(f"Error in get_leaderboard: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": "Internal server error"
+        }), 500
+
+@app.route('/public/submit_model', methods=['POST'])
+def submit_model():
+    """
+    Submit a model's results to a benchmark dataset for evaluation
+    
+    Expected JSON input:  
+    {
+        "benchmarkDatasetName": "flores_spanish_translation",
+        "modelName": "my-model-v1", 
+        "modelResults": ["Traducción 1", "Traducción 2", ...],
+        "sentence_ids": [0, 1, 2, 3, 4]  // Required: specify which FLORES+ sentences were translated
+    }
+    
+    Returns:
+    {
+        "success": true/false,
+        "score": 0.543,
+        "submission_id": 123,
+        "error": "error message if any"
+    }
+    """
+    try:
+        # Parse request data
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No JSON data provided"}), 400
+        
+        benchmark_dataset_name = data.get('benchmarkDatasetName')
+        model_name = data.get('modelName')
+        model_results = data.get('modelResults')
+        sentence_ids = data.get('sentence_ids')  # Required: specific FLORES+ sentence positions
+        
+        # Validate required fields
+        if not all([benchmark_dataset_name, model_name, model_results, sentence_ids]):
+            return jsonify({
+                "success": False,
+                "error": "Missing required fields: benchmarkDatasetName, modelName, modelResults, sentence_ids"
+            }), 400
+        
+        if not isinstance(model_results, list):
+            return jsonify({
+                "success": False,
+                "error": "modelResults must be a list"
+            }), 400
+        
+        # Get database connection
+        conn, cursor = get_db_connection()
+        
+        try:
+            # Check if benchmark dataset exists
+            cursor.execute(
+                "SELECT id, task_type, evaluation_metric, reference_data FROM benchmark_datasets WHERE name = %s AND active = TRUE",
+                (benchmark_dataset_name,)
+            )
+            dataset = cursor.fetchone()
+            
+            if not dataset:
+                return jsonify({
+                    "success": False,
+                    "error": f"Benchmark dataset '{benchmark_dataset_name}' not found"
+                }), 404
+            
+            dataset_id = dataset['id']
+            task_type = dataset['task_type']
+            evaluation_metric = dataset['evaluation_metric']
+            reference_data_str = dataset['reference_data']
+            
+            # Store model submission
+            cursor.execute("""
+                INSERT INTO model_submissions (benchmark_dataset_id, model_name, submitted_by, model_results)
+                VALUES (%s, %s, %s, %s)
+            """, (dataset_id, model_name, USER_EMAIL_API, json.dumps(model_results)))
+            
+            submission_id = cursor.lastrowid
+            
+            # Run evaluation based on the dataset type and metric
+            if task_type == 'translation' and evaluation_metric in ['bleu', 'bertscore']:
+                try:
+                    # Handle FLORES+ datasets (Spanish, Japanese, Arabic, Chinese, Korean)
+                    flores_datasets = {
+                        'flores_spanish_translation': 'spa_Latn',
+                        'flores_japanese_translation': 'jpn_Jpan', 
+                        'flores_arabic_translation': 'arb_Arab',
+                        'flores_chinese_translation': 'cmn_Hans',
+                        'flores_korean_translation': 'kor_Hang'
+                    }
+                    
+                    # BERTScore datasets (same language mappings)
+                    flores_bertscore_datasets = {
+                        'flores_spanish_translation_bertscore': 'spa_Latn',
+                        'flores_japanese_translation_bertscore': 'jpn_Jpan',
+                        'flores_arabic_translation_bertscore': 'arb_Arab', 
+                        'flores_chinese_translation_bertscore': 'cmn_Hans',
+                        'flores_korean_translation_bertscore': 'kor_Hang'
+                    }
+                    
+                    all_flores_datasets = {**flores_datasets, **flores_bertscore_datasets}
+                    
+                    if benchmark_dataset_name in all_flores_datasets:
+                        # FLORES+ evaluation logic for all supported languages
+                        # Set HF token for dataset access (environment variable approach)
+                        import os
+                        hf_token = os.getenv("HF_TOKEN")
+                        if hf_token:
+                            os.environ["HF_TOKEN"] = hf_token
+                        
+                        # Load FLORES+ reference sentences for the target language
+                        target_lang = all_flores_datasets[benchmark_dataset_name]
+                        target_dataset = load_dataset("openlanguagedata/flores_plus", target_lang, split="devtest")
+                        
+                        # Use specific sentence positions (now required)
+                        if len(sentence_ids) != len(model_results):
+                            return jsonify({
+                                "success": False,
+                                "error": "Length of sentence_ids must match length of modelResults"
+                            }), 400
+                        reference_sentences = [target_dataset[idx]["text"] for idx in sentence_ids]
+                        
+                    else:
+                        # Custom dataset evaluation logic
+                        # Parse the reference data from database
+                        reference_data = json.loads(reference_data_str)
+                        
+                        if 'reference_translations' not in reference_data:
+                            return jsonify({
+                                "success": False,
+                                "error": "Dataset does not have reference translations"
+                            }), 400
+                        
+                        all_reference_sentences = reference_data['reference_translations']
+                        
+                        # Use sentence_ids to get specific reference sentences
+                        if len(sentence_ids) != len(model_results):
+                            return jsonify({
+                                "success": False,
+                                "error": "Length of sentence_ids must match length of modelResults"
+                            }), 400
+                        
+                        # Validate sentence_ids are within bounds
+                        max_id = len(all_reference_sentences) - 1
+                        for sid in sentence_ids:
+                            if sid < 0 or sid > max_id:
+                                return jsonify({
+                                    "success": False,
+                                    "error": f"sentence_id {sid} is out of range (0-{max_id})"
+                                }), 400
+                        
+                        reference_sentences = [all_reference_sentences[idx] for idx in sentence_ids]
+                    
+                    # Calculate score based on evaluation metric
+                    if evaluation_metric == 'bleu':
+                        score = get_bleu(model_results, reference_sentences)
+                    elif evaluation_metric == 'bertscore':
+                        score = get_bertscore(model_results, reference_sentences)
+                    
+                except Exception as e:
+                    print(f"{evaluation_metric.upper()} evaluation failed: {str(e)}")
+                    return jsonify({
+                        "success": False,
+                        "error": f"{evaluation_metric.upper()} evaluation failed"
+                    }), 500
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "Only translation tasks with BLEU or BERTScore metrics supported"
+                }), 400
+            
+            # Store evaluation result
+            cursor.execute("""
+                INSERT INTO evaluation_results (model_submission_id, score, evaluation_details)
+                VALUES (%s, %s, %s)
+            """, (submission_id, score, json.dumps({"metric": evaluation_metric})))
+            
+            # Commit the transaction
+            conn.commit()
+            
+            # Return spec-compliant response: success boolean + score
+            return jsonify({
+                "success": True,
+                "score": score
+            })
+            
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error in submit_model: {str(e)}")
         return jsonify({
             "success": False,
             "error": "Internal server error"

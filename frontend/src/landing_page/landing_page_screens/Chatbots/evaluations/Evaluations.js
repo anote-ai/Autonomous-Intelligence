@@ -17,24 +17,22 @@ const TranslateSentences = () => {
   useEffect(() => {
     const fetchLeaderboardData = async () => {
       try {
-        const response = await axios.get("http://localhost:5001/public/get_leaderboard");
-        if (response.data.success) {
-          // Group submissions by dataset and metric, create the same structure as before
+        console.log('Fetching from:', `${process.env.REACT_APP_BACK_END_HOST}/public/get_leaderboard`);
+        const response = await axios.get(`${process.env.REACT_APP_BACK_END_HOST}/public/get_leaderboard`);
+        console.log('API Response:', response.data);
+        
+        if (response.data.success && response.data.leaderboard) {
+          // Group submissions by dataset and metric
           const groupedData = {};
           response.data.leaderboard.forEach(submission => {
-            // Create appropriate key based on dataset name and evaluation metric
-            let key;
+            let key = submission.dataset_name;
             let displayName;
             
             if (submission.dataset_name.includes('_bertscore')) {
-              // BERTScore datasets
               const language = submission.dataset_name.replace('flores_', '').replace('_translation_bertscore', '');
-              key = `${submission.dataset_name}`;
               displayName = `${language.charAt(0).toUpperCase() + language.slice(1)} – BERTScore`;
             } else {
-              // BLEU datasets - use the exact dataset name as key
               const language = submission.dataset_name.replace('flores_', '').replace('_translation', '');
-              key = `${submission.dataset_name}`;
               displayName = `${language.charAt(0).toUpperCase() + language.slice(1)} – BLEU`;
             }
             
@@ -52,141 +50,31 @@ const TranslateSentences = () => {
             });
           });
 
-          // Sort models by score (descending) and assign ranks within each category
+          // Sort models by score (descending) and assign ranks
           Object.keys(groupedData).forEach(key => {
             groupedData[key].models.sort((a, b) => b.score - a.score);
             groupedData[key].models = groupedData[key].models.map((model, index) => ({
               ...model,
-              rank: index + 1  // Rank starts at 1 for each category
+              rank: index + 1
             }));
           });
           
           console.log('Available leaderboard keys:', Object.keys(groupedData));
           console.log('Grouped data:', groupedData);
           
-          // Create datasets in original static order, but replace BLEU sections with dynamic data
-          const datasets = [
-            // Spanish BLEU - dynamic data
-            groupedData['flores_spanish_translation'] || {
-              name: "Spanish – BLEU",
-              url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-              models: [
-                { rank: 1, model: "GPT-4o Zero-Shot", score: 0.523, updated: "Aug 2025" },
-                { rank: 2, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.521, updated: "Aug 2025" },
-                { rank: 3, model: "Gemini 2.5 Flash Zero-Shot", score: 0.511, updated: "Aug 2025" },
-              ]
-            },
-            // Spanish BERTScore - dynamic data
-            groupedData['flores_spanish_translation_bertscore'] || {
-              name: "Spanish – BERTScore",
-              url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-              models: [
-                { rank: 1, model: "GPT-4o Zero-Shot", score: 0.886, updated: "Aug 2025" },
-                { rank: 2, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.886, updated: "Aug 2025" },
-                { rank: 3, model: "Gemini 2.5 Flash Zero-Shot", score: 0.883, updated: "Aug 2025" },
-              ]
-            },
-            // Japanese BLEU - dynamic data
-            groupedData['flores_japanese_translation'] || {
-              name: "Japanese – BLEU",
-              url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-              models: [
-                { rank: 1, model: "GPT-4o Zero-Shot", score: 0.66, updated: "Aug 2025" },
-                { rank: 2, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.652, updated: "Aug 2025" },
-                { rank: 3, model: "Gemini 2.5 Flash-Lite Zero-Shot", score: 0.639, updated: "Aug 2025" },
-              ]
-            },
-            // Japanese BERTScore - dynamic data
-            groupedData['flores_japanese_translation_bertscore'] || {
-              name: "Japanese – BERTScore",
-              url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-              models: [
-                { rank: 1, model: "GPT-4o Zero-Shot", score: 0.883, updated: "Aug 2025" },
-                { rank: 2, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.878, updated: "Aug 2025" },
-                { rank: 3, model: "Gemini 2.5 Flash-Lite Zero-Shot", score: 0.874, updated: "Aug 2025" },
-              ]
-            },
-            // Arabic BLEU - dynamic data
-            groupedData['flores_arabic_translation'] || {
-              name: "Arabic – BLEU",
-              url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-              models: [
-                { rank: 1, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.53, updated: "Aug 2025" },
-                { rank: 2, model: "GPT-4o Zero-Shot", score: 0.524, updated: "Aug 2025" },
-                { rank: 3, model: "Gemini 2.5 Flash-Lite Zero-Shot", score: 0.518, updated: "Aug 2025" },
-              ]
-            },
-            // Arabic BERTScore - dynamic data
-            groupedData['flores_arabic_translation_bertscore'] || {
-              name: "Arabic – BERTScore",
-              url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-              models: [
-                { rank: 1, model: "GPT-4o Zero-Shot", score: 0.887, updated: "Aug 2025" },
-                { rank: 2, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.887, updated: "Aug 2025" },
-                { rank: 3, model: "Gemini 2.5 Flash-Lite Zero-Shot", score: 0.884, updated: "Aug 2025" },
-              ]
-            },
-            // Chinese BLEU - dynamic data  
-            groupedData['flores_chinese_translation'] || {
-              name: "Chinese – BLEU",
-              url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-              models: [
-                { rank: 1, model: "GPT-4o Zero-Shot", score: 0.616, updated: "Aug 2025" },
-                { rank: 2, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.615, updated: "Aug 2025" },
-                { rank: 3, model: "Gemini 2.5 Flash-Lite Zero-Shot", score: 0.257, updated: "Aug 2025" },
-              ]
-            },
-            // Chinese BERTScore - dynamic data
-            groupedData['flores_chinese_translation_bertscore'] || {
-              name: "Chinese – BERTScore",
-              url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-              models: [
-                { rank: 1, model: "GPT-4o Zero-Shot", score: 0.898, updated: "Aug 2025" },
-                { rank: 2, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.897, updated: "Aug 2025" },
-                { rank: 3, model: "Gemini 2.5 Flash-Lite Zero-Shot", score: 0.892, updated: "Aug 2025" },
-              ]
-            },
-            // Korean BLEU - dynamic data
-            groupedData['flores_korean_translation'] || {
-              name: "Korean – BLEU",
-              url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-              models: [
-                { rank: 1, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.581, updated: "Aug 2025" },
-                { rank: 2, model: "GPT-4o Zero-Shot", score: 0.577, updated: "Aug 2025" },
-                { rank: 3, model: "Gemini 2.5 Flash-Lite Zero-Shot", score: 0.559, updated: "Aug 2025" },
-              ]
-            },
-            // Korean BERTScore - dynamic data
-            groupedData['flores_korean_translation_bertscore'] || {
-              name: "Korean – BERTScore",
-              url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-              models: [
-                { rank: 1, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.874, updated: "Aug 2025" },
-                { rank: 2, model: "GPT-4o Zero-Shot", score: 0.872, updated: "Aug 2025" },
-                { rank: 3, model: "Gemini 2.5 Flash-Lite Zero-Shot", score: 0.868, updated: "Aug 2025" },
-              ]
-            },
-          ];
-
-          console.log('Final datasets array length:', datasets.length);
-          console.log('Final datasets:', datasets.map(d => d.name));
-          setDatasets(datasets);
+          // Simply use all available datasets from the API
+          const datasetsArray = Object.values(groupedData);
+          console.log('Final datasets count:', datasetsArray.length);
+          
+          setDatasets(datasetsArray);
+          setError(null); // Clear any previous errors
+        } else {
+          console.log('API returned unsuccessful response');
+          setError("No leaderboard data available");
         }
       } catch (err) {
         console.error("Error fetching leaderboard data:", err);
-        // Fallback to original static data if API fails
-        setDatasets([
-          {
-            name: "Spanish – BLEU",
-            url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
-            models: [
-              { rank: 1, model: "GPT-4o Zero-Shot", score: 0.523, updated: "Aug 2025" },
-              { rank: 2, model: "Claude 3.5 Sonnet Zero-Shot", score: 0.521, updated: "Aug 2025" },
-              { rank: 3, model: "Gemini 2.5 Flash Zero-Shot", score: 0.511, updated: "Aug 2025" },
-            ],
-          },
-          // ... other static datasets as fallback
-        ]);
+        setError(`Failed to load leaderboard data: ${err.message}`);
       }
     };
 

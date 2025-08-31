@@ -90,7 +90,7 @@ const SubmitToLeaderboard = ({
         sentence_ids: Array.from({length: parsedModelResults.length}, (_, i) => i)
       };
 
-      const apiUrl = "http://localhost:5001/public/submit_model";
+      const apiUrl = `${process.env.REACT_APP_BACK_END_HOST}/public/submit_model`;
       console.log("API URL:", apiUrl);
       console.log("Submitting to submit_model API:", submitData);
 

@@ -6,7 +6,7 @@ services:
     container_name: anote-backend
     restart: unless-stopped
     ports:
-      - "5000:5000"  # Map container's 5000 to host's 8000
+      - "5001:5000"  # Map container's 5000 to host's 5001 (avoiding macOS AirPlay on 5000)
       - "6379:6379"  # Ray
     volumes:
       - ./:/app

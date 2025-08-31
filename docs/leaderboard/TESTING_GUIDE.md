@@ -8,11 +8,11 @@
 cd backend && docker-compose up --build -d
 
 # Start frontend  
-cd frontend && npm install && PORT=3001 npm start
+cd frontend && npm install && PORT=3000 npm start
 ```
 
 ### **2. Access Points**
-- **Evaluations Page**: http://localhost:3001/evaluations
+- **Evaluations Page**: http://localhost:3000/evaluations
 - **Submit Models**: Click "Submit Your Model" button
 - **Backend API**: http://localhost:8000
 
@@ -50,14 +50,14 @@ cd frontend && npm install && PORT=3001 npm start
 ## How to Test Each Metric
 
 ### **BLEU Score Testing:**
-1. Go to: http://localhost:3001/evaluations
+1. Go to: http://localhost:3000/evaluations
 2. Click: "Submit Your Model"
 3. Select: "Spanish Translation (FLORES+ BLEU)"
 4. Upload: `test_files/demo_test_spanish.csv`
 5. Expected: ~0.43 BLEU score
 
 ### **BERTScore Testing:**
-1. Go to: http://localhost:3001/evaluations  
+1. Go to: http://localhost:3000/evaluations  
 2. Click: "Submit Your Model"
 3. Select: "Spanish Translation (FLORES+ BERTScore)"
 4. Upload: `test_files/demo_test_spanish_bertscore.csv`
@@ -113,11 +113,11 @@ curl -X POST "http://localhost:8000/public/submit_model" \
 1. **Start System** (1 min):
    ```bash
    cd backend && docker-compose up -d
-   cd frontend && PORT=3001 npm start
+   cd frontend && PORT=3000 npm start
    ```
 
 2. **Show Leaderboards** (2 min):
-   - Navigate: http://localhost:3001/evaluations
+   - Navigate: http://localhost:3000/evaluations
    - Point out: "5 languages, dynamic data, 'View More' buttons"
    - Explain: "Spanish ~0.40 BLEU, Asian languages ~0.00 (normal)"
 

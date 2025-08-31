@@ -14,4 +14,4 @@ services:
       # BACKEND_URL: "http://localhost:5000" # The URL of the backend API. This is the default value, but it may not work in all cases.
       # On macOS/Windows, you can often use http://host.docker.internal:8090 to reach a port on the host machine from inside the container.
       # On Linux, you might need an alternative approach (e.g., use the container name if they share a Docker network, or configure /etc/hosts).
-      REACT_APP_BACK_END_HOST: "http://localhost:8000" #should be 5000
+      REACT_APP_BACK_END_HOST: "http://localhost:5001" #backend on port 5001

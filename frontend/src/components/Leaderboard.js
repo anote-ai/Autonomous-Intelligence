@@ -20,7 +20,7 @@ const Leaderboard = () => {
     const fetchLeaderboard = async () => {
       try {
         setLoading(true);
-        const response = await axios.get("http://localhost:5001/public/get_leaderboard");
+        const response = await axios.get(`${process.env.REACT_APP_BACK_END_HOST}/public/get_leaderboard`);
         if (response.data.success) {
           setLiveLeaderboard(response.data.leaderboard);
         } else {
@@ -549,7 +549,14 @@ const Leaderboard = () => {
   if (showFullLeaderboard && selectedDataset) {
     // Find the matching dataset from live leaderboard
     const datasetSubmissions = liveLeaderboard.filter(submission => {
-      const datasetDisplayName = `${submission.dataset_name.replace('flores_', '').replace('_translation', '')} – BLEU`.replace(/^\w/, c => c.toUpperCase());
+      let datasetDisplayName;
+      if (submission.dataset_name.includes('_bertscore')) {
+        const language = submission.dataset_name.replace('flores_', '').replace('_translation_bertscore', '');
+        datasetDisplayName = `${language.charAt(0).toUpperCase() + language.slice(1)} – BERTScore`;
+      } else {
+        const language = submission.dataset_name.replace('flores_', '').replace('_translation', '');
+        datasetDisplayName = `${language.charAt(0).toUpperCase() + language.slice(1)} – BLEU`;
+      }
       return datasetDisplayName === selectedDataset;
     });
 
