@@ -16,7 +16,6 @@ Autonomous Intelligence is an open-source research project by [Anote](https://an
 | **Workflows**  | Frameworks for agent collaboration. This includes sequential tasks that are executed in an orderly progression, or hierarchical tasks are managed via a structured chain of command|
 | **LLMs** | Backbone of intelligent agents, enabling capabilities like natural language understanding and reasoning. Includes models like GPT, Claude, Mistral, Gemini, and Llama that are Optimized for complex workflows. |
 | **Tool**                     | A skill or function agents use to perform actions, that includes capabilities like search, computer use, data extraction, file uploading and advanced interactions. |
-| **Agent Registry**           | A structured catalog organizing agents by domain, task type, and functionality, allowing users to deploy agents seamlessly. |
 
 ### Use Cases
 
