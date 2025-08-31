@@ -20,11 +20,10 @@ Autonomous Intelligence's architecture is built around a decentralized network o
 | **Large Language Models (LLMs)** | Backbone of intelligent agents, enabling capabilities like natural language understanding and reasoning. Includes models like GPT, Claude, Mistral, Gemini, and Llama that are Optimized for complex workflows. |
 | **Tool**                     | A skill or function agents use to perform actions, that includes capabilities like search, computer use, data extraction, file uploading and advanced interactions. |
 | **Agent Registry**           | A structured catalog organizing agents by domain, task type, and functionality, allowing users to deploy agents seamlessly. |
-| **Frontend Interface**       | Drag-and-drop visual workflow builder and real-time dashboards for monitoring, debugging, and optimizing agent performance. |
 
 ## Use Cases
 
-Within Autonomous Intelligence, we will be adding many domain specific agents. Here are a few example use cases, with corresponding demos:
+Within the Agent Registry, we will be adding many domain specific agents. Here are a few example use cases, with corresponding demos:
 
 | **Use Case**              | **Description**                                                                  | **Link**                                              |
 |---------------------------|----------------------------------------------------------------------------------|------------------------------------------------------|
@@ -33,7 +32,7 @@ Within Autonomous Intelligence, we will be adding many domain specific agents. H
 | **AI Assisted Outreach**  | Automate email campaigns, sequences, and follow-ups                             | [Learn More](https://upreach.ai/)                    |
 | **Job Applications**      | Automate resume customization and job application submissions                   | [Learn More](https://roboapply.ai/)                  |
 
-## Workflow Example
+### Workflow Example: AI Assisted Outreach
 
 1. **Input Query**: The user provides a task, e.g., “Reach out to a list of 10,000 New York-based heads of AI who work in mid-sized finance companies.”
 2. **Data Collection**: The orchestrator leverages an AI-powered data foundation and the web to source the most reliable leads. The agent processes the input criteria to generate a list, such as Job Title: Data Scientist, Industry: Technology, Company Size: >1,000, Location: United States
@@ -43,6 +42,8 @@ Within Autonomous Intelligence, we will be adding many domain specific agents. H
 6. **Feedback Loop**: User feedback is incorporated to improve the lead generation process, refine email drafts, or adjust selection criteria for future tasks.
 
 ![alt text](https://github.com/nv78/Autonomous-Intelligence/blob/main/materials/assets/ExampleNew.png?raw=true)
+
+For a full example of this working end to end for this use case, please see Anote's [Upreach Product](https://upreach.ai/).
 
 ### Set Up
 
