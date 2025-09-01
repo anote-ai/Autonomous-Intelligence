@@ -49,22 +49,11 @@ def extractUserEmailFromRequest(request):
 def get_db_connection():
     # print('in db_auth')
     if ('.local' in socket.gethostname() or '.lan' in socket.gethostname() or 'Shadow' in socket.gethostname()) or ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
-        # print('in local')
-        if ('BL' in os.environ and os.environ['BL'] == 'bl'):
-            # print("in daniel location")
-            conn = mysql.connector.connect(
-                user='root',
-                password='1165205407',
-                host='localhost',
-                port=3306,
-                database=dbName
-            )
-        else:
-            conn = mysql.connector.connect(
-                user='root',
-                unix_socket='/tmp/mysql.sock',
-                database=dbName,
-            )
+        conn = mysql.connector.connect(
+            user='root',
+            unix_socket='/tmp/mysql.sock',
+            database=dbName,
+        )
     else:
         conn = mysql.connector.connect(
             host=dbHost,
