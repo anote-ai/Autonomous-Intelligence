@@ -1434,6 +1434,10 @@ def get_leaderboard():
         conn, cursor = get_db_connection()
         
         try:
+            # First, get all active datasets to ensure we show them all
+            cursor.execute("SELECT name, task_type, evaluation_metric FROM benchmark_datasets WHERE active = TRUE ORDER BY name")
+            all_datasets = cursor.fetchall()
+            
             if dataset_name:
                 query = """
                     SELECT 
@@ -1471,7 +1475,10 @@ def get_leaderboard():
             
             results = cursor.fetchall()
             
+            # Create a comprehensive leaderboard that includes all datasets
             leaderboard = []
+            
+            # Add submissions with scores
             for i, row in enumerate(results):
                 leaderboard.append({
                     "rank": i + 1,
@@ -1483,9 +1490,26 @@ def get_leaderboard():
                     "submitted_at": row['submitted_at'].isoformat() if row['submitted_at'] else None
                 })
             
+            # Add empty datasets (datasets with no submissions)
+            submitted_dataset_names = {row['dataset_name'] for row in results}
+            for dataset in all_datasets:
+                if dataset['name'] not in submitted_dataset_names:
+                    # Add placeholder entry for empty dataset
+                    leaderboard.append({
+                        "rank": None,
+                        "model_name": None,
+                        "dataset_name": dataset['name'],
+                        "task_type": dataset['task_type'],
+                        "evaluation_metric": dataset['evaluation_metric'],
+                        "score": None,
+                        "submitted_at": None,
+                        "is_empty": True  # Flag to indicate no submissions
+                    })
+            
             return jsonify({
                 "success": True,
-                "leaderboard": leaderboard
+                "leaderboard": leaderboard,
+                "total_datasets": len(all_datasets)
             })
             
         finally:
