@@ -5,7 +5,40 @@ import { useNavigate } from "react-router-dom";
 const TranslateSentences = () => {
   const [error, setError] = useState(null);
   const [datasets, setDatasets] = useState([]); // Made dynamic
+  const [openIndex, setOpenIndex] = useState(null);
   const navigate = useNavigate();
+
+  const handleClick = (index) => {
+    setOpenIndex(openIndex === index ? null : index);
+  };
+
+  const faqs = [
+    {
+      question: "Where can I find the evaluation datasets",
+      answer:
+        "You can access the evaluation set by following the dataset link listed with our submittoleaderboard component. If you have difficulty downloading them or need direct access, just send us an email at nvidra@anote.ai and we will provide the questions promptly.",
+    },
+    {
+      question: "How many times can I submit?",
+      answer:
+        "There's no strict limit on submissions. You're welcome to submit multiple times, but for the most meaningful insights, we encourage you to submit only when there are substantial updates or improvements to your model.",
+    },
+    {
+      question: "What am I expected to submit?",
+      answer:
+        "We only require the outputs your model generates for each query in the evaluation set. You do not need to share model weights, code, or other confidential information—simply the answers.",
+    },
+    {
+      question: "When can I expect to receive the results for my submission?",
+      answer:
+        "We typically process and evaluate new submissions within a few business days. Once your results are ready, we will contact you via email with your score and ranking details.",
+    },
+    {
+      question: "Do I need to give my LLM extra information to accurately run the tests?",
+      answer:
+        "We do not mandate any special pre-training or additional data, though you could use our fine tuning API. The goal is to see how your model performs under realistic conditions.",
+    },
+  ];
 
 
 
@@ -109,7 +142,7 @@ const TranslateSentences = () => {
               View Dataset
             </a>
             <div className="mt-2 space-y-2">
-              {dataset.models.slice(0, 5).map((m) => (
+              {dataset.models.map((m) => (
                 <div
                   key={m.rank}
                   className="flex items-center justify-between bg-gray-900 p-3 rounded-lg"
@@ -125,24 +158,35 @@ const TranslateSentences = () => {
                   <div className="text-lg font-bold text-[#F1CA57]">{typeof m.score === 'number' ? m.score.toFixed(3) : m.score}</div>
                 </div>
               ))}
-              {dataset.models.length > 5 && (
-                <div className="mt-4 text-center">
-                  <button
-                    onClick={() => navigate('/leaderboard', { 
-                      state: { 
-                        selectedDataset: dataset.name,
-                        showFullLeaderboard: true 
-                      } 
-                    })}
-                    className="text-blue-400 hover:text-blue-300 underline text-sm font-medium transition-colors"
-                  >
-                    View all {dataset.models.length} models →
-                  </button>
-                </div>
-              )}
+
             </div>
           </div>
         ))}
+      </div>
+      
+      {/* FAQs Section */}
+      <div className="w-full md:w-3/4 mx-auto mt-20">
+        <div className="bg-gray-900 rounded-xl p-10">
+          <div className="text-yellow-500 text-3xl font-semibold mb-8">FAQs</div>
+          {faqs.map((faq, index) => (
+            <div
+              className="bg-gray-800 px-5 py-4 my-4 rounded-xl cursor-pointer"
+              onClick={() => handleClick(index)}
+              key={index}
+            >
+              <div className="faq-header">
+                <h2 className="text-xl font-medium bg-clip-text text-transparent bg-gradient-to-r from-turquoise-500 to-blue-400">
+                  {faq.question}
+                </h2>
+              </div>
+              {openIndex === index && (
+                <div className="faq-answer mt-2 text-white">
+                  <p>{faq.answer}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
       
       <div className="max-w-4xl mx-auto mt-16 flex flex-col items-center">
