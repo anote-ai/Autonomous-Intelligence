@@ -24,15 +24,21 @@ def get_db_connection():
         if db_connect is not None and db_connect.is_connected():
             return db_connect, db_connect.cursor(dictionary=True)
     except Exception:
-        # resets the db ---> None getting it ready for the new connection 
+        # resets the db ---> None getting it ready for the new connection
         db_connect = None
 
     db_connect = mysql.connector.connect(
-        host=dbHost,
-        user=dbUser,
-        password=dbPassword,
-        database=dbName,
+            user='root',
+            unix_socket='/tmp/mysql.sock',
+            database="agents",
     )
+
+    # db_connect = mysql.connector.connect(
+    #     host=dbHost,
+    #     user=dbUser,
+    #     password=dbPassword,
+    #     database=dbName,
+    # )
     return db_connect, db_connect.cursor(dictionary=True)
 
 
