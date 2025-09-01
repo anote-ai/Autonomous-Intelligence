@@ -49,17 +49,16 @@ class PrivateChatbot:
             'Authorization': f'Bearer {api_key}'
         }
 
-    def upload(self, task_type, model_type, ticker=None, file_paths=None):
-        """Upload documents or specify a ticker for data retrieval and Q&A. This method supports various tasks, such as uploading documents or querying the government's EDGAR database.
+    def upload(self, task_type, model_type, file_paths=None):
+        """Upload documents for data retrieval and Q&A. This method supports various tasks, such as uploading documents or querying the government's EDGAR database.
 
         Args:
             task_type (str): Specifies the type of task to perform. This can be document-based interaction (e.g., "documents") or financial data analysis ("edgar").
             model_type (str): Determines the AI model to use for processing the request. Different model types available are "gpt" for GPT-4 and "claude" for Claude.
-            ticker (str, optional): The ticker symbol for financial data analysis tasks. Required if the task_type is 'edgar'. Example: 'AAPL' for Apple Inc.
             file_paths (list[str], optional): A list of file paths to documents for document-based tasks. Required if task_type is 'documents'. Example: ['path/to/file1.pdf', 'path/to/file2.pdf'].
 
         Returns:
-            response (dict): A JSON response from the API, including the `chat_id` for interactions based on the uploaded content or specified ticker.
+            response (dict): A JSON response from the API, including the `chat_id` for interactions based on the uploaded content.
         """
 
         if task_type is None:
@@ -68,17 +67,14 @@ class PrivateChatbot:
         if model_type is None:
             return {"error": "Model type is not set. Please enter a model type"}
 
-        if ticker is None and file_paths is None:
-             return {"error": "You must enter at least one of the following: ticker or file_paths"}
-
         if self.is_private == False:
             if model_type != "gpt" and model_type != "claude":
                 return {"error": "Model type is not valid. Please enter a valid model type"}
-            return upload_public(self.API_BASE_URL, self.headers, task_type, model_type, ticker, file_paths)
+            return upload_public(self.API_BASE_URL, self.headers, task_type, model_type, file_paths)
         else:
             if model_type != "llama" and model_type != "mistral":
                 return {"error": "Model type is not valid. Please enter a valid model type"}
-            return upload_private(task_type, model_type, ticker, file_paths)
+            return upload_private(task_type, model_type, file_paths)
 
     def train(self, model_name, fine_tuning_type, x_train_csv, y_train_csv, document_files, model_type = ModelType.FTGPT, is_private=False):
         """

@@ -11,7 +11,7 @@ from handlers.public_handlers import is_file_or_isHtml
 
 USER_SDK_EMAIL = "api@example.com"
 
-def upload_private(task_type, model_type, ticker, file_paths):
+def upload_private(task_type, model_type, file_paths):
     user_id = create_db_file()
 
     conn, cursor = get_db_connection()

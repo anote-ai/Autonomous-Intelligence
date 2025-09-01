@@ -1,11 +1,5 @@
-from flask import Flask, request, jsonify, Response, abort, redirect, stream_with_context, Blueprint
+from flask import Flask, request, jsonify, Response, abort, redirect, Blueprint
 from flask_cors import CORS, cross_origin
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-import pandas as pd
-#from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
-import boto3
 from api_endpoints.login.handler import LoginHandler, SignUpHandler, ForgotPasswordHandler, ResetPasswordHandler
 import os
 import pathlib
@@ -23,7 +17,7 @@ from jwt import InvalidTokenError
 from urllib.parse import urlparse
 from database.db import create_user_if_does_not_exist
 from constants.global_constants import kSessionTokenExpirationTime
-from database.db_auth import extractUserEmailFromRequest, is_session_token_valid, is_api_key_valid, user_id_for_email, verifyAuthForPaymentsTrustedTesters, verifyAuthForCheckoutSession, verifyAuthForPortalSession
+from database.db_auth import extractUserEmailFromRequest, is_api_key_valid, user_id_for_email, verifyAuthForPaymentsTrustedTesters, verifyAuthForCheckoutSession, verifyAuthForPortalSession
 from functools import wraps
 from flask_jwt_extended import verify_jwt_in_request
 from api_endpoints.payments.handler import CreateCheckoutSessionHandler, CreatePortalSessionHandler, StripeWebhookHandler
@@ -36,49 +30,30 @@ from enum import Enum
 import stripe
 from dotenv import load_dotenv
 import ray
-from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
-from flask_socketio import SocketIO, emit, disconnect
-from database.db_auth import user_email_for_session_token
-from flask.cli import with_appcontext
-import click
-import threading
-import time
 import csv
-from fpdf import FPDF
 import openai
 import shutil
-from io import BytesIO
 import io
 from tika import parser as p
-import anthropic
 from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
 import re
 from bs4 import BeautifulSoup
 from flask_mysql_connector import MySQL
-
-#WESLEY
-from api_endpoints.financeGPT.chatbot_endpoints import create_chat_shareable_url, access_sharable_chat, _get_model
-_get_model()
-from database.db import get_db_connection
-
-from api_endpoints.financeGPT.chatbot_endpoints import add_prompt_to_workflow_db, add_workflow_to_db, \
-    add_chat_to_db, add_message_to_db, chunk_document, get_text_from_single_file, add_document_to_db, get_relevant_chunks,  \
-    remove_prompt_from_workflow_db, remove_ticker_from_workflow_db, reset_uploaded_docs_for_workflow, retrieve_chats_from_db, \
+from api_endpoints.financeGPT.chatbot_endpoints import \
+    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
+    retrieve_chats_from_db, create_chat_shareable_url, access_sharable_chat, _get_model, \
     delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, change_chat_mode_db, update_chat_name_db, \
-    add_ticker_to_chat_db, reset_uploaded_docs, add_model_key_to_db, get_text_pages_from_single_file, \
-    add_ticker_to_workflow_db, add_chat_to_db, add_message_to_db, chunk_document, get_text_from_single_file, add_document_to_db, get_relevant_chunks, \
+    reset_uploaded_docs, add_model_key_to_db, \
+    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
     retrieve_chats_from_db, delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, \
-    change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, process_prompt_answer, \
-    ensure_SDK_user_exists, get_chat_info, ensure_demo_user_exists, get_message_info, get_text_from_url, \
-    add_organization_to_db, get_organization_from_db, update_workflow_name_db, retrieve_messages_from_share_uuid
+    change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, \
+    ensure_SDK_user_exists, get_chat_info, get_message_info, get_text_from_url
 
-from agents.reactive_agent import ReactiveDocumentAgent, WorkflowReactiveAgent
+_get_model()
+from agents.reactive_agent import ReactiveDocumentAgent
 from agents.config import AgentConfig
 
 from datetime import datetime
-
-from database.db_auth import get_db_connection
 
 from api_endpoints.gpt4_gtm.handler import gpt4_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
@@ -87,10 +62,6 @@ from api_endpoints.languages.korean import korean_blueprint
 from api_endpoints.languages.spanish import spanish_blueprint
 from api_endpoints.languages.arabic import arabic_blueprint
 from datetime import datetime
-from flask import current_app
-
-
-
 
 load_dotenv(override=True)
 
@@ -159,15 +130,6 @@ app.config['MYSQL_HOST'] = 'db'
 app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = ''
 app.config['MYSQL_DATABASE'] = 'agents'
-
-
-#debug
-#print("MySQL config:", {
-#    "host": app.config['MYSQL_HOST'],
-#    "user": app.config['MYSQL_USER'],
-#    "password": "***REDACTED***",
-#    "database": app.config['MYSQL_DATABASE']
-#})
 
 mysql = MySQL(app)
 
@@ -507,76 +469,6 @@ def get_text_from_url(web_url):
     text = result.get("content", "").strip()
     return text.replace("\n", "").replace("\t", "")
 
-# Organization routes
-
-@app.route('/create_organization', methods=['POST'])
-@valid_api_key_required
-def create_organization():
-    try:
-        name = request.json.get('name')
-        organization_type = request.json.get('organization_type')  # 'enterprise' or 'individual'
-        website_url = request.json.get('website_url')
-
-        if not name or not organization_type:
-            return jsonify({"error": "Missing required fields"}), 400
-
-        # Add organization to the database
-        organization_id = add_organization_to_db(name, organization_type, website_url)
-
-        # Scrape website if a URL is provided
-        if website_url:
-            print(f"Scraping website {website_url}...")
-            links, links_text = get_links(website_url)
-            for link, link_text in zip(links, links_text):
-                print(f"Processing scraped URL {link}...")
-                # Ingest each sub-URL's text as a document
-                doc_id, doesExist = add_document_to_db(link_text, link, organization_id)
-                if not doesExist:
-                    chunk_document.remote(link_text, 1000, doc_id)
-
-        return jsonify({"organization_id": organization_id}), 201
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/get_organization', methods=['GET'])
-@valid_api_key_required
-def get_organization():
-    try:
-        organization_id = request.args.get('organization_id')
-        if not organization_id:
-            return jsonify({"error": "Missing organization_id"}), 400
-
-        # Get organization info from the database
-        organization = get_organization_from_db(organization_id)
-        if not organization:
-            return jsonify({"error": "Organization not found"}), 404
-
-        return jsonify(organization), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/<organization_name>')
-def chat_with_organization(organization_name):
-    organization = get_organization_from_db_by_name(organization_name)
-    if organization:
-        return jsonify({
-            'name': organization['name'],
-            'website_url': organization['website_url'],
-            'organization_type': organization['organization_type']
-        })
-    else:
-        return jsonify({'error': 'Organization not found'}), 404
-
-def get_organization_from_db_by_name(organization_name):
-    conn, cursor = get_db_connection()
-    cursor.execute('SELECT * FROM organizations WHERE name = %s', [organization_name])
-    organization = cursor.fetchone()
-    conn.close()
-    return organization
-
 ## CHATBOT SECTION
 output_document_path = 'output_document'
 chat_history_file = os.path.join(output_document_path, 'chat_history.csv')
@@ -755,24 +647,6 @@ def infer_chat_name():
 
     return jsonify(chat_name=new_name)
 
-@app.route('/update-workflow-name', methods=['POST'])
-def update_workflow_name():
-    print("Print Update-Workflow-Name")
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    workflow_name = request.json.get('workflow_name')
-    workflow_id = request.json.get('workflow_id')
-
-    print("NEW workflow_name", workflow_name)
-
-    update_workflow_name_db(user_email, workflow_id, workflow_name)
-
-    return "Workflow name updated"
-
 
 @app.route('/delete-chat', methods=['POST'])
 def delete_chat():
@@ -836,29 +710,6 @@ def ingest_pdfs():
 
 
     #return text, filename
-
-@app.route('/api/ingest-pdf-wf', methods=['POST'])
-def ingest_pdfs_wf():
-    workflow_id = request.form['workflow_id']
-
-    if 'files' not in request.files:
-        return "No file part in the request", 400
-
-    files = request.files.getlist('files')
-
-    MAX_CHUNK_SIZE = 1000
-
-    for file in files:
-        text = get_text_from_single_file(file)
-        text_pages = get_text_pages_from_single_file(file)
-        filename = file.filename
-
-        text
-        doc_id, doesExist = add_document_to_db(text, filename, workflow_id)
-
-        if not doesExist:
-            chunk_document.remote(text_pages, MAX_CHUNK_SIZE, doc_id)
-    return text, filename
 
 @app.route('/retrieve-current-docs', methods=['POST'])
 def retrieve_current_docs():
@@ -1214,28 +1065,6 @@ def add_model_key():
 
 
 #Edgar
-@app.route('/check-valid-ticker', methods=['POST'])
-def check_valid_ticker():
-   ticker = request.json.get('ticker')
-   result = check_valid_api(ticker)
-   return jsonify({'isValid': result})
-
-@app.route('/add-ticker-to-chat', methods=['POST'])
-def add_ticker():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    ticker = request.json.get('ticker')
-    chat_id = request.json.get('chat_id')
-    isUpdate = request.json.get('isUpdate')
-
-    return add_ticker_to_chat_db(chat_id, ticker, user_email, isUpdate)
-
-
-
 @app.route('/temp-test', methods=['POST'])
 def temp_test():
 
@@ -1265,57 +1094,7 @@ def temp_test():
 
 
 
-## WORKFLOWS SECTION
-
-@app.route('/create-new-workflow', methods=['POST'])
-def create_new_workflow():
-    print('create_new_workflow')
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    workflow_type = request.json.get('workflow_type')
-    model_type = request.json.get('model_type')
-
-    workflow_id = add_workflow_to_db(user_email, workflow_type) #DO I NEED MODEL_TYPE
-    print(f'Workflow_id is APP :', workflow_id)
-    return jsonify(workflow_id=workflow_id)
-
-@app.route('/remove-ticker-from-workflow', methods=['POST'])
-def remove_ticker_from_workflow():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    ticker = request.json.get('ticker')
-    workflow_id = request.json.get('workflow_id')
-
-    return remove_ticker_from_workflow_db(workflow_id, ticker, user_email)
-
-@app.route('/add-prompt-to-workflow', methods=['POST'])
-def add_prompt_to_workflow():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-        workflow_id = request.json.get('workflow_id')
-        prompt_text = request.json.get('prompt_text')
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    return add_prompt_to_workflow_db(workflow_id, prompt_text)
-
-@app.route('/remove-prompt-from-workflow', methods=['POST'])
-def remove_prompt_from_workflow():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-        prompt_id = request.json.get('prompt_id')
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    return remove_prompt_from_workflow_db(prompt_id)
-
+## API Keys
 
 @app.route("/generateAPIKey", methods=["POST"])
 @jwt_or_session_token_required

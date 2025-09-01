@@ -15,8 +15,7 @@ from database.db import get_db_connection
 from api_endpoints.financeGPT.chatbot_endpoints import (
     get_relevant_chunks, add_document_to_db, chunk_document,
     retrieve_docs_from_db, delete_doc_from_db, add_message_to_db,
-    add_sources_to_db, retrieve_message_from_db, get_relevant_chunks_wf,
-    add_ticker_to_workflow_db, add_prompt_to_workflow_db,
+    add_sources_to_db, retrieve_message_from_db,
     get_text_from_single_file, get_text_from_url
 )
 
@@ -118,23 +117,6 @@ def add_sources_to_message(message_id: int, sources: List[List[str]]) -> str:
         return "Sources added to message successfully."
     except Exception as e:
         return f"Error adding sources: {str(e)}"
-
-@mcp.tool()
-def retrieve_workflow_chunks(query: str, workflow_id: int, user_email: str, k: int = 2) -> str:
-    """Retrieve relevant chunks for workflow queries"""
-    try:
-        sources = get_relevant_chunks_wf(k, query, workflow_id, user_email)
-
-        if not sources or sources == ["No text found"]:
-            return "No relevant workflow documents found."
-
-        result = []
-        for i, (chunk_text, document_name) in enumerate(sources):
-            result.append(f"Source {i+1} ({document_name}):\n{chunk_text}")
-
-        return "\n\n---\n\n".join(result)
-    except Exception as e:
-        return f"Error retrieving workflow chunks: {str(e)}"
 
 @mcp.tool()
 def extract_text_from_url(url: str) -> str:

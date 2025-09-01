@@ -871,39 +871,6 @@ const SidebarChatbot = forwardRef((props, ref) => {
               </div>
             </div>
             <div className="">
-              {/* <div className="px-4">Your own fine-tuned model key:</div>
-              <div className="flex items-center mx-5">
-                <input
-                  type="text"
-                  className="w-full mr-2 mt-2 rounded-xl bg-[#3A3B41] border-none focus:ring-0 focus:border-white text-white placeholder:text-gray-300"
-                  placeholder="Model key"
-                  onChange={(e) => setModelKey(e.target.value)}
-                  value={modelKey}
-                />
-                {modelKey && (
-                  <button
-                    onClick={handleModelKey}
-                    disabled={!modelKey}
-                    style={{
-                      marginTop: "4px",
-                      padding: "1px",
-                      paddingRight: "3px",
-                      paddingLeft: "3px",
-                      backgroundColor: "green",
-                      color: "white",
-                      borderRadius: "5px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    &#10003;
-                  </button>
-                )}
-              </div> */}
-              {/* <div className="px-4">
-              <a href="#" className="underline text-sm text-yellow-500" onClick={handleOpenModal}>
-            Select Organization
-          </a>
-          </div> */}
               {props.confirmedModelKey && (
                 <button
                   class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-1 px-2 rounded ml-4 mt-3 text-sm"
@@ -972,11 +939,11 @@ const SidebarChatbot = forwardRef((props, ref) => {
           </div>
         </div>
       </div>
-      
+
       {/* Chat History Section */}
       <div className="border-t border-gray-700 pt-4">
         <div className="px-2">
-          <ChatHistory 
+          <ChatHistory
             chats={props.chats}
             selectedChatId={props.selectedChatId}
             onChatSelect={props.onChatSelect}
@@ -984,7 +951,7 @@ const SidebarChatbot = forwardRef((props, ref) => {
           />
         </div>
       </div>
-      
+
       <div className="overflow-y-auto border-t border-gray-700 pt-4">
 
       </div>
