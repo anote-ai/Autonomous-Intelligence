@@ -62,18 +62,18 @@ from api_endpoints.financeGPT.chatbot_endpoints import create_chat_shareable_url
 _get_model()
 from database.db import get_db_connection
 
-from api_endpoints.financeGPT.chatbot_endpoints import add_prompt_to_workflow_db, add_workflow_to_db, \
-    add_chat_to_db, add_message_to_db, chunk_document, get_text_from_single_file, add_document_to_db, get_relevant_chunks,  \
-    remove_prompt_from_workflow_db, remove_ticker_from_workflow_db, reset_uploaded_docs_for_workflow, retrieve_chats_from_db, \
+from api_endpoints.financeGPT.chatbot_endpoints import \
+    add_chat_to_db, add_message_to_db, chunk_document, get_text_from_single_file, add_document_to_db, get_relevant_chunks, \
+    retrieve_chats_from_db, \
     delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, change_chat_mode_db, update_chat_name_db, \
     add_ticker_to_chat_db, reset_uploaded_docs, add_model_key_to_db, get_text_pages_from_single_file, \
-    add_ticker_to_workflow_db, add_chat_to_db, add_message_to_db, chunk_document, get_text_from_single_file, add_document_to_db, get_relevant_chunks, \
+    add_chat_to_db, add_message_to_db, chunk_document, get_text_from_single_file, add_document_to_db, get_relevant_chunks, \
     retrieve_chats_from_db, delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, \
-    change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, process_prompt_answer, \
+    change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, \
     ensure_SDK_user_exists, get_chat_info, ensure_demo_user_exists, get_message_info, get_text_from_url, \
-    add_organization_to_db, get_organization_from_db, update_workflow_name_db, retrieve_messages_from_share_uuid
+    add_organization_to_db, get_organization_from_db, retrieve_messages_from_share_uuid
 
-from agents.reactive_agent import ReactiveDocumentAgent, WorkflowReactiveAgent
+from agents.reactive_agent import ReactiveDocumentAgent
 from agents.config import AgentConfig
 
 from datetime import datetime
@@ -755,24 +755,6 @@ def infer_chat_name():
 
     return jsonify(chat_name=new_name)
 
-@app.route('/update-workflow-name', methods=['POST'])
-def update_workflow_name():
-    print("Print Update-Workflow-Name")
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    workflow_name = request.json.get('workflow_name')
-    workflow_id = request.json.get('workflow_id')
-
-    print("NEW workflow_name", workflow_name)
-
-    update_workflow_name_db(user_email, workflow_id, workflow_name)
-
-    return "Workflow name updated"
-
 
 @app.route('/delete-chat', methods=['POST'])
 def delete_chat():
@@ -836,29 +818,6 @@ def ingest_pdfs():
 
 
     #return text, filename
-
-@app.route('/api/ingest-pdf-wf', methods=['POST'])
-def ingest_pdfs_wf():
-    workflow_id = request.form['workflow_id']
-
-    if 'files' not in request.files:
-        return "No file part in the request", 400
-
-    files = request.files.getlist('files')
-
-    MAX_CHUNK_SIZE = 1000
-
-    for file in files:
-        text = get_text_from_single_file(file)
-        text_pages = get_text_pages_from_single_file(file)
-        filename = file.filename
-
-        text
-        doc_id, doesExist = add_document_to_db(text, filename, workflow_id)
-
-        if not doesExist:
-            chunk_document.remote(text_pages, MAX_CHUNK_SIZE, doc_id)
-    return text, filename
 
 @app.route('/retrieve-current-docs', methods=['POST'])
 def retrieve_current_docs():
@@ -1265,57 +1224,7 @@ def temp_test():
 
 
 
-## WORKFLOWS SECTION
-
-@app.route('/create-new-workflow', methods=['POST'])
-def create_new_workflow():
-    print('create_new_workflow')
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    workflow_type = request.json.get('workflow_type')
-    model_type = request.json.get('model_type')
-
-    workflow_id = add_workflow_to_db(user_email, workflow_type) #DO I NEED MODEL_TYPE
-    print(f'Workflow_id is APP :', workflow_id)
-    return jsonify(workflow_id=workflow_id)
-
-@app.route('/remove-ticker-from-workflow', methods=['POST'])
-def remove_ticker_from_workflow():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    ticker = request.json.get('ticker')
-    workflow_id = request.json.get('workflow_id')
-
-    return remove_ticker_from_workflow_db(workflow_id, ticker, user_email)
-
-@app.route('/add-prompt-to-workflow', methods=['POST'])
-def add_prompt_to_workflow():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-        workflow_id = request.json.get('workflow_id')
-        prompt_text = request.json.get('prompt_text')
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    return add_prompt_to_workflow_db(workflow_id, prompt_text)
-
-@app.route('/remove-prompt-from-workflow', methods=['POST'])
-def remove_prompt_from_workflow():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-        prompt_id = request.json.get('prompt_id')
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    return remove_prompt_from_workflow_db(prompt_id)
-
+## API Keys
 
 @app.route("/generateAPIKey", methods=["POST"])
 @jwt_or_session_token_required

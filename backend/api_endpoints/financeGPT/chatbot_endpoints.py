@@ -184,7 +184,7 @@ def access_sharable_chat(share_uuid, user_id=1):
     for doc in docs:
         # Insert document
         cursor.execute("""
-            INSERT INTO documents (chat_id, workflow_id, document_name, document_text, storage_key)
+            INSERT INTO documents (chat_id, document_name, document_text, storage_key)
             VALUES (%s, NULL, %s, %s, %s)
         """, (new_chat_id, doc['document_name'], doc['document_text'], doc['storage_key']))
         new_doc_id = cursor.lastrowid
@@ -213,22 +213,6 @@ def access_sharable_chat(share_uuid, user_id=1):
 
 ## General for all chatbots
 # Worflow_type is an integer where 2=FinancialReports
-def add_workflow_to_db(user_email, workflow_type): #intake the current userID into the workflow table
-    conn, cursor = get_db_connection()
-
-    cursor.execute("SELECT id FROM users WHERE email = %s", [user_email])
-    user_id = cursor.fetchone()['id']
-
-    cursor.execute('INSERT INTO workflows (user_id, associated_task) VALUES (%s, %s)', (user_id, workflow_type))
-    workflow_id = cursor.lastrowid
-
-    name = f"Workflow {workflow_id}"
-    cursor.execute('UPDATE workflows SET workflow_name = %s WHERE id = %s', (name, workflow_id))
-
-    conn.commit()
-    conn.close()
-
-    return workflow_id
 
 def update_chat_name_db(user_email, chat_id, new_name):
     conn, cursor = get_db_connection()
@@ -240,25 +224,6 @@ def update_chat_name_db(user_email, chat_id, new_name):
     WHERE chats.id = %s AND users.email = %s;
     """
     cursor.execute(query, (new_name, chat_id, user_email))
-
-    conn.commit()
-    conn.close()
-
-    return
-
-def update_workflow_name_db(user_email, workflow_id, new_name):
-    print("update_workflow_name_db")
-    conn, cursor = get_db_connection()
-
-    query = """
-    UPDATE workflows
-    JOIN users ON workflows.user_id = users.id
-    SET workflows.workflow_name = %s
-    WHERE workflows.id = %s AND users.email = %s;
-    """
-    cursor.execute(query, (new_name, workflow_id, user_email))
-
-    print("new_name =", new_name)
 
     conn.commit()
     conn.close()
@@ -544,30 +509,6 @@ def reset_uploaded_docs(chat_id, user_email):
     conn.close()
     cursor.close()
 
-def reset_uploaded_docs_for_workflow(workflow_id, user_email):
-    conn, cursor = get_db_connection()
-
-    delete_chunks_query = """
-    DELETE chunks
-    FROM chunks
-    INNER JOIN documents ON chunks.document_id = documents.id
-    WHERE documents.workflow_id = %s;
-    """
-    cursor.execute(delete_chunks_query, (workflow_id,))
-
-    delete_documents_query = """
-    DELETE documents
-    FROM documents
-    WHERE documents.workflow_id = %s;
-    """
-    cursor.execute(delete_documents_query, (workflow_id,))
-
-    conn.commit()
-
-    conn.close()
-    cursor.close()
-
-
 
 def change_chat_mode_db(chat_mode_to_change_to, chat_id, user_email):
     conn, cursor = get_db_connection()
@@ -624,29 +565,6 @@ def add_document_to_db(text, document_name, chat_id=None, organization_id=None):
     finally:
         cursor.close()
         conn.close()
-
-
-def add_document_to_wfs_db(text, document_name, workflow_id):
-    conn, cursor = get_db_connection()
-
-    cursor.execute("SELECT id, document_text FROM documents WHERE document_name = %s AND workflow_id = %s", (document_name, workflow_id))
-    existing_doc = cursor.fetchone()
-
-    if existing_doc:
-        existing_doc_id, existing_doc_text = existing_doc
-        print("Doc named ", document_name, " exists. Do not create a new entry")
-        conn.close()
-        return existing_doc_id, True  # Returning the ID of the existing document
-
-
-    storage_key = "temp"
-    cursor.execute("INSERT INTO documents (workflow_id, document_name, document_text, storage_key) VALUES (%s, %s, %s, %s)", (workflow_id, document_name, text, storage_key))
-
-    doc_id = cursor.lastrowid
-
-    conn.commit()
-    conn.close()
-    cursor.close()
 
 
 @ray.remote
@@ -1253,78 +1171,6 @@ def get_relevant_chunks(k: int, question: str, chat_id: int, user_email: str):
     return source_chunks
 
 
-def get_relevant_chunks_wf(k, question, workflow_id, user_email):
-    conn, cursor = get_db_connection()
-
-    query = """
-    SELECT c.start_index, c.end_index, c.embedding_vector, c.document_id, c.page_number, d.document_name
-    FROM chunks c
-    JOIN documents d ON c.document_id = d.id
-    JOIN workflows w ON d.workflow_id = w.id
-    JOIN users u ON w.user_id = u.id
-    WHERE u.email = %s AND w.id = %s
-    """
-
-    cursor.execute(query, (user_email, workflow_id))
-    rows = cursor.fetchall()
-
-    embeddings = []
-    for row in rows:
-        embeddingVectorBlob = row["embedding_vector"]
-        embeddingVector = np.frombuffer(embeddingVectorBlob)
-
-        # Basic validation - should match our configured embedding dimensions
-        if len(embeddingVector) != EMBEDDING_DIMENSIONS:
-            print(f"[WARNING] Found workflow embedding with unexpected dimension: {len(embeddingVector)}, expected {EMBEDDING_DIMENSIONS}")
-
-        embeddings.append(embeddingVector)
-
-    if (len(embeddings) == 0):
-        res_list = []
-        for i in range(k):
-            res_list.append("No text found")
-        return res_list
-
-    embeddings = np.array(embeddings)
-
-    try:
-        embeddingVector = get_embedding(question)
-        embeddingVector = np.array(embeddingVector)
-
-        # Validate query embedding dimensions
-        if len(embeddingVector) != EMBEDDING_DIMENSIONS:
-            raise ValueError(f"Workflow query embedding dimension mismatch: expected {EMBEDDING_DIMENSIONS}, got {len(embeddingVector)}")
-
-    except Exception as e:
-        print(f"[ERROR] Failed to generate workflow query embedding: {e}")
-        res_list = []
-        for i in range(k):
-            res_list.append("Error generating embedding")
-        return res_list
-
-    res = knn(embeddingVector, embeddings)
-    num_results = min(k, len(res))
-
-    #Get the k most relevant chunks
-    source_chunks = []
-    for i in range(num_results):
-        source_id = res[i]['index']
-
-        document_id = rows[source_id]['document_id']
-        #page_number = rows[source_id]['page_number']
-        document_name = rows[source_id]['document_name']
-
-
-        cursor.execute('SELECT document_text FROM documents WHERE id = %s', [document_id])
-        doc_text = cursor.fetchone()['document_text']
-
-        source_chunk = doc_text[rows[source_id]['start_index']:rows[source_id]['end_index']]
-        source_chunks.append((source_chunk, document_name))
-        #source_chunks.append(source_chunk)
-
-    return source_chunks
-
-
 def add_sources_to_db(message_id, sources):
     combined_sources = ""
 
@@ -1386,10 +1232,10 @@ def add_message_to_db(text, chat_id, isUser, reasoning=None):
 
     return message_id
 
-def add_prompt_to_db(prompt_text, workflow_id):
+def add_prompt_to_db(prompt_text):
     conn, cursor = get_db_connection()
 
-    cursor.execute('INSERT INTO prompts (workflow_id, prompt_text) VALUES (%s, %s)', (workflow_id, prompt_text))
+    cursor.execute('INSERT INTO prompts (prompt_text) VALUES (%s, %s)', (prompt_text))
 
     prompt_id = cursor.lastrowid
 
@@ -1400,13 +1246,13 @@ def add_prompt_to_db(prompt_text, workflow_id):
     return prompt_id
 
 
-def add_answer_to_db(answer, workflow_id, citation_id):
+def add_answer_to_db(answer, citation_id):
     conn, cursor = get_db_connection()
 
     # Insert the answer into the prompt_answers table
     cursor.execute(
         'INSERT INTO prompt_answers (prompt_id, citation_id, answer_text) VALUES (%s, %s, %s)',
-        (workflow_id, citation_id, answer)
+        (citation_id, answer)
     )
     answer_id = cursor.lastrowid
 
@@ -1525,128 +1371,6 @@ def get_text_pages_from_single_file(file):
 
     return pages_text #text
 
-def add_ticker_to_workflow_db(user_email, workflow_id, ticker):
-    print("add_ticker_to_workflow_db")
-    conn, cursor = get_db_connection()
-
-    # Check if the ticker already exists
-    cursor.execute("SELECT id FROM tickers WHERE ticker_name = %s AND workflow_id = %s", (ticker, workflow_id))
-    ticker_row = cursor.fetchone()
-
-    if not ticker_row:
-        # If the ticker doesn't exist for the workflow, insert it into the tickers table
-        cursor.execute("INSERT INTO tickers (ticker_name, workflow_id) VALUES (%s, %s)", (ticker, workflow_id))
-        conn.commit()
-
-    cursor.close()
-    conn.close()
-    print("TICKER ADDED")
-
-    return "Success"
-
-# Adding a prompt to a workflow
-def add_prompt_to_workflow_db(workflow_id, prompt_text):
-    conn, cursor = get_db_connection()
-
-    query = """INSERT INTO prompts (workflow_id, prompt_text) VALUES (%s, %s)"""
-    cursor.execute(query, (workflow_id, prompt_text))
-
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-    return "Success"
-
-def remove_ticker_from_workflow_db(workflow_id, ticker, user_email):
-    conn, cursor = get_db_connection()
-
-    # Retrieve existing tickers
-    cursor.execute("SELECT tickers FROM workflows WHERE id = %s", (workflow_id,))
-    existing_tickers = cursor.fetchone()
-
-    if existing_tickers:
-        existing_tickers = existing_tickers[0]
-        if ticker in existing_tickers:
-            existing_tickers.remove(ticker)
-        else:
-            # Ticker not found in the array
-            return "Ticker not found"
-    else:
-        # No existing tickers
-        return "No tickers to remove"
-
-    # Update the tickers field
-    query = """UPDATE workflows
-               SET tickers = %s
-               WHERE id = %s"""
-
-    cursor.execute(query, (existing_tickers, workflow_id))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return "Success"
-
-# Removing a prompt from a workflow
-def remove_prompt_from_workflow_db(prompt_id):
-    conn, cursor = get_db_connection()
-
-    query = """DELETE FROM prompts WHERE id = %s"""
-    cursor.execute(query, (prompt_id,))
-
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-    return "Success"
-
-
-def process_prompt_answer(prompt, workflow_id, user_email):
-    # model_type = request.json.get('model_type')
-    print("process_prompt_answer")
-    print(workflow_id)
-    query = prompt.strip()
-
-    #This adds user message to db
-    add_prompt_to_db(query, workflow_id)
-    print("SUCCESSFULLY ADDED PROMPT")
-
-    # Get most relevant section from the document
-    sources = get_relevant_chunks_wf(2, query, workflow_id, user_email)
-    print("get_relevant_chunks")
-    sources_str = " ".join([", ".join(str(elem) for elem in source) for source in sources])
-
-    print("using existing chunks")
-
-    print("using Claude")
-    anthropic = Anthropic(
-        api_key=os.environ.get("ANTHROPIC_API_KEY")
-    )
-    print("accessed Claude key")
-    completion = anthropic.completions.create(
-        model="claude-2",
-        max_tokens_to_sample=700,
-        prompt = (
-            f"{HUMAN_PROMPT} "
-            f"You are a factual chatbot that answers questions about 10-K documents. You only answer with answers you find in the text, no outside information. "
-            f"please address the question: {query}. "
-            f"Consider the provided text as evidence: {sources_str}. "
-            f"{AI_PROMPT}")
-    )
-    answer = completion.completion
-    print("ANSWER: ", answer)
-
-    answer_id = add_answer_to_db(answer, workflow_id, sources)
-    print("SUCCESSFULLY ADDED PROMPT ANSWER")
-
-    try:
-        add_wf_sources_to_db(prompt_id, sources)
-    except:
-        print("no sources")
-
-    return jsonify(answer=answer)
 
 
 #for the demo
