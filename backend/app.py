@@ -63,11 +63,11 @@ _get_model()
 from database.db import get_db_connection
 
 from api_endpoints.financeGPT.chatbot_endpoints import \
-    add_chat_to_db, add_message_to_db, chunk_document, get_text_from_single_file, add_document_to_db, get_relevant_chunks, \
+    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
     retrieve_chats_from_db, \
     delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, change_chat_mode_db, update_chat_name_db, \
-    add_ticker_to_chat_db, reset_uploaded_docs, add_model_key_to_db, get_text_pages_from_single_file, \
-    add_chat_to_db, add_message_to_db, chunk_document, get_text_from_single_file, add_document_to_db, get_relevant_chunks, \
+    reset_uploaded_docs, add_model_key_to_db, \
+    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
     retrieve_chats_from_db, delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, \
     change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, \
     ensure_SDK_user_exists, get_chat_info, ensure_demo_user_exists, get_message_info, get_text_from_url, \
@@ -1173,28 +1173,6 @@ def add_model_key():
 
 
 #Edgar
-@app.route('/check-valid-ticker', methods=['POST'])
-def check_valid_ticker():
-   ticker = request.json.get('ticker')
-   result = check_valid_api(ticker)
-   return jsonify({'isValid': result})
-
-@app.route('/add-ticker-to-chat', methods=['POST'])
-def add_ticker():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    ticker = request.json.get('ticker')
-    chat_id = request.json.get('chat_id')
-    isUpdate = request.json.get('isUpdate')
-
-    return add_ticker_to_chat_db(chat_id, ticker, user_email, isUpdate)
-
-
-
 @app.route('/temp-test', methods=['POST'])
 def temp_test():
 

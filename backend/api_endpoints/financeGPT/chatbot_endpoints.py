@@ -234,7 +234,7 @@ def retrieve_chats_from_db(user_email):
     conn, cursor = get_db_connection()
 
     query = """
-        SELECT chats.id, chats.model_type, chats.chat_name, chats.associated_task, chats.ticker, chats.custom_model_key
+        SELECT chats.id, chats.model_type, chats.chat_name, chats.associated_task, chats.custom_model_key
         FROM chats
         JOIN users ON chats.user_id = users.id
         WHERE users.email = %s;
@@ -1323,30 +1323,6 @@ def add_model_key_to_db(model_key, chat_id, user_email):
     cursor.execute(update_query, (model_key, chat_id, user_email))
 
     conn.commit()
-
-
-def add_ticker_to_chat_db(chat_id, ticker, user_email, isUpdate):
-    conn, cursor = get_db_connection()
-
-    if isUpdate:
-        try:
-            reset_chat_db(chat_id, user_email)
-        except:
-            return "Error"
-
-    query = """UPDATE chats
-    JOIN users ON chats.user_id = users.id
-    SET chats.ticker = %s
-    WHERE users.email = %s AND chats.id = %s"""
-
-    cursor.execute(query, (ticker, user_email, chat_id))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return "Success"
 
 
 #specific to PDF reader
