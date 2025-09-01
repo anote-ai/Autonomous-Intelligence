@@ -1,41 +1,19 @@
 from langchain_community.llms import OpenAI
-from langchain_community.vectorstores import Chroma
-from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
 import ray
-import openai
-import datetime
-import shutil
 import time
 import numpy as np
 import PyPDF2
 import uuid
 import requests
 from flask import jsonify
-
-# from openai import OpenAI
-
-# """Module for fetching data from the SEC EDGAR Archives"""
 import json
 import os
-import re
 import uuid
 from flask import jsonify
 import requests
-import webbrowser
-from fpdf import FPDF
-from typing import List, Optional, Tuple, Union
-from ratelimit import limits, sleep_and_retry
-import anthropic
-from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
-import sys
-if sys.version_info < (3, 8):
-    from typing_extensions import Final
-else:
-    from typing import Final
-
 from database.db import get_db_connection
 from tika import parser as p
 
