@@ -1,0 +1,198 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: anote-local
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: datadog-secret
+  namespace: anote-local
+type: Opaque
+stringData:
+  DD_API_KEY: "75ca876ae5522eddfc7a9c2db382598e"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: anote-env
+  namespace: anote-local
+type: Opaque
+stringData:
+  DB_HOST: "db"
+  DB_USER: "root"
+  DB_PASSWORD: ""
+  DB_NAME: "agents"
+  DB_PORT: "3306"
+  DD_AGENT_HOST: "datadog-agent"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: anote-local
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: my-backend:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5000
+          env:
+            - name: FLASK_APP
+              value: app.py
+            - name: FLASK_ENV
+              value: development
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: anote-env
+                  key: DB_HOST
+            - name: REDIS_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: anote-env
+                  key: DB_PORT
+            - name: DD_AGENT_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: anote-env
+                  key: DD_AGENT_HOST
+            - name: DD_LLMOBS_ENABLED
+              value: "1"
+            - name: DD_LLMOBS_ML_APP
+              value: quickstart-app
+            - name: DD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datadog-secret
+                  key: DD_API_KEY
+            - name: HF_HOME
+              value: /cache
+          volumeMounts:
+            - name: models
+              mountPath: /app/models
+            - name: huggingface-cache
+              mountPath: /cache
+      volumes:
+        - name: models
+          hostPath:
+            path: /absolute/path/to/models   # <-- replace with your actual absolute path
+        - name: huggingface-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: anote-local
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: anote-local
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: anote-local
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datadog-agent
+  namespace: anote-local
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: datadog-agent
+  template:
+    metadata:
+      labels:
+        app: datadog-agent
+    spec:
+      containers:
+        - name: agent
+          image: gcr.io/datadoghq/agent:latest
+          env:
+            - name: DD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datadog-secret
+                  key: DD_API_KEY
+            - name: DD_SITE
+              value: "us5.datadoghq.com"
+            - name: DD_LOGS_ENABLED
+              value: "true"
+            - name: DD_APM_ENABLED
+              value: "true"
+            - name: DD_DOGSTATSD_NON_LOCAL_TRAFFIC
+              value: "true"
+          volumeMounts:
+            - name: dockersock
+              mountPath: /var/run/docker.sock
+      volumes:
+        - name: dockersock
+          hostPath:
+            path: /var/run/docker.sock
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datadog-agent
+  namespace: anote-local
+spec:
+  selector:
+    app: datadog-agent
+  ports:
+    - protocol: TCP
+      port: 8126
+      targetPort: 8126
+

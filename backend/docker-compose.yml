@@ -8,9 +8,8 @@ services:
       - "8000:5000"  # Map container's 5000 to host's 5000
     volumes:
       - ./:/app
-      - ./db:/app/db
       - ./models:/app/models
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
+      - huggingface-cache:/cache
     env_file:
       - .env
     environment:
@@ -27,6 +26,7 @@ services:
       - DD_LLMOBS_ENABLED=1
       - DD_LLMOBS_ML_APP=quickstart-app
       - DD_API_KEY=${DD_API_KEY}  # ensure this is in your .env
+      - HF_HOME=/cache
     depends_on:
       db:
         condition: service_healthy
@@ -46,9 +46,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    command: ["ddtrace-run", "python", "app.py"]
-
-
+    command: >
+      bash -c "ray start --head --port=6379 --dashboard-port=9998 &&
+               ddtrace-run flask run --host=0.0.0.0 --port=5000 --no-reload"
 
   db:
     image: mysql:8.0
@@ -119,6 +119,7 @@ services:
       - DD_TAGS="env:${DD_ENV}"
       - DD_LOGS_ENABLED=true
       - DD_APM_ENABLED=true
+      - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
       - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
       - DD_CONTAINER_LABELS_AS_TAGS={"my.custom.label.color":"color"}
     ports:
@@ -127,7 +128,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /proc/:/host/proc/:ro
-      - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+      - /sys/fs/cgroup:/host/sys/cgroup:ro
     networks:
       - anote-network
 
@@ -139,3 +140,4 @@ volumes:
   mysql-data:
   redis-data:
   tika-data:
+  huggingface-cache:
