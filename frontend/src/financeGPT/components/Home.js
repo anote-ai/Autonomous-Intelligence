@@ -4,7 +4,6 @@ import Chatbot from "./Chatbot";
 import "../styles/Chatbot.css";
 import SidebarChatbot from "./SidebarChatbot";
 import fetcher from "../../http/RequestConfig";
-import ChatbotEdgar from "./chatbot_subcomponents/ChatbotEdgar";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Popout from "./Popout";
 import ChatHistory from "./ChatHistory";
@@ -16,9 +15,8 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
   const [isPrivate, setIsPrivate] = useState(0);
   const [currChatName, setCurrChatName] = useState("");
   const [currTask, setcurrTask] = useState(0); //0 is file upload, 1 EDGAR, 2 mySQL db; have 0 be the default
-  const [ticker, setTicker] = useState("");
   const [showChatbot, setShowChatbot] = useState(false);
-  const [isEdit, setIsEdit] = useState(0); //for whether you can currently edit the ticker or not
+  const [isEdit, setIsEdit] = useState(0);
   const [activeMessageIndex, setActiveMessageIndex] = useState(null);
   const [relevantChunk, setRelevantChunk] = useState("");
   const [menu, setMenu] = useState(false);
@@ -92,14 +90,14 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
     if (chatId && chatId !== selectedChatId) {
       setSelectedChatId(chatId);
     }
-    
+
     // Try direct file input first
     if (fileInputRef.current) {
       console.log("Triggering file input dialog");
       fileInputRef.current.click();
       return;
     }
-    
+
     // Fallback to sidebar approach
     if (sidebarRef.current && sidebarRef.current.openFileDialog) {
       console.log("Using sidebar openFileDialog");
@@ -137,7 +135,7 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
       formData.append("chat_id", selectedChatId);
 
       console.log("Uploading files for chat:", selectedChatId);
-      
+
       const response = await fetcher("ingest-pdf", {
         method: "POST",
         body: formData,
@@ -145,10 +143,10 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
 
       const responseData = await response.json();
       console.log("Upload response:", responseData);
-      
+
       // Force update to refresh documents list
       handleForceUpdate();
-      
+
     } catch (error) {
       console.error("File upload error:", error);
     } finally {
@@ -208,7 +206,7 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
     <div className="h-screen flex flex-col bg-gray-900">
       {/* Backend Status Indicator */}
       <BackendStatusIndicator />
-      
+
       {/* ChatGPT-style top navigation */}
       <Navbarchatbot
         selectedChatId={selectedChatId}
@@ -221,7 +219,6 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
         handleMenu={handleMenu}
         chats={chats}
         setcurrTask={setcurrTask}
-        setTicker={setTicker}
         currTask={currTask}
         setConfirmedModelKey={setConfirmedModelKey}
         confirmedModelKey={confirmedModelKey}
