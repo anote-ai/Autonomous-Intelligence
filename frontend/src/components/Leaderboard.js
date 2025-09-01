@@ -66,480 +66,57 @@ const Leaderboard = () => {
   ];
 
 
-  const datasets = [
-    {
-      name: "FinanceBench - Retrieval Accuracy",
-      url: "https://github.com/patronus-ai/financebench",
-      models: [
-        {
-          rank: 1,
-          model: "GPT-4o Fine Tuned",
-          score: 0.632,
-          ci: "0.61 - 0.65",
-          updated: "Oct 2024",
-        },
-        {
-          rank: 2,
-          model: "Mistral Fine Tuned",
-          score: 0.612,
-          ci: "0.59 - 0.63",
-          updated: "Oct 2024",
-        },
-        {
-          rank: 3,
-          model: "LLaMA 3 Fine Tuned",
-          score: 0.593,
-          ci: "0.57 - 0.61",
-          updated: "Oct 2024",
-        },
-        {
-          rank: 4,
-          model: "Re-ranking",
-          score: 0.573,
-          ci: "0.55 - 0.59",
-          updated: "Oct 2024",
-        },
-        {
-          rank: 5,
-          model: "Query Expansiong",
-          score: 0.256,
-          ci: "0.24 - 0.27",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 6,
-          model: "Base Case RAG",
-          score: 0.24,
-          ci: "0.22 - 0.26",
-          updated: "Sep 2024",
-        },
-      ],
-    },
-    {
-      name: "Amazon Reviews - Classification Accuracy",
-      url: "https://huggingface.co/datasets/m-ric/amazon_product_reviews_datafiniti",
-      models: [
-        {
-          rank: 1,
-          model: "GPT-4o",
-          score: 0.94,
-          ci: "0.92 - 0.96",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 2,
-          model: "GPT-3.5",
-          score: 0.91,
-          ci: "0.89 - 0.93",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 3,
-          model: "LLaMA 3",
-          score: 0.9,
-          ci: "0.88 - 0.92",
-          updated: "Oct 2024",
-        },
-        {
-          rank: 4,
-          model: "BERT",
-          score: 0.89,
-          ci: "0.87 - 0.91",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 5,
-          model: "SetFit",
-          score: 0.87,
-          ci: "0.85 - 0.89",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 6,
-          model: "Claude 2",
-          score: 0.86,
-          ci: "0.83 - 0.87",
-          updated: "Oct 2024",
-        },
-      ],
-    },
-    {
-      name: "RAG Instruct - Answer Accuracy",
-      url: "https://huggingface.co/datasets/llmware/rag_instruct_benchmark_tester",
-      models: [
-        {
-          rank: 1,
-          model: "GPT-4o",
-          score: 0.89,
-          ci: "0.87 - 0.91",
-          updated: "Oct 2024",
-        },
-        {
-          rank: 2,
-          model: "GPT 3.5",
-          score: 0.86,
-          ci: "0.84 - 0.88",
-          updated: "Oct 2024",
-        },
-        {
-          rank: 3,
-          model: "Llama3",
-          score: 0.85,
-          ci: "0.83 - 0.87",
-          updated: "Oct 2024",
-        },
-        {
-          rank: 4,
-          model: "Claude 2",
-          score: 0.83,
-          ci: "0.81 - 0.85",
-          updated: "Oct 2024",
-        },
-        {
-          rank: 5,
-          model: "GPT4ALL",
-          score: 0.82,
-          ci: "0.80 - 0.84",
-          updated: "Oct 2024",
-        },
-        {
-          rank: 6,
-          model: "FLARE",
-          score: 0.81,
-          ci: "0.79 - 0.83",
-          updated: "Oct 2024",
-        },
-      ],
-    },
-    {
-      name: "Financial Phrasebank - Classification Accuracy",
-      url: "https://huggingface.co/datasets/takala/financial_phrasebank",
-      models: [
-        {
-          rank: 1,
-          model: "Gemini",
-          score: 0.95,
-          ci: "0.93 - 0.97",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 2,
-          model: "GPT-4o",
-          score: 0.93,
-          ci: "0.91 - 0.95",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 3,
-          model: "Llama3",
-          score: 0.92,
-          ci: "0.90 - 0.94",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 4,
-          model: "BERT",
-          score: 0.92,
-          ci: "0.90 - 0.94",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 5,
-          model: "SetFit",
-          score: 0.89,
-          ci: "0.87 - 0.91",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 6,
-          model: "Claude 2",
-          score: 0.87,
-          ci: "0.85 - 0.88",
-          updated: "Oct 2024",
-        },
-      ],
-    },
-    {
-      name: "TREC - Hierarchical Classification Accuracy",
-      url: "https://huggingface.co/datasets/CogComp/trec",
-      models: [
-        {
-          rank: 1,
-          model: "Claude 2",
-          score: 0.85,
-          ci: "0.83 - 0.87",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 2,
-          model: "GPT-4o",
-          score: 0.82,
-          ci: "0.80 - 0.84",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 3,
-          model: "Mistral",
-          score: 0.81,
-          ci: "0.79 - 0.83",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 4,
-          model: "BERT",
-          score: 0.8,
-          ci: "0.78 - 0.82",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 5,
-          model: "SetFit",
-          score: 0.79,
-          ci: "0.77 - 0.81",
-          updated: "Sep 2024",
-        },
-      ],
-    },
-    {
-      name: "Banking Dataset - Classification Accuracy",
-      url: "https://huggingface.co/datasets/takala/financial_phrasebank",
-      models: [
-        {
-          rank: 1,
-          model: "GPT-4o",
-          score: 0.93,
-          ci: "0.91 - 0.95",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 2,
-          model: "Gemini",
-          score: 0.91,
-          ci: "0.89 - 0.93",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 3,
-          model: "Mistral",
-          score: 0.9,
-          ci: "0.88 - 0.92",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 4,
-          model: "BERT",
-          score: 0.89,
-          ci: "0.87 - 0.91",
-          updated: "Sep 2024",
-        },
-        {
-          rank: 5,
-          model: "SetFit",
-          score: 0.87,
-          ci: "0.85 - 0.89",
-          updated: "Sep 2024",
-        },
-      ],
-    },
-    {
-      "name": "ARC-SMART",
-      "url": "https://huggingface.co/datasets/vipulgupta/arc-smart",
-      "models": [
-        {
-          "rank": 1,
-          "model": "Qwen2-72B-Instruct",
-          "score": 0.83,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 2,
-          "model": "Meta-Llama-3.1-70B-Instruct",
-          "score": 0.819,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 3,
-          "model": "Meta-Llama-3-70B-Instruct",
-          "score": 0.819,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 4,
-          "model": "Gemma-2-27b-it",
-          "score": 0.788,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 5,
-          "model": "Phi-3.5-MoE-instruct",
-          "score": 0.785,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 6,
-          "model": "Phi-3-medium-4k-instruct",
-          "score": 0.781,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 7,
-          "model": "Mixtral-8x22B-Instruct-v0.1",
-          "score": 0.762,
-          "updated": "Oct-2024"
+  // No hardcoded datasets - use only live data from API
+  const [datasets, setDatasets] = useState([]);
+
+  // Fetch available datasets from API
+  useEffect(() => {
+    const fetchDatasets = async () => {
+      try {
+        const response = await axios.get(`${process.env.REACT_APP_BACK_END_HOST}/public/get_leaderboard`);
+        if (response.data.success) {
+          // Group submissions by dataset to create dataset structure
+          const groupedData = {};
+          response.data.leaderboard.forEach(submission => {
+            let datasetDisplayName;
+            if (submission.dataset_name.includes('_bertscore')) {
+              const language = submission.dataset_name.replace('flores_', '').replace('_translation_bertscore', '');
+              datasetDisplayName = `${language.charAt(0).toUpperCase() + language.slice(1)} – BERTScore`;
+            } else {
+              const language = submission.dataset_name.replace('flores_', '').replace('_translation', '');
+              datasetDisplayName = `${language.charAt(0).toUpperCase() + language.slice(1)} – BLEU`;
+            }
+
+            if (!groupedData[submission.dataset_name]) {
+              groupedData[submission.dataset_name] = {
+                name: datasetDisplayName,
+                url: "https://huggingface.co/datasets/openlanguagedata/flores_plus",
+                models: []
+              };
+            }
+
+            groupedData[submission.dataset_name].models.push({
+              rank: submission.rank,
+              model: submission.model_name,
+              score: submission.score,
+              updated: new Date(submission.submitted_at).toLocaleDateString()
+            });
+          });
+
+          // Sort models within each dataset by rank
+          Object.values(groupedData).forEach(dataset => {
+            dataset.models.sort((a, b) => a.rank - b.rank);
+          });
+
+          setDatasets(Object.values(groupedData));
         }
-      ]
-    },
-    {
-      "name": "MMLU-SMART",
-      "url": "https://huggingface.co/datasets/vipulgupta/mmlu-smart",
-      "models": [
-        {
-          "rank": 1,
-          "model": "Qwen2-72B-Instruct",
-          "score": 0.743,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 2,
-          "model": "Meta-Llama-3.1-70B-Instruct",
-          "score": 0.714,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 3,
-          "model": "Meta-Llama-3-70B-Instruct",
-          "score": 0.692,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 4,
-          "model": "Phi-3.5-MoE-instruct",
-          "score": 0.67,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 5,
-          "model": "Phi-3-medium-4k-instruct",
-          "score": 0.656,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 6,
-          "model": "Mixtral-8x22B-Instruct-v0.1",
-          "score": 0.653,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 7,
-          "model": "Gemma-2-27b-it",
-          "score": 0.639,
-          "updated": "Oct-2024"
-        }
-      ]
-    },
-    {
-      "name": "CommonsenseQA-SMART",
-      "url": "https://huggingface.co/datasets/vipulgupta/commonsense_qa_smart",
-      "models": [
-        {
-          "rank": 1,
-          "model": "Qwen2-72B-Instruct",
-          "score": 0.845,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 2,
-          "model": "Yi-1.5-34B-Chat",
-          "score": 0.776,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 3,
-          "model": "Meta-Llama-3-70B-Instruct",
-          "score": 0.771,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 4,
-          "model": "Qwen1.5-32B-Chat",
-          "score": 0.767,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 5,
-          "model": "Meta-Llama-3.1-70B-Instruct",
-          "score": 0.741,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 6,
-          "model": "Phi-3.5-MoE-instruct",
-          "score": 0.739,
-          "updated": "Oct-2024"
-        },
-        {
-          "rank": 7,
-          "model": "Gemma-2-9b-it",
-          "score": 0.733,
-          "updated": "Oct-2024"
-        }
-      ]
-    },
-    {
-      "name": "Geolocation Inference - Median Distance Error",
-      "url": "https://github.com/njspyx/location-inference",
-      "models": [
-          {
-              "rank": 1,
-              "model": "O1",
-              "score": 182.73,
-              "updated": "Feb 2025"
-          },
-          {
-              "rank": 2,
-              "model": "GPT-4o",
-              "score": 216.13,
-              "updated": "Feb 2025"
-          },
-          {
-              "rank": 3,
-              "model": "Gemini 1.5 Pro",
-              "score": 287.27,
-              "updated": "Feb 2025"
-          },
-          {
-              "rank": 4,
-              "model": "Gemini 1.5 Flash",
-              "score": 298.86,
-              "updated": "Feb 2025"
-          },
-          {
-              "rank": 5,
-              "model": "Gemini 1.5 Flash 8B",
-              "score": 304.96,
-              "updated": "Feb 2025"
-          },
-          {
-              "rank": 6,
-              "model": "GPT-4o Mini",
-              "score": 380.85,
-              "updated": "Feb 2025"
-          },
-          {
-              "rank": 7,
-              "model": "Claude 3.5 Sonnet",
-              "score": 382.07,
-              "updated": "Feb 2025"
-          },
-          {
-              "rank": 8,
-              "model": "Qwen2VL 7B Instruct",
-              "score": 475.25,
-              "updated": "Feb 2025"
-          }
-      ]
-  }
-  ];
+      } catch (err) {
+        console.error("Error fetching datasets:", err);
+      }
+    };
+
+    fetchDatasets();
+  }, []);
   
   // Check if we should show full leaderboard for a specific dataset
   const showFullLeaderboard = location.state?.showFullLeaderboard;

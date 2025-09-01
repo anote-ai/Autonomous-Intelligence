@@ -7,8 +7,8 @@ A research platform for evaluating and ranking AI translation models across 5 la
 ## ✅ **CURRENT STATUS: WORKING END-TO-END**
 
 ### 🎯 **Working URLs:**
-- **Frontend**: http://localhost:3002
-- **Evaluations Page**: http://localhost:3002/evaluations ✅ **LIVE**
+- **Frontend**: http://localhost:3000
+- **Evaluations Page**: http://localhost:3000/evaluations ✅ **LIVE**
 - **Backend API**: http://localhost:5001
 - **Health Check**: http://localhost:5001/health
 
@@ -52,11 +52,11 @@ Based on live data from the API:
    ```bash
    cd ../frontend
    npm install
-   npm start  # Will auto-select available port (3002)
+   npm start  # Will auto-select available port (3000)
    ```
 
 3. **Access Applications**
-   - **Evaluations**: http://localhost:3002/evaluations
+   - **Evaluations**: http://localhost:3000/evaluations
    - **Backend API**: http://localhost:5001
    - **Health Check**: http://localhost:5001/health
 
@@ -107,7 +107,7 @@ Based on live data from the API:
 
 ### Submit Model
 ```bash
-POST http://localhost:5000/public/submit_model
+POST http://localhost:5001/public/submit_model
 {
   "benchmarkDatasetName": "flores_spanish_translation",
   "modelName": "my-model-v1", 
@@ -118,12 +118,12 @@ POST http://localhost:5000/public/submit_model
 
 ### Get Source Sentences
 ```bash
-GET http://localhost:5000/public/get_source_sentences?dataset_name=flores_spanish_translation&count=5
+GET http://localhost:5001/public/get_source_sentences?dataset_name=flores_spanish_translation&count=5
 ```
 
 ### Get Leaderboard (Live Data)
 ```bash
-GET http://localhost:5000/public/get_leaderboard
+GET http://localhost:5001/public/get_leaderboard
 ```
 
 **Response includes 9 active leaderboards:**
@@ -150,16 +150,16 @@ GET http://localhost:5000/public/get_leaderboard
    ```
 
 ### Architecture
-- **Backend**: Flask API with MySQL database (runs on port 8000)
-- **Frontend**: React with dynamic leaderboard components (runs on port 3002)
+- **Backend**: Flask API with MySQL database (runs on port 5001)
+- **Frontend**: React with dynamic leaderboard components (runs on port 3000)
 - **Evaluation**: BLEU (nltk) + BERTScore (bert-base-multilingual-cased)
 - **Data**: FLORES+ benchmark datasets via Hugging Face
 
 ## Configuration
 
 ### Port Configuration
-- **Backend**: Accessible at http://localhost:8000 (Docker maps container port 5000 to host port 8000)
-- **Frontend**: Accessible at http://localhost:3002 (auto-selected to avoid conflicts)
+- **Backend**: Accessible at http://localhost:5001 (Docker maps container port 5000 to host port 5001)
+- **Frontend**: Accessible at http://localhost:3000 (standard React development port)
 - **Database**: MySQL on port 3307 (mapped from container port 3306)
 
 ### Environment Variables
