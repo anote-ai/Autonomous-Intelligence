@@ -35,8 +35,30 @@ Based on live data from the API:
 
 ### Prerequisites
 - Docker and Docker Compose
-- Node.js and npm
+- Node.js and npm  
 - Git
+
+### Environment Setup (Optional)
+For full functionality, create a `.env` file in the `backend/` directory:
+
+```bash
+# Copy the example file
+cp docs/leaderboard/env-example.txt backend/.env
+
+# Edit with your API keys
+nano backend/.env  # or use your preferred editor
+```
+
+**Required for leaderboard testing:**
+- No API keys needed! The leaderboard works out of the box.
+
+**Required for other features:**
+- `OPENAI_API_KEY` - For chatbot functionality
+- `ANTHROPIC_API_KEY` - For Claude models  
+- `STRIPE_SECRET_KEY` - For payment processing
+- `HF_TOKEN` - For FLORES+ dataset access (optional)
+
+**Note**: The leaderboard submission and evaluation features work without any API keys.
 
 ### Setup and Run
 
@@ -45,6 +67,7 @@ Based on live data from the API:
    git clone <repository-url>
    cd Autonomous-Intelligence-chatbots-leaderboard-api
    cd backend
+   # Create .env file with API keys (see Environment Setup above)
    docker-compose up --build -d
    ```
 
@@ -59,6 +82,41 @@ Based on live data from the API:
    - **Evaluations**: http://localhost:3000/evaluations
    - **Backend API**: http://localhost:5001
    - **Health Check**: http://localhost:5001/health
+
+### 🔧 **Troubleshooting**
+
+**Database Issues:**
+```bash
+# If you get "Table doesn't exist" errors, recreate database:
+cd backend
+docker-compose down -v  # Remove volumes (deletes old data!)
+docker-compose up -d    # Fresh database with correct schema
+```
+
+**⚠️ Important for New Setups:**
+If you're setting up the project for the first time and get database table errors, you MUST recreate the database volumes:
+```bash
+cd backend
+docker-compose down -v && docker-compose up --build -d
+```
+
+**Port Conflicts:**
+- **Port 5000 conflict (macOS AirPlay)**: Backend uses 5001 instead
+- **Port 3000 in use**: Frontend will auto-select next available port
+
+**Missing Dependencies:**
+```bash
+# Backend: Rebuild with latest requirements
+cd backend && docker-compose up --build -d
+
+# Frontend: Reinstall packages
+cd frontend && rm -rf node_modules package-lock.json && npm install
+```
+
+**API Connection Issues:**
+- Check `.env` file exists in `backend/` directory
+- Verify Docker containers are running: `docker ps`
+- Check backend logs: `docker logs anote-backend`
 
 ## Evaluation Metrics Comparison
 

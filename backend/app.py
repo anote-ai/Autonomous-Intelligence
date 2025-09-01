@@ -83,7 +83,14 @@ app.register_blueprint(arabic_blueprint)
 
 #if ray.is_initialized() == False:
    #ray.init(logging_level="INFO", log_to_driver=True)
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="http://host.docker.internal:11434/v1")
+   
+# Initialize OpenAI client with fallback for missing API key
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if openai_api_key:
+    client = openai.OpenAI(api_key=openai_api_key, base_url="http://host.docker.internal:11434/v1")
+else:
+    print("Warning: OPENAI_API_KEY not set. Some features may not work.")
+    client = None
 def ensure_ray_started():
     if not ray.is_initialized():
         try:
@@ -142,8 +149,12 @@ app.config['MYSQL_DATABASE'] = 'agents'
 
 mysql = MySQL(app)
 
-
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+# Initialize Stripe with fallback for missing API key
+stripe_secret_key = os.getenv("STRIPE_SECRET_KEY")
+if stripe_secret_key:
+    stripe.api_key = stripe_secret_key
+else:
+    print("Warning: STRIPE_SECRET_KEY not set. Payment features will not work.")
 
 ensure_ray_started()
 

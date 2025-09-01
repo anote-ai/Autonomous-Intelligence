@@ -1,0 +1,41 @@
+# Copy this file to backend/.env and fill in your API keys
+
+# API Keys (Required for full functionality)
+OPENAI_API_KEY=your_openai_api_key_here
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+STRIPE_SECRET_KEY=your_stripe_secret_key_here
+SEC_API_KEY=your_sec_api_key_here
+
+# Hugging Face (Optional - for FLORES+ dataset access)
+HF_TOKEN=your_huggingface_token_here
+
+# Database Configuration (Docker defaults - usually don't need to change)
+DB_HOST=db
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=agents
+DB_PORT=3306
+
+# Flask Configuration
+FLASK_ENV=development
+FLASK_DEBUG=1
+
+# Agent Configuration (Optional - defaults work fine)
+ENABLE_AGENTS=true
+AGENT_FALLBACK_ENABLED=true
+ENABLE_GENERAL_KNOWLEDGE=true
+ENABLE_MULTI_AGENT_SYSTEM=true
+DEFAULT_AGENT_MODEL_TYPE=0
+AGENT_TEMPERATURE=0.1
+AGENT_MAX_ITERATIONS=5
+DEFAULT_CHUNK_RETRIEVAL_COUNT=6
+MAX_CHUNK_RETRIEVAL_COUNT=10
+ENABLE_AGENT_VERBOSE=true
+LOG_AGENT_REASONING=false
+
+# MCP Server (Optional)
+MCP_SERVER_URL=http://localhost:8000
+MCP_SERVER_TIMEOUT=30
+
+# Other (Optional)
+DEFAULT_REFERRER=

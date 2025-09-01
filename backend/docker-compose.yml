@@ -15,6 +15,7 @@ services:
       - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
     env_file:
       - .env
+    # Note: .env file is optional - create one with API keys if needed
     environment:
       - FLASK_APP=app.py
       - TIKA_SERVER_ENDPOINT=http://tika:9998
