@@ -529,7 +529,7 @@ def change_chat_mode_db(chat_mode_to_change_to, chat_id, user_email):
 
 
 
-def add_document_to_db(text, document_name, chat_id=None, organization_id=None):
+def add_document_to_db(text, document_name, chat_id=None):
     if chat_id == 0:
         print(f"Guest session: Skipping database storage for document '{document_name}'")
         return None, False
@@ -537,13 +537,13 @@ def add_document_to_db(text, document_name, chat_id=None, organization_id=None):
     conn, cursor = get_db_connection()
 
     try:
-        # Check if the document already exists for the given chat_id or organization_id
+        # Check if the document already exists for the given chat_id
         cursor.execute("""
             SELECT id, document_text
             FROM documents
             WHERE document_name = %s
             AND chat_id = %s
-        """, (document_name, chat_id)) #organization_id #OR organization_id = %s)
+        """, (document_name, chat_id))
         existing_doc = cursor.fetchone()
 
         if existing_doc:
@@ -1452,25 +1452,3 @@ def get_text_from_url(web_url):
     text = text.replace("\n", "").replace("\t", "")
     #text = "".join(text)
     return text
-
-# Add a new organization to the database
-def add_organization_to_db(name, organization_type, website_url=None):
-    conn, cursor = get_db_connection()
-    try:
-        cursor.execute('INSERT INTO organizations (name, organization_type, website_url) VALUES (%s, %s, %s)',
-                       (name, organization_type, website_url))
-        conn.commit()
-        organization_id = cursor.lastrowid
-        return organization_id
-    finally:
-        conn.close()
-
-# Get organization details from the database
-def get_organization_from_db(organization_id):
-    conn, cursor = get_db_connection()
-    try:
-        cursor.execute('SELECT * FROM organizations WHERE id = %s', [organization_id])
-        organization = cursor.fetchone()
-        return organization
-    finally:
-        conn.close()

@@ -70,8 +70,7 @@ from api_endpoints.financeGPT.chatbot_endpoints import \
     add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
     retrieve_chats_from_db, delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, \
     change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, \
-    ensure_SDK_user_exists, get_chat_info, ensure_demo_user_exists, get_message_info, get_text_from_url, \
-    add_organization_to_db, get_organization_from_db, retrieve_messages_from_share_uuid
+    ensure_SDK_user_exists, get_chat_info, get_message_info, get_text_from_url
 
 from agents.reactive_agent import ReactiveDocumentAgent
 from agents.config import AgentConfig
@@ -506,76 +505,6 @@ def get_text_from_url(web_url):
     result = p.from_buffer(response.content)
     text = result.get("content", "").strip()
     return text.replace("\n", "").replace("\t", "")
-
-# Organization routes
-
-@app.route('/create_organization', methods=['POST'])
-@valid_api_key_required
-def create_organization():
-    try:
-        name = request.json.get('name')
-        organization_type = request.json.get('organization_type')  # 'enterprise' or 'individual'
-        website_url = request.json.get('website_url')
-
-        if not name or not organization_type:
-            return jsonify({"error": "Missing required fields"}), 400
-
-        # Add organization to the database
-        organization_id = add_organization_to_db(name, organization_type, website_url)
-
-        # Scrape website if a URL is provided
-        if website_url:
-            print(f"Scraping website {website_url}...")
-            links, links_text = get_links(website_url)
-            for link, link_text in zip(links, links_text):
-                print(f"Processing scraped URL {link}...")
-                # Ingest each sub-URL's text as a document
-                doc_id, doesExist = add_document_to_db(link_text, link, organization_id)
-                if not doesExist:
-                    chunk_document.remote(link_text, 1000, doc_id)
-
-        return jsonify({"organization_id": organization_id}), 201
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/get_organization', methods=['GET'])
-@valid_api_key_required
-def get_organization():
-    try:
-        organization_id = request.args.get('organization_id')
-        if not organization_id:
-            return jsonify({"error": "Missing organization_id"}), 400
-
-        # Get organization info from the database
-        organization = get_organization_from_db(organization_id)
-        if not organization:
-            return jsonify({"error": "Organization not found"}), 404
-
-        return jsonify(organization), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/<organization_name>')
-def chat_with_organization(organization_name):
-    organization = get_organization_from_db_by_name(organization_name)
-    if organization:
-        return jsonify({
-            'name': organization['name'],
-            'website_url': organization['website_url'],
-            'organization_type': organization['organization_type']
-        })
-    else:
-        return jsonify({'error': 'Organization not found'}), 404
-
-def get_organization_from_db_by_name(organization_name):
-    conn, cursor = get_db_connection()
-    cursor.execute('SELECT * FROM organizations WHERE name = %s', [organization_name])
-    organization = cursor.fetchone()
-    conn.close()
-    return organization
 
 ## CHATBOT SECTION
 output_document_path = 'output_document'
