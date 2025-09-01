@@ -24,6 +24,9 @@ services:
       - REDIS_PORT=6379
       - DD_AGENT_HOST=datadog
       - GIT_PYTHON_REFRESH=quiet
+      - DD_LLMOBS_ENABLED=1
+      - DD_LLMOBS_ML_APP=quickstart-app
+      - DD_API_KEY=${DD_API_KEY}  # ensure this is in your .env
     depends_on:
       db:
         condition: service_healthy
@@ -43,6 +46,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    command: ["ddtrace-run", "python", "app.py"]
+
+
 
   db:
     image: mysql:8.0
@@ -110,9 +116,11 @@ services:
     environment:
       - DD_API_KEY=${DD_API_KEY}   # make sure .env has this
       - DD_SITE=us5.datadoghq.com
+      - DD_TAGS="env:${DD_ENV}"
       - DD_LOGS_ENABLED=true
       - DD_APM_ENABLED=true
       - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+      - DD_CONTAINER_LABELS_AS_TAGS={"my.custom.label.color":"color"}
     ports:
       - "8125:8125/udp"   # DogStatsD
       - "8126:8126"       # APM traces
