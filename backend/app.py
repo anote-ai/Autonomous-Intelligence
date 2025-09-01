@@ -1,11 +1,5 @@
-from flask import Flask, request, jsonify, Response, abort, redirect, stream_with_context, Blueprint
+from flask import Flask, request, jsonify, Response, abort, redirect, Blueprint
 from flask_cors import CORS, cross_origin
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-import pandas as pd
-#from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
-import boto3
 from api_endpoints.login.handler import LoginHandler, SignUpHandler, ForgotPasswordHandler, ResetPasswordHandler
 import os
 import pathlib
@@ -23,7 +17,7 @@ from jwt import InvalidTokenError
 from urllib.parse import urlparse
 from database.db import create_user_if_does_not_exist
 from constants.global_constants import kSessionTokenExpirationTime
-from database.db_auth import extractUserEmailFromRequest, is_session_token_valid, is_api_key_valid, user_id_for_email, verifyAuthForPaymentsTrustedTesters, verifyAuthForCheckoutSession, verifyAuthForPortalSession
+from database.db_auth import extractUserEmailFromRequest, is_api_key_valid, user_id_for_email, verifyAuthForPaymentsTrustedTesters, verifyAuthForCheckoutSession, verifyAuthForPortalSession
 from functools import wraps
 from flask_jwt_extended import verify_jwt_in_request
 from api_endpoints.payments.handler import CreateCheckoutSessionHandler, CreatePortalSessionHandler, StripeWebhookHandler
@@ -36,35 +30,18 @@ from enum import Enum
 import stripe
 from dotenv import load_dotenv
 import ray
-from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
-from flask_socketio import SocketIO, emit, disconnect
-from database.db_auth import user_email_for_session_token
-from flask.cli import with_appcontext
-import click
-import threading
-import time
 import csv
-from fpdf import FPDF
 import openai
 import shutil
-from io import BytesIO
 import io
 from tika import parser as p
-import anthropic
 from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
 import re
 from bs4 import BeautifulSoup
 from flask_mysql_connector import MySQL
-
-#WESLEY
-from api_endpoints.financeGPT.chatbot_endpoints import create_chat_shareable_url, access_sharable_chat, _get_model
-_get_model()
-from database.db import get_db_connection
-
 from api_endpoints.financeGPT.chatbot_endpoints import \
     add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
-    retrieve_chats_from_db, \
+    retrieve_chats_from_db, create_chat_shareable_url, access_sharable_chat, _get_model, \
     delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, change_chat_mode_db, update_chat_name_db, \
     reset_uploaded_docs, add_model_key_to_db, \
     add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
@@ -72,12 +49,11 @@ from api_endpoints.financeGPT.chatbot_endpoints import \
     change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, \
     ensure_SDK_user_exists, get_chat_info, get_message_info, get_text_from_url
 
+_get_model()
 from agents.reactive_agent import ReactiveDocumentAgent
 from agents.config import AgentConfig
 
 from datetime import datetime
-
-from database.db_auth import get_db_connection
 
 from api_endpoints.gpt4_gtm.handler import gpt4_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
@@ -86,10 +62,6 @@ from api_endpoints.languages.korean import korean_blueprint
 from api_endpoints.languages.spanish import spanish_blueprint
 from api_endpoints.languages.arabic import arabic_blueprint
 from datetime import datetime
-from flask import current_app
-
-
-
 
 load_dotenv(override=True)
 
@@ -158,15 +130,6 @@ app.config['MYSQL_HOST'] = 'db'
 app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = ''
 app.config['MYSQL_DATABASE'] = 'agents'
-
-
-#debug
-#print("MySQL config:", {
-#    "host": app.config['MYSQL_HOST'],
-#    "user": app.config['MYSQL_USER'],
-#    "password": "***REDACTED***",
-#    "database": app.config['MYSQL_DATABASE']
-#})
 
 mysql = MySQL(app)
 
