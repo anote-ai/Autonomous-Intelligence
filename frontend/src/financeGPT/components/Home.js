@@ -7,7 +7,6 @@ import fetcher from "../../http/RequestConfig";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Popout from "./Popout";
 import ChatHistory from "./ChatHistory";
-import BackendStatusIndicator from "../../components/BackendStatusIndicator";
 
 function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent }) {
   const [selectedChatId, setSelectedChatId] = useState(isGuestMode ? 0 : null);
@@ -204,8 +203,7 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
 
   return (
     <div className="h-screen flex flex-col bg-gray-900">
-      {/* Backend Status Indicator */}
-      <BackendStatusIndicator />
+
 
       {/* ChatGPT-style top navigation */}
       <Navbarchatbot
