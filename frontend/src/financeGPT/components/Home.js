@@ -7,9 +7,11 @@ import fetcher from "../../http/RequestConfig";
 import ChatbotEdgar from "./chatbot_subcomponents/ChatbotEdgar";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Popout from "./Popout";
+import ChatHistory from "./ChatHistory";
+import BackendStatusIndicator from "../../components/BackendStatusIndicator";
 
-function HomeChatbot() {
-  const [selectedChatId, setSelectedChatId] = useState(null);
+function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent }) {
+  const [selectedChatId, setSelectedChatId] = useState(isGuestMode ? 0 : null);
   const [forceUpdate, setForceUpdate] = useState(0);
   const [isPrivate, setIsPrivate] = useState(0);
   const [currChatName, setCurrChatName] = useState("");
@@ -22,7 +24,7 @@ function HomeChatbot() {
   const [menu, setMenu] = useState(false);
   const [chats, setChats] = useState([]);
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isGuestMode);
   const { id } = useParams();
   const location = useLocation();
 
@@ -39,6 +41,7 @@ function HomeChatbot() {
   const [confirmedModelKey, setConfirmedModelKey] = useState("");
 
   const handleChatSelect = (chatId) => {
+    console.log("select")
     setSelectedChatId(chatId);
   };
 
@@ -47,20 +50,39 @@ function HomeChatbot() {
   };
 
   const createNewChat = async () => {
-    const response = await fetcher("create-new-chat", {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ chat_type: currTask, model_type: isPrivate }),
-    }).catch((e) => {
-      console.error(e.error);
-    });
+    if (isGuestMode) {
+      // For guest mode, just set a default chat ID
+      const guestChatId = 0;
+      handleChatSelect(guestChatId);
+      return guestChatId;
+    }
 
-    const response_data = await response.json();
-    handleChatSelect(response_data.chat_id);
-    return response_data.chat_id;
+    try {
+      const response = await fetcher("create-new-chat", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ chat_type: currTask, model_type: isPrivate }),
+      });
+
+      const response_data = await response.json();
+      handleChatSelect(response_data.chat_id);
+      return response_data.chat_id;
+    } catch (error) {
+      // Only log errors that aren't silent network errors
+      if (!error.silent) {
+        console.error("Error creating new chat:", error);
+      }
+      if (error.type === 'NETWORK_ERROR') {
+        // Backend is offline, create a temporary local chat ID
+        const tempChatId = Date.now(); // Use timestamp as temp ID
+        handleChatSelect(tempChatId);
+        return tempChatId;
+      }
+      throw error; // Re-throw non-network errors
+    }
   };
 
   // Handle upload trigger from chatbot - direct approach
@@ -140,6 +162,12 @@ function HomeChatbot() {
   };
 
   useEffect(() => {
+    if (isGuestMode) {
+      // For guest mode, don't retrieve chats from server
+      setLoading(false);
+      return;
+    }
+
     const retrieveAllChats = async () => {
       console.log("i am in retrieve chats");
       setLoading(true);
@@ -157,16 +185,31 @@ function HomeChatbot() {
         setChats(response_data.chat_info);
         console.log("retriving data", response_data);
       } catch (error) {
-        console.error("Error fetching chats:", error);
+        // Only log errors that aren't silent network errors
+        if (!error.silent) {
+          console.error("Error fetching chats:", error);
+        }
+        // If it's a network error (backend down), don't show error UI
+        // Just keep the existing state and let the user know backend is offline
+        if (error.type !== 'NETWORK_ERROR') {
+          // Handle other types of errors if needed
+          if (!error.silent) {
+            console.error("Non-network error:", error);
+          }
+        }
       } finally {
         setLoading(false);
       }
     };
     retrieveAllChats();
-  }, [forceUpdate]);
+  }, [forceUpdate, isGuestMode]);
 
   return (
-    <div className="flex flex-row h-screen">
+    <div className="h-screen flex flex-col bg-gray-900">
+      {/* Backend Status Indicator */}
+      <BackendStatusIndicator />
+      
+      {/* ChatGPT-style top navigation */}
       <Navbarchatbot
         selectedChatId={selectedChatId}
         onChatSelect={handleChatSelect}
@@ -188,82 +231,58 @@ function HomeChatbot() {
         createNewChat={createNewChat}
         handleChatSelect={handleChatSelect}
         forceUpdate={forceUpdate}
+        isGuestMode={isGuestMode}
+        onRequestLogin={onRequestLogin}
+        setIsLoggedInParent={setIsLoggedInParent}
       />
 
-      <div className="w-full lg:flex  h-full">
-        {currTask === 0 && (
-          <Chatbot
-            chat_type={currTask}
-            selectedChatId={selectedChatId}
-            handleChatSelect={handleChatSelect}
-            handleMenu={handleMenu}
-            chats={chats}
-            createNewChat={createNewChat}
-            menu={menu}
-            handleForceUpdate={handleForceUpdate}
-            forceUpdate={forceUpdate}
-            isPrivate={isPrivate}
-            currChatName={currChatName}
-            confirmedModelKey={confirmedModelKey}
-            setCurrChatName={setCurrChatName}
-            activeMessageIndex={activeMessageIndex}
-            setActiveMessageIndex={setActiveMessageIndex}
-            setRelevantChunk={setRelevantChunk}
-            isUploading={isUploading}
-            uploadProgress={uploadProgress}
-            onUploadClick={handleUploadClick}
-          />
+      {/* Main content area with proper top spacing */}
+      <div className="flex-1 w-full pt-16 h-full overflow-hidden flex">
+        {/* Sidebar for chat history - show when menu is true and not in guest mode */}
+        {menu && !isGuestMode && (
+          <div className="w-80 border-r border-gray-700 bg-gray-800 flex-shrink-0">
+            <div className="border-t border-gray-700 pt-4">
+              <div className="px-2">
+                <ChatHistory
+                  chats={chats}
+                  selectedChatId={selectedChatId}
+                  handleChatSelect={handleChatSelect}
+                  handleForceUpdate={handleForceUpdate}
+                />
+              </div>
+            </div>
+          </div>
         )}
-        <div className="hidden">
-          {/* <SidebarChatbot
-            ref={sidebarRef}
-            selectedChatId={selectedChatId}
-            chat_type={currTask}
-            createNewChat={createNewChat}
-            onChatSelect={handleChatSelect}
-            handleForceUpdate={handleForceUpdate}
-            forceUpdate={forceUpdate}
-            setIsPrivate={setIsPrivate}
-            setCurrChatName={setCurrChatName}
-            setcurrTask={setcurrTask}
-            setTicker={setTicker}
-            setShowChatbot={setShowChatbot}
-            setIsEdit={setIsEdit}
-            setConfirmedModelKey={setConfirmedModelKey}
-            relevantChunk={relevantChunk}
-            activeMessageIndex={activeMessageIndex}
-            triggerUpload={triggerUpload}
-            resetUploadTrigger={resetUploadTrigger}
-            setIsUploading={setIsUploading}
-            setUploadProgress={setUploadProgress}
-            onChatReady={(chatId) => navigate(`/chat/${chatId}`)}
-          /> */}
+
+        {/* Chat area */}
+        <div className="flex-1 h-full">
+          {currTask === 0 && (
+            <Chatbot
+              chat_type={currTask}
+              selectedChatId={selectedChatId}
+              handleChatSelect={handleChatSelect}
+              handleMenu={handleMenu}
+              chats={chats}
+              createNewChat={createNewChat}
+              menu={menu}
+              handleForceUpdate={handleForceUpdate}
+              forceUpdate={forceUpdate}
+              isPrivate={isPrivate}
+              currChatName={currChatName}
+              confirmedModelKey={confirmedModelKey}
+              setCurrChatName={setCurrChatName}
+              activeMessageIndex={activeMessageIndex}
+              setActiveMessageIndex={setActiveMessageIndex}
+              setRelevantChunk={setRelevantChunk}
+              isUploading={isUploading}
+              uploadProgress={uploadProgress}
+              onUploadClick={handleUploadClick}
+              isGuestMode={isGuestMode}
+            />
+          )}
         </div>
-        {/* {currTask === 1 && (
-          <ChatbotEdgar
-            chat_type={currTask}
-            selectedChatId={selectedChatId}
-            createNewChat={createNewChat}
-            handleChatSelect={handleChatSelect}
-            handleForceUpdate={handleForceUpdate}
-            forceUpdate={forceUpdate}
-            isPrivate={isPrivate}
-            currChatName={currChatName}
-            ticker={ticker}
-            setTicker={setTicker}
-            showChatbot={showChatbot}
-            setShowChatbot={setShowChatbot}
-            isEdit={isEdit}
-            setIsEdit={setIsEdit}
-            confirmedModelKey={confirmedModelKey}
-            setCurrChatName={setCurrChatName}
-            activeMessageIndex={activeMessageIndex}
-            setActiveMessageIndex={setActiveMessageIndex}
-            setRelevantChunk={setRelevantChunk}
-          />
-        )} */}
       </div>
-      
+
       {/* Hidden file input for direct upload */}
       <input
         type="file"
@@ -271,7 +290,7 @@ function HomeChatbot() {
         onChange={handleFileUpload}
         accept=".pdf,.doc,.docx,.txt,.csv"
         multiple
-        style={{ display: 'none' }}
+        style={{ display: "none" }}
       />
     </div>
   );

@@ -15,11 +15,12 @@ from api_endpoints.financeGPT.chatbot_endpoints import (
     retrieve_message_from_db, retrieve_docs_from_db
 )
 from .config import AgentConfig
+from .multi_agent_system import MultiAgentDocumentSystem
 
 
 class DocumentRetrievalTool(BaseTool):
-    name = "document_retrieval"
-    description = "Retrieve relevant document chunks based on a query for a specific chat"
+    name: str = "document_retrieval"
+    description: str = "Retrieve relevant document chunks based on a query for a specific chat"
     chat_id: int = Field(...)
     user_email: str = Field(...)
 
@@ -44,8 +45,8 @@ class DocumentRetrievalTool(BaseTool):
             return f"Error retrieving documents: {str(e)}"
 
 class ChatHistoryTool(BaseTool):
-    name = "chat_history"
-    description = "Retrieve chat history for context understanding"
+    name: str = "chat_history"
+    description: str = "Retrieve chat history for context understanding"
     chat_id: int = Field(...)
     user_email: str = Field(...)
     
@@ -75,8 +76,8 @@ class ChatHistoryTool(BaseTool):
 
 
 class DocumentListTool(BaseTool):
-    name = "document_list"
-    description = "List all documents available in the current chat"
+    name: str = "document_list"
+    description: str = "List all documents available in the current chat"
     chat_id: int = Field(...)
     user_email: str = Field(...)
     
@@ -99,8 +100,8 @@ class DocumentListTool(BaseTool):
 
 
 class GeneralKnowledgeTool(BaseTool):
-    name = "general_knowledge"
-    description = "Use general LLM knowledge to answer questions when documents don't contain relevant information"
+    name: str = "general_knowledge"
+    description: str = "Use general LLM knowledge to answer questions when documents don't contain relevant information"
     llm: Any = Field(..., exclude=True)
     
     def __init__(self, llm, **kwargs):
@@ -128,6 +129,7 @@ class StreamingAgentCallbackHandler(BaseCallbackHandler):
         super().__init__()
         self.stream_callback = stream_callback
         self.intermediate_steps = []
+        self.event_queue = []
     
     def on_llm_start(
         self, 
@@ -162,10 +164,33 @@ class StreamingAgentCallbackHandler(BaseCallbackHandler):
                 thought_match = re.search(r'Thought:\s*(.*?)(?=\nAction:|$)', llm_output, re.DOTALL)
                 action_match = re.search(r'Action:\s*(.*?)(?=\nAction Input:|$)', llm_output, re.DOTALL)
                 
+                # Extract meaningful thought
+                extracted_thought = None
+                if thought_match:
+                    extracted_thought = thought_match.group(1).strip()
+                
+                # If no good thought found, extract from the broader content
+                if not extracted_thought or extracted_thought.lower() in ['thinking...', 'thinking', '']:
+                    # Look for any substantial reasoning in the output
+                    lines = llm_output.strip().split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if line and len(line) > 20 and not any(line.startswith(prefix) for prefix in 
+                                                             ['Thought:', 'Action:', 'Action Input:', 'Observation:', 'Final Answer:']):
+                            extracted_thought = line[:200]
+                            break
+                    
+                    # Fallback to analysis description
+                    if not extracted_thought:
+                        if action_match:
+                            extracted_thought = f"Determining how to use {action_match.group(1).strip()} to help answer the query"
+                        else:
+                            extracted_thought = "Analyzing the query and planning the next steps"
+                
                 self.stream_callback({
                     "type": "llm_reasoning",
                     "raw_output": llm_output[:500] + "..." if len(llm_output) > 500 else llm_output,
-                    "thought": thought_match.group(1).strip() if thought_match else None,
+                    "thought": extracted_thought,
                     "planned_action": action_match.group(1).strip() if action_match else None,
                     "timestamp": self._get_timestamp()
                 })
@@ -200,13 +225,25 @@ class StreamingAgentCallbackHandler(BaseCallbackHandler):
         """Called when a tool starts running"""
         tool_name = serialized.get("name", "unknown_tool")
         try:
-            self.stream_callback({
+            # Emit both tool_start and tools_start for compatibility
+            event = {
                 "type": "tool_start",
                 "tool_name": tool_name,
                 "input": input_str,
                 "message": f"Using tool: {tool_name}",
                 "timestamp": self._get_timestamp()
-            })
+            }
+            self.stream_callback(event)
+            
+            # Also emit tools_start for frontend compatibility
+            tools_start_event = {
+                "type": "tools_start", 
+                "tool_name": tool_name,
+                "input": input_str,
+                "message": f"Using {tool_name}...",
+                "timestamp": self._get_timestamp()
+            }
+            self.stream_callback(tools_start_event)
         except Exception as e:
             print(f"Error in tool_start callback: {e}")
     
@@ -241,9 +278,26 @@ class StreamingAgentCallbackHandler(BaseCallbackHandler):
             action_match = re.search(r'Action:\s*(.*?)(?=\nAction Input:|$)', action_log, re.DOTALL)
             action_input_match = re.search(r'Action Input:\s*(.*?)(?=\nObservation:|$)', action_log, re.DOTALL)
             
+            # Extract more detailed reasoning
+            full_thought = thought_match.group(1).strip() if thought_match else None
+            if not full_thought or full_thought.lower() in ['thinking...', 'thinking', '']:
+                # Fallback: try to extract reasoning from the full log
+                if action_log and len(action_log.strip()) > 10:
+                    # Extract the most meaningful part of the log
+                    lines = action_log.strip().split('\n')
+                    meaningful_lines = [line.strip() for line in lines if line.strip() and 
+                                     not line.strip().startswith('Action:') and 
+                                     not line.strip().startswith('Action Input:')]
+                    if meaningful_lines:
+                        full_thought = meaningful_lines[0][:200]  # Take first meaningful line
+                
+                # If still no good thought, use action context
+                if not full_thought:
+                    full_thought = f"Analyzing query to determine best approach using {action.tool}"
+            
             self.stream_callback({
                 "type": "agent_thinking",
-                "thought": thought_match.group(1).strip() if thought_match else "Thinking...",
+                "thought": full_thought,
                 "action": action.tool,
                 "action_input": str(action.tool_input),
                 "reasoning": action_log[:400] + "..." if len(action_log) > 400 else action_log,
@@ -264,12 +318,37 @@ class StreamingAgentCallbackHandler(BaseCallbackHandler):
             finish_log = getattr(finish, 'log', '')
             final_thought_match = re.search(r'Thought:\s*(.*?)(?=\nFinal Answer:|$)', finish_log, re.DOTALL)
             
+            # Extract meaningful final thought
+            extracted_final_thought = None
+            if final_thought_match:
+                extracted_final_thought = final_thought_match.group(1).strip()
+            
+            # If no good final thought, try to extract from finish log
+            if not extracted_final_thought or extracted_final_thought.lower() in ['thinking...', 'thinking', '']:
+                # Look for meaningful content in the log
+                lines = finish_log.strip().split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if (line and len(line) > 30 and 
+                        not any(line.startswith(prefix) for prefix in 
+                               ['Thought:', 'Action:', 'Action Input:', 'Observation:', 'Final Answer:', 'Question:'])):
+                        extracted_final_thought = line[:250]
+                        break
+                
+                # Final fallback with context from the output
+                if not extracted_final_thought:
+                    output = finish.return_values.get("output", "")
+                    if output:
+                        extracted_final_thought = f"Based on the document analysis, I found the information needed to answer your question"
+                    else:
+                        extracted_final_thought = "Completed analysis and prepared response based on available information"
+            
             self.stream_callback({
                 "type": "agent_finish",
                 "output": finish.return_values.get("output", ""),
-                "final_thought": final_thought_match.group(1).strip() if final_thought_match else None,
+                "final_thought": extracted_final_thought,
                 "reasoning": finish_log[:400] + "..." if len(finish_log) > 400 else finish_log,
-                "message": "Agent reached final conclusion",
+                "message": "Agent formulated final answer based on analysis",
                 "timestamp": self._get_timestamp()
             })
         except Exception as e:
@@ -299,11 +378,25 @@ class StreamingAgentCallbackHandler(BaseCallbackHandler):
 
 
 class ReactiveDocumentAgent:
-    def __init__(self, model_type: int = 0, model_key: Optional[str] = None):
+    def __init__(self, model_type: int = 0, model_key: Optional[str] = None, use_multi_agent: Optional[bool] = None):
         self.model_type = model_type
         self.model_key = model_key
+        # Use config default if not explicitly specified
+        self.use_multi_agent = use_multi_agent if use_multi_agent is not None else AgentConfig.is_multi_agent_enabled()
         self.llm = self._initialize_llm()
         self.agent_executor = None
+        
+        # Initialize multi-agent system if enabled
+        if self.use_multi_agent:
+            try:
+                self.multi_agent_system = MultiAgentDocumentSystem(model_type, model_key)
+                print("Multi-agent system initialized successfully")
+            except Exception as e:
+                print(f"Failed to initialize multi-agent system: {e}")
+                self.multi_agent_system = None
+                self.use_multi_agent = False
+        else:
+            self.multi_agent_system = None
         
     def _initialize_llm(self):
         if self.model_type == 0:  # OpenAI/GPT
@@ -413,6 +506,12 @@ class ReactiveDocumentAgent:
         """
         Streamable version of process_query that yields intermediate results and final response
         """
+        # Use multi-agent system if enabled
+        if self.use_multi_agent and self.multi_agent_system:
+            yield from self.multi_agent_system.process_query_stream(query, chat_id, user_email)
+            return
+            
+        # Fallback to original single-agent system
         try:
             # Create agent for this specific chat context
             agent_executor = self._create_agent(chat_id, user_email)
@@ -437,9 +536,11 @@ class ReactiveDocumentAgent:
             # Track the final reasoning steps as built by frontend logic
             final_reasoning_steps = []
             
-            # Create a callback to capture streaming events
+            # Create a callback to capture and immediately yield streaming events
             def stream_callback(event):
                 streaming_events.append(event)
+                # Yield the event immediately for real-time streaming
+                return event
             
             try:
                 # Process the query with callbacks
@@ -450,12 +551,68 @@ class ReactiveDocumentAgent:
                     config={"callbacks": [callback_handler]}
                 )
                 
-                # Yield any streaming events that were captured
+                # Yield any streaming events that were captured during processing
                 for event in streaming_events:
                     yield event
                 
                 # Extract the final answer
                 answer = response.get("output", "I couldn't process your query.")
+                
+                # Extract final thought from multiple sources
+                final_thought = None
+                
+                # First, try to get from agent_finish events
+                for event in reversed(streaming_events):
+                    if event.get('type') == 'agent_finish' and event.get('final_thought'):
+                        final_thought = event.get('final_thought')
+                        break
+                
+                # If no agent_finish thought, try agent_thinking events
+                if not final_thought:
+                    for event in reversed(streaming_events):
+                        if event.get('type') == 'agent_thinking' and event.get('thought'):
+                            thought = event.get('thought')
+                            if thought and thought.lower() not in ['thinking...', 'thinking', '']:
+                                final_thought = thought
+                                break
+                
+                # If still no good thought, try llm_reasoning events
+                if not final_thought:
+                    for event in reversed(streaming_events):
+                        if event.get('type') == 'llm_reasoning' and event.get('thought'):
+                            thought = event.get('thought')
+                            if thought and thought.lower() not in ['thinking...', 'thinking', '']:
+                                final_thought = thought
+                                break
+                
+                # If still no thought, try to extract from the agent's intermediate steps
+                if not final_thought:
+                    intermediate_steps = response.get("intermediate_steps", [])
+                    if intermediate_steps:
+                        # Get the last action and try to extract reasoning
+                        last_action, last_observation = intermediate_steps[-1]
+                        if hasattr(last_action, 'log') and last_action.log:
+                            thought_match = re.search(r'Thought:\s*(.*?)(?=\nAction:|$)', last_action.log, re.DOTALL)
+                            if thought_match:
+                                potential_thought = thought_match.group(1).strip()
+                                if potential_thought and potential_thought.lower() not in ['thinking...', 'thinking', '']:
+                                    final_thought = potential_thought
+                
+                # Final fallback
+                if not final_thought:
+                    final_thought = f"Successfully processed your query and retrieved relevant information from the documents"
+                
+                # Try to extract sources from the agent's reasoning early
+                sources = self._extract_sources_from_response(response, chat_id, user_email, query)
+                
+                # Yield the completion event that frontend expects
+                yield {
+                    "type": "complete", 
+                    "answer": answer,
+                    "sources": sources if sources else [],
+                    "thought": final_thought,
+                    "timestamp": self._get_timestamp()
+                }
                 
                 # Yield thinking/processing updates from intermediate steps
                 intermediate_steps = response.get("intermediate_steps", [])
@@ -470,17 +627,7 @@ class ReactiveDocumentAgent:
                             "timestamp": self._get_timestamp()
                         }
                 
-                # Yield final answer
-                yield {
-                    "type": "final_answer",
-                    "answer": answer,
-                    "timestamp": self._get_timestamp()
-                }
-                
-                # Add bot message to database
-                print("*"*50)
-                
-                # Build reasoning steps using same logic as frontend
+                # Build reasoning steps using same logic as frontend for database storage
                 for event_data in streaming_events:
                     if event_data.get('type') == 'tool_start' or event_data.get('type') == 'tools_start':
                         # Add reasoning step for tool start
@@ -518,29 +665,39 @@ class ReactiveDocumentAgent:
                             'timestamp': int(time.time() * 1000)
                         }
                         final_reasoning_steps.append(thinking_step)
+                    
+                    elif event_data.get('type') == 'agent_finish':
+                        # Add agent finish step with unique reasoning
+                        finish_step = {
+                            'id': f'step-{int(time.time() * 1000)}',
+                            'type': event_data['type'],
+                            'final_thought': event_data.get('final_thought', ''),
+                            'final_answer': event_data.get('output', ''),
+                            'message': event_data.get('message', 'Agent formulated final answer'),
+                            'timestamp': int(time.time() * 1000)
+                        }
+                        final_reasoning_steps.append(finish_step)
                 
-                # Try to extract sources from the agent's reasoning
-                sources = self._extract_sources_from_response(response, chat_id, user_email, query)
                 
-                # Extract final thought from streaming events if available
-                final_thought = None
-                for event in reversed(streaming_events):
-                    if event.get('type') == 'llm_reasoning' and event.get('thought'):
-                        final_thought = event['thought']
-                        break
+                # Yield step-complete event that frontend expects
+                yield {
+                    "type": "step-complete",
+                    "answer": answer,
+                    "sources": sources if sources else [],
+                    "thought": "Processing complete - response ready for user",
+                    "timestamp": self._get_timestamp()
+                }
                 
-                # Create the complete step for database storage
-                complete_step = {
+                # Create the processing complete step for database storage - this step should be distinct
+                processing_complete_step = {
                     'id': f'step-{int(time.time() * 1000)}',
                     'type': 'step-complete',
-                    'answer': answer,
-                    'sources': sources if sources else [],
-                    'thought': final_thought,
-                    'message': 'Query processing completed',
+                    'thought': 'Processing complete - response ready for user',
+                    'message': 'Query processing completed successfully',
+                    'completion_summary': f'Generated response with {len(sources) if sources else 0} sources',
                     'timestamp': int(time.time() * 1000)
                 }
-                yield complete_step
-                final_reasoning_steps.append(complete_step)
+                final_reasoning_steps.append(processing_complete_step)
                 
                 # Convert reasoning steps to JSON string for database storage
                 reasoning_json = json.dumps(final_reasoning_steps) if final_reasoning_steps else None
@@ -555,13 +712,14 @@ class ReactiveDocumentAgent:
                     except Exception as e:
                         print(f"Error adding sources to db: {e}")
                 
-                # Yield final result with metadata (reuse the complete_step data)
+                # Yield final result with unique response completion metadata
                 yield {
-                    "type": "complete",
+                    "type": "response-complete",
                     "answer": answer,
                     "message_id": message_id,
                     "sources": sources if sources else [],
-                    "thought": final_thought,
+                    "message": "Response generated and saved successfully",
+                    "total_steps": len(final_reasoning_steps),
                     "agent_reasoning": response.get("intermediate_steps", []),
                     "timestamp": self._get_timestamp()
                 }
@@ -590,6 +748,35 @@ class ReactiveDocumentAgent:
         """
         Non-streaming version (original method) - kept for backward compatibility
         """
+        # If multi-agent is enabled, collect streaming results and return final result
+        if self.use_multi_agent and self.multi_agent_system:
+            final_result = {}
+            for event in self.multi_agent_system.process_query_stream(query, chat_id, user_email):
+                if event.get("type") == "response-complete":
+                    final_result = {
+                        "answer": event.get("answer", "I couldn't process your query."),
+                        "message_id": event.get("message_id"),
+                        "sources": event.get("sources", []),
+                        "confidence_score": event.get("confidence_score", 0.5),
+                        "total_agents": event.get("total_agents", 0)
+                    }
+                    break
+            
+            # Return final result or fallback if no response-complete event
+            if final_result:
+                return final_result
+            else:
+                # Fallback if multi-agent failed
+                error_msg = "Multi-agent system failed to provide response"
+                message_id = add_message_to_db(error_msg, chat_id, 0)
+                return {
+                    "answer": error_msg,
+                    "message_id": message_id,
+                    "sources": [],
+                    "agent_reasoning": []
+                }
+        
+        # Fallback to original single-agent system
         try:
             # Create agent for this specific chat context
             agent_executor = self._create_agent(chat_id, user_email)

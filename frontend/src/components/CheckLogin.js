@@ -1,17 +1,18 @@
 import React from "react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import NoUserSession from "../subcomponents/login/NoUserSession";
 import PaymentsComponent from "../subcomponents/payments/PaymentsComponent";
 import { useLocation } from "react-router-dom";
 import "../styles/Login.css";
 import { pricingRedirectPath } from "../constants/RouteConstants";
 import HomeChatbot from "../financeGPT/components/Home";
+import LoginModal from "./LoginModal";
 
 function CheckLogin(props) {
   const navigate = useNavigate();
   const location = useLocation();
   const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [showLogin, setShowLogin] = useState(false);
   const [productHash, setProductHash] = useState("");
   const [freeTrialCode, setFreeTrialCode] = useState("");
 
@@ -19,19 +20,24 @@ function CheckLogin(props) {
   const sessionToken = localStorage.getItem("sessionToken");
   console.log("get access token");
   console.log(accessToken);
-  if (accessToken || sessionToken) {
-    if (!isLoggedIn) {
-      setIsLoggedIn(true);
+  
+  // Update login state based on tokens
+  useEffect(() => {
+    if (accessToken || sessionToken) {
+      if (!isLoggedIn) {
+        setIsLoggedIn(true);
+      }
+    } else {
+      if (isLoggedIn) {
+        setIsLoggedIn(false);
+      }
     }
-  } else {
-    if (isLoggedIn) {
-      setIsLoggedIn(false);
-    }
-  }
-  if (isLoggedIn && productHash != null && productHash != "") {
+  }, [accessToken, sessionToken, isLoggedIn]);
+
+  if (isLoggedIn && productHash !== null && productHash !== "") {
     setProductHash("");
     var fullPath = pricingRedirectPath + "?product_hash=" + productHash;
-    if (freeTrialCode != null && freeTrialCode != "") {
+    if (freeTrialCode !== null && freeTrialCode !== "") {
       setFreeTrialCode("");
       fullPath += "&free_trial_code=";
       fullPath += freeTrialCode;
@@ -39,17 +45,28 @@ function CheckLogin(props) {
     navigate(fullPath);
   }
 
+  // Listen for the custom event to show login
+  useEffect(() => {
+    const handleShowLogin = () => {
+      setShowLogin(true);
+    };
+
+    window.addEventListener('showLogin', handleShowLogin);
+    return () => {
+      window.removeEventListener('showLogin', handleShowLogin);
+    };
+  }, []);
+
   var mainView = [];
   if (!isLoggedIn) {
-    mainView = (
-      <NoUserSession productHash={productHash} freeTrialCode={freeTrialCode} />
-    );
+    // Always show guest mode for non-logged-in users, with modal for login
+    mainView = <HomeChatbot isGuestMode={true} onRequestLogin={() => setShowLogin(true)} setIsLoggedInParent={props.setIsLoggedInParent} />;
   } else if (!props.showRestrictedRouteRequiringPayments) {
     //mainView = <PaymentsComponent />;
-    mainView = <HomeChatbot />;
+    mainView = <HomeChatbot isGuestMode={false} setIsLoggedInParent={props.setIsLoggedInParent} />;
   } else {
     // TODO: Replace this with your home page component.
-    mainView = <HomeChatbot />;
+    mainView = <HomeChatbot isGuestMode={false} setIsLoggedInParent={props.setIsLoggedInParent} />;
   }
 
   useEffect(() => {
@@ -85,7 +102,17 @@ function CheckLogin(props) {
     }
   }, [location]);
 
-  return <div className="App">{mainView}</div>;
+  return (
+    <div className="App">
+      {mainView}
+      <LoginModal 
+        isOpen={showLogin}
+        onClose={() => setShowLogin(false)}
+        productHash={productHash}
+        freeTrialCode={freeTrialCode}
+      />
+    </div>
+  );
 }
 
 export default CheckLogin;

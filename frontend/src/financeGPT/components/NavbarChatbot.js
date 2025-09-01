@@ -2,105 +2,136 @@ import React, { useState, useEffect } from "react";
 //import NavLinks from "./NavLinksChatbot"; Changed from using nav to showing all on same page
 import Switch from "react-switch";
 import fetcher from "../../http/RequestConfig";
-import ChatHistory from "./ChatHistory";
+import { useDispatch } from "react-redux";
+import { logout } from "../../redux/UserSlice";
 import { useNavigate } from "react-router-dom";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-  faBars,
-  faHome,
-  faUser,
-  faCog,
-  faTimes,
-} from "@fortawesome/free-solid-svg-icons";
 
 function NavbarChatbot(props) {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+
+  const handleLogout = () => {
+    dispatch(logout()).then((resp) => {
+      navigate("/");
+      if (props.setIsLoggedInParent) {
+        props.setIsLoggedInParent(false);
+      }
+      // Reload the page to reset state
+      window.location.reload();
+    });
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showUserDropdown && !event.target.closest('.user-dropdown')) {
+        setShowUserDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserDropdown]);
+
   const urlObject = new URL(window.location.origin);
   var hostname = urlObject.hostname;
   if (hostname.startsWith("www.")) {
     hostname = hostname.substring(4);
   }
   urlObject.hostname = `dashboard.${hostname}`;
-  const navigate = useNavigate();
 
   return (
-    <nav
-      className={`md:relative transition-all bg-anoteblack-800 duration-300 ease-in-out ${
-        props.menu ? "fixed inset-0" : "absolute"
-      } left-0 z-50`}
-    >
-      <button
-        onClick={() => props.handleMenu()}
-        className={` md:p-3 p-5   ${props.menu ? "hidden" : ""}`}
-      >
-        <svg
-          width="24px"
-          height="24px"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            fillRule="evenodd"
-            clipRule="evenodd"
-            d="M3.17157 4.17157C2 5.34315 2 7.22876 2 11V13C2 16.7712 2 18.6569 3.17157 19.8284C4.34315 21 6.22876 21 10 21H14C14.0843 21 14.1676 21 14.25 21L14.25 3C14.1676 2.99999 14.0843 3 14 3H10C6.22876 3 4.34315 3 3.17157 4.17157ZM15.75 3.00559L15.75 20.9944C18.3859 20.9668 19.8541 20.8028 20.8284 19.8284C22 18.6569 22 16.7712 22 13V11C22 7.22876 22 5.34315 20.8284 4.17157C19.8541 3.19724 18.3859 3.03321 15.75 3.00559Z"
-            fill="#1C274C"
-          />
-        </svg>
-      </button>
-      <div
-        className={` h-full  transition-all duration-300 ease-in-out ${
-          props.menu
-            ? "w-52 overflow-auto md:relative top-0 inset-0 left-0 shadow-lg z-50 relative backdrop-blur rounded-r-xl opacity-100"
-            : "w-0 h-0 overflow-hidden md:relative top-0 inset-0 left-0 z-50 hidden  opacity-0 pointer-events-none "
-        } md:max-w-none`}
-      >
-        <div className="flex items-center bg-anoteblack-800 w-full  fixed top-0 ">
-          <div className="h-10 w-10  bg-center bg-contain bg-[url('../public/logonew.png')] dark:bg-[url('../public/logonew.png')]"></div>
-          <div className="text-anoteblack-100 md:hidden font-bold text-xl">Panacea</div>
-          <button
-            onClick={() => props.handleMenu()}
-            className={`flex md:p-3 p-5 ml-auto cursor-w-resize ${
-              !props.menu ? "hidden" : ""
-            }`}
-          >
-            <svg
-              width="24px"
-              height="24px"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
+    <nav className="fixed top-0 left-0 right-0 bg-anoteblack-900 z-50">
+      <div className="flex items-center justify-between px-4 py-4 max-w-7xl mx-auto">
+        {/* Left side - Sidebar toggle and Brand name */}
+        <div className="flex items-center space-x-3">
+          {/* Sidebar toggle button - only show when logged in */}
+          {!props.isGuestMode && (
+            <button
+              onClick={props.handleMenu}
+              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              title="Toggle chat history"
             >
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M3.17157 4.17157C2 5.34315 2 7.22876 2 11V13C2 16.7712 2 18.6569 3.17157 19.8284C4.34315 21 6.22876 21 10 21H14C14.0843 21 14.1676 21 14.25 21L14.25 3C14.1676 2.99999 14.0843 3 14 3H10C6.22876 3 4.34315 3 3.17157 4.17157ZM15.75 3.00559L15.75 20.9944C18.3859 20.9668 19.8541 20.8028 20.8284 19.8284C22 18.6569 22 16.7712 22 13V11C22 7.22876 22 5.34315 20.8284 4.17157C19.8541 3.19724 18.3859 3.03321 15.75 3.00559Z"
-                fill="#1C274C"
-              />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          )}
+          
+          <div className="flex items-center space-x-2">
+            <h1 className="text-white font-semibold text-lg">Panacea</h1>
+            <svg 
+              className="w-4 h-4 text-gray-400" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
-          </button>
+            {props.isGuestMode && (
+              <span className="text-xs text-gray-300 bg-gray-700 px-2 py-1 rounded-full ml-2">
+                Guest
+              </span>
+            )}
+          </div>
         </div>
-        <ChatHistory
-          onChatSelect={props.onChatSelect}
-          setIsPrivate={props.setIsPrivate}
-          setTicker={props.setTicker}
-          setConfirmedModelKey={props.setConfirmedModelKey}
-          setcurrTask={props.setcurrTask}
-          setCurrChatName={props.setCurrChatName}
-          chats={props.chats}
-          setIsEdit={props.setIsEdit}
-          setShowChatbot={props.setShowChatbot}
-          handleForceUpdate={props.handleForceUpdate}
-          createNewChat={props.createNewChat}
-          selectedChatId={props.selectedChatId}
-          handleChatSelect={props.handleChatSelect}
-          forceUpdate={props.forceUpdate}
-        />
+
+        {/* Right side - Auth buttons */}
+        <div className="flex items-center space-x-3">
+          {props.isGuestMode ? (
+            <>
+              <button
+                onClick={() => props.onRequestLogin && props.onRequestLogin()}
+                className="text-gray-300 hover:text-white px-3 py-1.5 text-sm font-medium transition-colors"
+              >
+                Log in
+              </button>
+              <button
+                onClick={() => props.onRequestLogin && props.onRequestLogin()}
+                className="bg-white hover:bg-gray-100 text-black px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+              >
+                Sign up for free
+              </button>
+            </>
+          ) : (
+            <div className="relative user-dropdown">
+              <button
+                onClick={() => setShowUserDropdown(!showUserDropdown)}
+                className="flex items-center space-x-2 p-1 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
+                  <span className="text-sm font-medium text-gray-300">U</span>
+                </div>
+                <svg 
+                  className={`w-4 h-4 text-gray-400 transform transition-transform ${showUserDropdown ? 'rotate-180' : ''}`}
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Dropdown menu */}
+              {showUserDropdown && (
+                <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
+                  <div className="py-1">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                    >
+                      Log out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </nav>
   );
-}
-/*
- <div className="h-10 w-10  bg-center bg-contain bg-[url('../public/logonew.png')] dark:bg-[url('../public/logonew.png')]"></div>
-          <div className="text-anoteblack-100 font-bold text-xl">Panacea</div>
-*/
-export default NavbarChatbot;
+}export default NavbarChatbot;

@@ -12,7 +12,6 @@ import time
 import numpy as np
 import PyPDF2
 import uuid
-from sec_api import QueryApi, RenderApi
 import requests
 from flask import jsonify
 
@@ -185,7 +184,7 @@ def access_sharable_chat(share_uuid, user_id=1):
     for doc in docs:
         # Insert document
         cursor.execute("""
-            INSERT INTO documents (chat_id, workflow_id, document_name, document_text, storage_key)
+            INSERT INTO documents (chat_id, document_name, document_text, storage_key)
             VALUES (%s, NULL, %s, %s, %s)
         """, (new_chat_id, doc['document_name'], doc['document_text'], doc['storage_key']))
         new_doc_id = cursor.lastrowid
@@ -214,22 +213,6 @@ def access_sharable_chat(share_uuid, user_id=1):
 
 ## General for all chatbots
 # Worflow_type is an integer where 2=FinancialReports
-def add_workflow_to_db(user_email, workflow_type): #intake the current userID into the workflow table
-    conn, cursor = get_db_connection()
-
-    cursor.execute("SELECT id FROM users WHERE email = %s", [user_email])
-    user_id = cursor.fetchone()['id']
-
-    cursor.execute('INSERT INTO workflows (user_id, associated_task) VALUES (%s, %s)', (user_id, workflow_type))
-    workflow_id = cursor.lastrowid
-
-    name = f"Workflow {workflow_id}"
-    cursor.execute('UPDATE workflows SET workflow_name = %s WHERE id = %s', (name, workflow_id))
-
-    conn.commit()
-    conn.close()
-
-    return workflow_id
 
 def update_chat_name_db(user_email, chat_id, new_name):
     conn, cursor = get_db_connection()
@@ -247,41 +230,27 @@ def update_chat_name_db(user_email, chat_id, new_name):
 
     return
 
-def update_workflow_name_db(user_email, workflow_id, new_name):
-    print("update_workflow_name_db")
-    conn, cursor = get_db_connection()
-
-    query = """
-    UPDATE workflows
-    JOIN users ON workflows.user_id = users.id
-    SET workflows.workflow_name = %s
-    WHERE workflows.id = %s AND users.email = %s;
-    """
-    cursor.execute(query, (new_name, workflow_id, user_email))
-
-    print("new_name =", new_name)
-
-    conn.commit()
-    conn.close()
-
-    return
-
 def retrieve_chats_from_db(user_email):
     conn, cursor = get_db_connection()
 
     query = """
-        SELECT chats.id, chats.model_type, chats.chat_name, chats.associated_task, chats.ticker, chats.custom_model_key
+        SELECT chats.id, chats.model_type, chats.chat_name, chats.associated_task, chats.custom_model_key
         FROM chats
         JOIN users ON chats.user_id = users.id
         WHERE users.email = %s;
-        """
+    """
 
-    # Execute the query
-    cursor.execute(query, [user_email])
-    chat_info = cursor.fetchall()
+    try:
+        cursor.execute(query, (user_email,))
+        chat_info = cursor.fetchall()
 
-    conn.commit()
-    conn.close()
+        # Force conversion to Python-native objects
+        chat_info = [dict(row) for row in chat_info] if hasattr(cursor, "description") else chat_info
+
+    finally:
+        cursor.close()   # Always close cursor first
+        conn.close()     # Then close connection
+        # Removed conn.commit() – not needed for SELECT
 
     return chat_info
 
@@ -326,13 +295,13 @@ def retrieve_message_from_db(user_email, chat_id, chat_type):
     conn.close()
 
     print("messages")
-    
+
     # Process messages to parse reasoning JSON and format for frontend
     if messages:
         processed_messages = []
         for msg in messages:
             msg_dict = dict(msg)
-            
+
             # Parse reasoning JSON if it exists
             if msg_dict.get('reasoning'):
                 try:
@@ -355,7 +324,7 @@ def retrieve_message_from_db(user_email, chat_id, chat_type):
                         }]
                     else:
                         msg_dict['reasoning'] = []
-                
+
                     # Add the "complete" step that the frontend would have added during streaming
                     # This ensures consistency between streaming and reloaded messages
                     if msg_dict.get('reasoning') and msg_dict.get('sent_from_user') == 0:
@@ -365,12 +334,12 @@ def retrieve_message_from_db(user_email, chat_id, chat_type):
                             if step.get('thought'):
                                 final_thought = step['thought']
                                 break
-                        
+
                         # If no thought found in reasoning steps, use part of the message text as thought
                         if not final_thought and msg_dict.get('message_text'):
                             # Use first 100 characters of the response as the thought
                             final_thought = msg_dict['message_text'][:100] + "..." if len(msg_dict['message_text']) > 100 else msg_dict['message_text']
-                        
+
                         complete_step = {
                             'id': f'step-complete-{msg_dict["id"]}',
                             'type': 'complete',
@@ -384,11 +353,11 @@ def retrieve_message_from_db(user_email, chat_id, chat_type):
                     msg_dict['reasoning'] = []
             else:
                 msg_dict['reasoning'] = []
-            
+
             processed_messages.append(msg_dict)
-        
+
         return processed_messages
-    
+
     return None if messages is None else messages
 
 def delete_chat_from_db(chat_id, user_email):
@@ -443,7 +412,7 @@ def delete_chat_from_db(chat_id, user_email):
         conn.close()
         cursor.close()
         return 'Could not delete'
-    
+
 def retrieve_messages_from_share_uuid(share_uuid):
     conn, cursor = get_db_connection()
 
@@ -454,7 +423,7 @@ def retrieve_messages_from_share_uuid(share_uuid):
         WHERE cs.share_uuid = %s
         ORDER BY csm.created ASC
     """, (share_uuid,))
-    
+
     messages = cursor.fetchall()
 
     conn.close()
@@ -462,7 +431,7 @@ def retrieve_messages_from_share_uuid(share_uuid):
 
 def get_document_content_from_db(id, email):
     conn, cursor = get_db_connection()
-    
+
     # Query to get document content with user verification through chat ownership
     query = """
     SELECT d.document_text, d.document_name, d.id
@@ -471,13 +440,13 @@ def get_document_content_from_db(id, email):
     JOIN users u ON c.user_id = u.id
     WHERE d.id = %s AND u.email = %s
     """
-    
+
     cursor.execute(query, (id, email))
     document = cursor.fetchone()
-    
+
     conn.close()
     cursor.close()
-    
+
     if document:
         return {
             'id': document['id'],
@@ -540,30 +509,6 @@ def reset_uploaded_docs(chat_id, user_email):
     conn.close()
     cursor.close()
 
-def reset_uploaded_docs_for_workflow(workflow_id, user_email):
-    conn, cursor = get_db_connection()
-
-    delete_chunks_query = """
-    DELETE chunks
-    FROM chunks
-    INNER JOIN documents ON chunks.document_id = documents.id
-    WHERE documents.workflow_id = %s;
-    """
-    cursor.execute(delete_chunks_query, (workflow_id,))
-
-    delete_documents_query = """
-    DELETE documents
-    FROM documents
-    WHERE documents.workflow_id = %s;
-    """
-    cursor.execute(delete_documents_query, (workflow_id,))
-
-    conn.commit()
-
-    conn.close()
-    cursor.close()
-
-
 
 def change_chat_mode_db(chat_mode_to_change_to, chat_id, user_email):
     conn, cursor = get_db_connection()
@@ -584,21 +529,21 @@ def change_chat_mode_db(chat_mode_to_change_to, chat_id, user_email):
 
 
 
-def add_document_to_db(text, document_name, chat_id=None, organization_id=None):
+def add_document_to_db(text, document_name, chat_id=None):
     if chat_id == 0:
         print(f"Guest session: Skipping database storage for document '{document_name}'")
         return None, False
-    
+
     conn, cursor = get_db_connection()
 
     try:
-        # Check if the document already exists for the given chat_id or organization_id
+        # Check if the document already exists for the given chat_id
         cursor.execute("""
             SELECT id, document_text
             FROM documents
             WHERE document_name = %s
-            AND chat_id = %s 
-        """, (document_name, chat_id)) #organization_id #OR organization_id = %s)
+            AND chat_id = %s
+        """, (document_name, chat_id))
         existing_doc = cursor.fetchone()
 
         if existing_doc:
@@ -622,29 +567,6 @@ def add_document_to_db(text, document_name, chat_id=None, organization_id=None):
         conn.close()
 
 
-def add_document_to_wfs_db(text, document_name, workflow_id):
-    conn, cursor = get_db_connection()
-
-    cursor.execute("SELECT id, document_text FROM documents WHERE document_name = %s AND workflow_id = %s", (document_name, workflow_id))
-    existing_doc = cursor.fetchone()
-
-    if existing_doc:
-        existing_doc_id, existing_doc_text = existing_doc
-        print("Doc named ", document_name, " exists. Do not create a new entry")
-        conn.close()
-        return existing_doc_id, True  # Returning the ID of the existing document
-
-
-    storage_key = "temp"
-    cursor.execute("INSERT INTO documents (workflow_id, document_name, document_text, storage_key) VALUES (%s, %s, %s, %s)", (workflow_id, document_name, text, storage_key))
-
-    doc_id = cursor.lastrowid
-
-    conn.commit()
-    conn.close()
-    cursor.close()
-
-
 @ray.remote
 def chunk_document_by_page_optimized(text_pages, maxChunkSize, document_id):
     """
@@ -663,13 +585,13 @@ def chunk_document_by_page_optimized(text_pages, maxChunkSize, document_id):
     try:
         # Get the global text splitter instance
         text_splitter = _get_text_splitter(maxChunkSize)
-        
+
         # Process each page with semantic chunking
         for page_text in text_pages:
             # Split page text into semantic chunks
             page_chunks = text_splitter.split_text(page_text)
             print(f"Page {page_number}: Created {len(page_chunks)} semantic chunks")
-            
+
             # Track position within this page for accurate indexing
             page_pos = 0
             for chunk in page_chunks:
@@ -678,20 +600,20 @@ def chunk_document_by_page_optimized(text_pages, maxChunkSize, document_id):
                 chunk_start_in_page = page_text.find(chunk, page_pos)
                 if chunk_start_in_page == -1:
                     chunk_start_in_page = page_text.find(chunk)
-                
+
                 chunk_end_in_page = chunk_start_in_page + len(chunk)
-                
+
                 # Calculate global positions
                 global_start = globalStartIndex + chunk_start_in_page
                 global_end = globalStartIndex + chunk_end_in_page
-                
+
                 chunk_texts.append(chunk)
                 chunk_metadata.append({
                     "global_start": global_start,
                     "global_end": global_end,
                     "page_number": page_number
                 })
-                
+
                 # Update page position for next chunk search
                 page_pos = chunk_start_in_page + 1
 
@@ -701,21 +623,21 @@ def chunk_document_by_page_optimized(text_pages, maxChunkSize, document_id):
         # Generate embeddings for all chunks in batches
         print(f"Generating embeddings for {len(chunk_texts)} semantic page chunks in batches...")
         embeddings = get_embeddings_batch(chunk_texts, batch_size=32)
-        
+
         # Validate dimensions
         for i, embedding in enumerate(embeddings):
             if len(embedding) != EMBEDDING_DIMENSIONS:
                 raise RuntimeError(f"Page chunk {i} embedding dimension mismatch: expected {EMBEDDING_DIMENSIONS}, got {len(embedding)}")
-        
+
         # Insert the chunks into database
         chunk_data = []
         for i, (metadata, embedding) in enumerate(zip(chunk_metadata, embeddings)):
             embedding_array = np.array(embedding)
             blob = embedding_array.tobytes()
-            
+
             chunk_data.append((
                 metadata["global_start"],
-                metadata["global_end"], 
+                metadata["global_end"],
                 document_id,
                 blob,
                 metadata["page_number"]
@@ -729,7 +651,7 @@ def chunk_document_by_page_optimized(text_pages, maxChunkSize, document_id):
 
         print(f"Successfully processed {len(chunk_data)} semantic page chunks with batch embeddings")
         conn.commit()
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -745,40 +667,44 @@ def chunk_document_by_page(text_pages, maxChunkSize, document_id):
     """
     return chunk_document_by_page_optimized.remote(text_pages, maxChunkSize, document_id)
 
+from openai import OpenAI
+import threading
+
+_embedding_model = None
+_model_lock = threading.Lock()
+EMBEDDING_MODEL = "text-embedding-3-small"  # or "text-embedding-3-large"
+_client = OpenAI()
+
 def _get_model():
     """
-    Get the global embedding model instance with thread-safe initialization.
-    
-    Returns:
-        SentenceTransformer: The embedding model
+    Get a lightweight embedding model wrapper (OpenAI-based).
+    Since OpenAI models are API-hosted, this just returns a callable.
     """
     global _embedding_model
 
-
     if _embedding_model:
-        print("Skipping embedding model")
+        print("Skipping embedding model init")
         return _embedding_model
 
-    try:
-        if _model_lock:
-            with _model_lock:
-                if _embedding_model is None:
-                    print(f"Loading {EMBEDDING_MODEL} model with optimizations...")
-                    from sentence_transformers import SentenceTransformer
-                    import torch
-                        
-                        # Use GPU if available for faster inference
-                    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-                    _embedding_model = SentenceTransformer(EMBEDDING_MODEL, device=device)
-                    print(f"Model loaded on device: {device}")
-        else:
-            print(f"Loading {EMBEDDING_MODEL} model...")
-            from sentence_transformers import SentenceTransformer
-            _embedding_model = SentenceTransformer(EMBEDDING_MODEL)
-    except Exception as e:
-        print(f"[ERROR] Failed to load embedding model: {e}")
-        raise RuntimeError(f"Model loading failed: {str(e)}")
-    
+    with _model_lock:
+        if _embedding_model is None:
+            print(f"Using OpenAI embedding model: {EMBEDDING_MODEL}")
+
+            def embed_fn(texts):
+                """
+                Generate embeddings for a list of strings.
+                """
+                if isinstance(texts, str):
+                    texts = [texts]
+
+                resp = _client.embeddings.create(
+                    model=EMBEDDING_MODEL,
+                    input=texts
+                )
+                return [d.embedding for d in resp.data]
+
+            _embedding_model = embed_fn
+
     return _embedding_model
 
 # Dictionary to cache text splitters by chunk size
@@ -787,19 +713,19 @@ _text_splitters = {}
 def _get_text_splitter(chunk_size=None):
     """
     Get a text splitter instance with thread-safe initialization.
-    Caches splitters by chunk size to avoid recreating them.
-    
+    Caches splitters by chunk size to avoid recreating them and improve performance.
+
     Args:
         chunk_size (int, optional): Chunk size. Defaults to MAX_CHUNK_SIZE.
-    
+
     Returns:
         RecursiveCharacterTextSplitter: The text splitter
     """
     global _text_splitters
-    
+
     if chunk_size is None:
         chunk_size = MAX_CHUNK_SIZE
-    
+
     if chunk_size not in _text_splitters:
         try:
             if _splitter_lock:
@@ -824,7 +750,7 @@ def _get_text_splitter(chunk_size=None):
         except Exception as e:
             print(f"[ERROR] Failed to initialize text splitter: {e}")
             raise RuntimeError(f"Text splitter initialization failed: {str(e)}")
-    
+
     return _text_splitters[chunk_size]
 
 def preload_text_splitter():
@@ -862,29 +788,29 @@ def preload_models():
 def get_embedding(question):
     """
     Get embedding for a given text using Multilingual-E5-large model.
-    
+
     Args:
         question (str): The text to embed
-    
+
     Returns:
         list: The embedding vector (1024 dimensions)
-        
+
     Raises:
         RuntimeError: If the embedding generation fails
     """
     try:
         model = _get_model()
-        
+
         # Add prefix for better performance as recommended by the model
         prefixed_question = f"query: {question}"
         embedding = model.encode(prefixed_question,  show_progress_bar=True, normalize_embeddings=True).tolist()
-        
+
         # Validate dimensions using constant
         if len(embedding) != EMBEDDING_DIMENSIONS:
             raise RuntimeError(f"Unexpected embedding dimension: {len(embedding)}, expected {EMBEDDING_DIMENSIONS}")
-            
+
         return embedding
-        
+
     except Exception as e:
         print(f"[ERROR] Failed to get embedding: {e}")
         raise RuntimeError(f"Embedding generation failed: {str(e)}")
@@ -897,38 +823,39 @@ def chunk_document(text, maxChunkSize, document_id):
 def get_embeddings_batch(texts, batch_size=32):
     """
     Get embeddings for multiple texts in batches for better performance.
-    
+
     Args:
         texts (list): List of text strings to embed
         batch_size (int): Number of texts to process in each batch (increased default)
-    
+
     Returns:
         list: List of embedding vectors
     """
     try:
+        import numpy as np
         model = _get_model()
         embeddings = []
-        
+
         # Process texts in batches
         for i in range(0, len(texts), batch_size):
             batch_texts = texts[i:i + batch_size]
             # Add prefix for better performance as recommended by the model
             prefixed_texts = [f"passage: {text}" for text in batch_texts]
-            
+
             # Get batch embeddings with optimized settings
             batch_embeddings = model.encode(
-                prefixed_texts, 
+                prefixed_texts,
                 normalize_embeddings=True,
                 batch_size=batch_size,
                 show_progress_bar=False,  # Reduce overhead
                 convert_to_tensor=False   # Direct to list for efficiency
             )
-            
+
             embeddings.extend(batch_embeddings.tolist())
             print(f"Processed batch {i//batch_size + 1}/{(len(texts) + batch_size - 1)//batch_size}")
-        
+
         return embeddings
-        
+
     except Exception as e:
         print(f"[ERROR] Failed to get batch embeddings: {e}")
         raise RuntimeError(f"Batch embedding generation failed: {str(e)}")
@@ -937,11 +864,11 @@ def prepare_chunks_for_embedding(text_pages, maxChunkSize):
     """
     Prepare semantic text chunks from pages using RecursiveCharacterTextSplitter without generating embeddings.
     This separates chunk preparation from embedding generation for optimization.
-    
+
     Args:
         text_pages (list): List of page texts
         maxChunkSize (int): Maximum size for each chunk
-    
+
     Returns:
         tuple: (chunk_texts, chunk_metadata) for batch processing
     """
@@ -957,30 +884,30 @@ def prepare_chunks_for_embedding(text_pages, maxChunkSize):
     for page_text in text_pages:
         # Split page text into semantic chunks
         page_chunks = text_splitter.split_text(page_text)
-        
+
         # Track position within this page for accurate indexing
-        page_pos = 0
+        page_position = 0
         for chunk in page_chunks:
             # Find chunk position within the page
-            chunk_start_in_page = page_text.find(chunk, page_pos)
+            chunk_start_in_page = page_text.find(chunk, page_position)
             if chunk_start_in_page == -1:
                 chunk_start_in_page = page_text.find(chunk)
-            
+
             chunk_end_in_page = chunk_start_in_page + len(chunk)
-            
+
             # Calculate global positions
             global_start = globalStartIndex + chunk_start_in_page
             global_end = globalStartIndex + chunk_end_in_page
-            
+
             chunk_texts.append(chunk)
             chunk_metadata.append({
                 "global_start": global_start,
                 "global_end": global_end,
                 "page_number": page_number
             })
-            
+
             # Update page position for next chunk search
-            page_pos = chunk_start_in_page + 1
+            page_position = chunk_start_in_page + 1
 
         globalStartIndex += len(page_text)
         page_number += 1
@@ -991,30 +918,30 @@ def fast_pdf_ingestion(text_pages, maxChunkSize, document_id):
     """
     Fast PDF ingestion using RecursiveCharacterTextSplitter for semantic chunking and optimized batch embedding generation.
     This is the fastest way to process PDFs for embedding while preserving semantic boundaries.
-    
+
     Args:
         text_pages (list): List of page texts from PDF
         maxChunkSize (int): Maximum chunk size
         document_id (int): Database document ID
-    
+
     Returns:
         int: Number of chunks processed
     """
     print(f"Starting fast semantic PDF ingestion for document {document_id}")
-    
+
     # Prepare all chunks using semantic chunking
     chunk_texts, chunk_metadata = prepare_chunks_for_embedding(text_pages, maxChunkSize)
     print(f"Prepared {len(chunk_texts)} semantic chunks for processing")
-    
+
     # Generate all embeddings in optimized batches
     print("Generating embeddings in optimized batches...")
     embeddings = get_embeddings_batch(chunk_texts, batch_size=64)  # Larger batch for speed
-    
+
     # Validate all embeddings
     for i, embedding in enumerate(embeddings):
         if len(embedding) != EMBEDDING_DIMENSIONS:
             raise RuntimeError(f"Chunk {i} embedding dimension mismatch: expected {EMBEDDING_DIMENSIONS}, got {len(embedding)}")
-    
+
     # Batch insert to database
     conn, cursor = get_db_connection()
     try:
@@ -1022,10 +949,10 @@ def fast_pdf_ingestion(text_pages, maxChunkSize, document_id):
         for metadata, embedding in zip(chunk_metadata, embeddings):
             embedding_array = np.array(embedding)
             blob = embedding_array.tobytes()
-            
+
             chunk_data.append((
                 metadata["global_start"],
-                metadata["global_end"], 
+                metadata["global_end"],
                 document_id,
                 blob,
                 metadata["page_number"]
@@ -1037,10 +964,10 @@ def fast_pdf_ingestion(text_pages, maxChunkSize, document_id):
             chunk_data
         )
         conn.commit()
-        
+
         print(f"Fast semantic PDF ingestion completed: {len(chunk_data)} chunks processed")
         return len(chunk_data)
-        
+
     except Exception as e:
         print(f"[ERROR] Fast semantic PDF ingestion failed: {e}")
         raise RuntimeError(f"Fast semantic PDF ingestion failed: {str(e)}")
@@ -1058,15 +985,15 @@ def chunk_document_optimized(text, maxChunkSize, document_id):
 
     chunk_texts = []
     chunk_metadata = []
-    
+
     try:
-        # Get the global text splitter instance for semantic-aware chunking  
+        # Get the global text splitter instance for semantic-aware chunking
         text_splitter = _get_text_splitter(maxChunkSize)
-        
+
         # Split text into semantic chunks
         chunks = text_splitter.split_text(text)
         print(f"RecursiveCharacterTextSplitter created {len(chunks)} semantic chunks")
-        
+
         # Finding each chunk's positions in original text
         current_pos = 0
         for chunk in chunks:
@@ -1074,36 +1001,36 @@ def chunk_document_optimized(text, maxChunkSize, document_id):
             chunk_start = text.find(chunk, current_pos)
             if chunk_start == -1:
                 chunk_start = text.find(chunk)
-            
+
             chunk_end = chunk_start + len(chunk)
-            
+
             chunk_texts.append(chunk)
             chunk_metadata.append({
                 "start_index": chunk_start,
                 "end_index": chunk_end
             })
-            
+
             # Update current position for next search
             current_pos = chunk_start + 1
 
         # Generate embeddings for all chunks in batches
         print(f"Generating embeddings for {len(chunk_texts)} semantic chunks in batches...")
         embeddings = get_embeddings_batch(chunk_texts, batch_size=32)
-        
+
         # Make sure dimensions match
         for i, embedding in enumerate(embeddings):
             if len(embedding) != EMBEDDING_DIMENSIONS:
                 raise RuntimeError(f"Chunk {i} embedding dimension mismatch: expected {EMBEDDING_DIMENSIONS}, got {len(embedding)}")
-        
+
         # Insert all of the chunks into database
         chunk_data = []
         for i, (metadata, embedding) in enumerate(zip(chunk_metadata, embeddings)):
             embedding_array = np.array(embedding)
             blob = embedding_array.tobytes()
-            
+
             chunk_data.append((
                 metadata["start_index"],
-                metadata["end_index"], 
+                metadata["end_index"],
                 document_id,
                 blob
             ))
@@ -1116,7 +1043,7 @@ def chunk_document_optimized(text, maxChunkSize, document_id):
 
         print(f"Successfully processed {len(chunk_data)} semantic chunks with batch embeddings")
         conn.commit()
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1129,44 +1056,44 @@ def chunk_document_optimized(text, maxChunkSize, document_id):
 def knn(x, y):
     """
     Calculate k-nearest neighbors using cosine similarity.
-    
+
     Args:
         x (np.array): Query vector (1D)
         y (np.array): Document vectors (2D: N x dimensions)
-    
+
     Returns:
         list: Results sorted by similarity (best first)
     """
     # Ensure x is 2D: (1, dimensions)
     if x.ndim == 1:
         x = np.expand_dims(x, axis=0)
-    
+
     # Ensure y is 2D: (N, dimensions)
     if y.ndim == 1:
         y = np.expand_dims(y, axis=0)
-    
+
     # Validate dimensions match
     if x.shape[1] != y.shape[1]:
         raise ValueError(f"Dimension mismatch: query has {x.shape[1]} dims, documents have {y.shape[1]} dims")
-    
+
     # Calculate cosine similarity with safety checks
     x_norm = np.linalg.norm(x, axis=1, keepdims=True)
     y_norm = np.linalg.norm(y, axis=1, keepdims=True)
-    
+
     # Avoid division by zero
     x_norm = np.where(x_norm == 0, 1e-8, x_norm)
     y_norm = np.where(y_norm == 0, 1e-8, y_norm)
-    
+
     # Normalize vectors
     x_normalized = x / x_norm
     y_normalized = y / y_norm
-    
+
     # Calculate similarities
     similarities = np.dot(x_normalized, y_normalized.T).flatten()
-    
+
     # Convert similarities to distances (lower is better)
     distances = 1 - similarities
-    
+
     # Sort by similarity (best first)
     nearest_neighbors = np.argsort(distances)
 
@@ -1244,81 +1171,9 @@ def get_relevant_chunks(k: int, question: str, chat_id: int, user_email: str):
     return source_chunks
 
 
-def get_relevant_chunks_wf(k, question, workflow_id, user_email):
-    conn, cursor = get_db_connection()
-
-    query = """
-    SELECT c.start_index, c.end_index, c.embedding_vector, c.document_id, c.page_number, d.document_name
-    FROM chunks c
-    JOIN documents d ON c.document_id = d.id
-    JOIN workflows w ON d.workflow_id = w.id
-    JOIN users u ON w.user_id = u.id
-    WHERE u.email = %s AND w.id = %s
-    """
-
-    cursor.execute(query, (user_email, workflow_id))
-    rows = cursor.fetchall()
-
-    embeddings = []
-    for row in rows:
-        embeddingVectorBlob = row["embedding_vector"]
-        embeddingVector = np.frombuffer(embeddingVectorBlob)
-        
-        # Basic validation - should match our configured embedding dimensions
-        if len(embeddingVector) != EMBEDDING_DIMENSIONS:
-            print(f"[WARNING] Found workflow embedding with unexpected dimension: {len(embeddingVector)}, expected {EMBEDDING_DIMENSIONS}")
-            
-        embeddings.append(embeddingVector)
-
-    if (len(embeddings) == 0):
-        res_list = []
-        for i in range(k):
-            res_list.append("No text found")
-        return res_list
-
-    embeddings = np.array(embeddings)
-
-    try:
-        embeddingVector = get_embedding(question) 
-        embeddingVector = np.array(embeddingVector)
-        
-        # Validate query embedding dimensions
-        if len(embeddingVector) != EMBEDDING_DIMENSIONS:
-            raise ValueError(f"Workflow query embedding dimension mismatch: expected {EMBEDDING_DIMENSIONS}, got {len(embeddingVector)}")
-            
-    except Exception as e:
-        print(f"[ERROR] Failed to generate workflow query embedding: {e}")
-        res_list = []
-        for i in range(k):
-            res_list.append("Error generating embedding")
-        return res_list
-
-    res = knn(embeddingVector, embeddings)
-    num_results = min(k, len(res))
-
-    #Get the k most relevant chunks
-    source_chunks = []
-    for i in range(num_results):
-        source_id = res[i]['index']
-
-        document_id = rows[source_id]['document_id']
-        #page_number = rows[source_id]['page_number']
-        document_name = rows[source_id]['document_name']
-
-
-        cursor.execute('SELECT document_text FROM documents WHERE id = %s', [document_id])
-        doc_text = cursor.fetchone()['document_text']
-
-        source_chunk = doc_text[rows[source_id]['start_index']:rows[source_id]['end_index']]
-        source_chunks.append((source_chunk, document_name))
-        #source_chunks.append(source_chunk)
-
-    return source_chunks
-
-
 def add_sources_to_db(message_id, sources):
     combined_sources = ""
-    
+
     print(f"DEBUG: sources type: {type(sources)}")
     print(f"DEBUG: sources content: {sources}")
 
@@ -1326,13 +1181,13 @@ def add_sources_to_db(message_id, sources):
         print(f"DEBUG: source {i} type: {type(source)}")
         print(f"DEBUG: source {i} content: {source}")
         print(f"DEBUG: source {i} length: {len(source) if hasattr(source, '__len__') else 'no length'}")
-        
+
         if len(source) >= 2:
             chunk_text, document_name = source[0], source[1]
         else:
             print(f"WARNING: Skipping malformed source {i}: {source}")
             continue
-            
+
         combined_sources += f"Document: {document_name}: {chunk_text}\n\n"
 
     conn, cursor = get_db_connection()
@@ -1377,10 +1232,10 @@ def add_message_to_db(text, chat_id, isUser, reasoning=None):
 
     return message_id
 
-def add_prompt_to_db(prompt_text, workflow_id):
+def add_prompt_to_db(prompt_text):
     conn, cursor = get_db_connection()
 
-    cursor.execute('INSERT INTO prompts (workflow_id, prompt_text) VALUES (%s, %s)', (workflow_id, prompt_text))
+    cursor.execute('INSERT INTO prompts (prompt_text) VALUES (%s, %s)', (prompt_text))
 
     prompt_id = cursor.lastrowid
 
@@ -1391,13 +1246,13 @@ def add_prompt_to_db(prompt_text, workflow_id):
     return prompt_id
 
 
-def add_answer_to_db(answer, workflow_id, citation_id):
+def add_answer_to_db(answer, citation_id):
     conn, cursor = get_db_connection()
 
     # Insert the answer into the prompt_answers table
     cursor.execute(
         'INSERT INTO prompt_answers (prompt_id, citation_id, answer_text) VALUES (%s, %s, %s)',
-        (workflow_id, citation_id, answer)
+        (citation_id, answer)
     )
     answer_id = cursor.lastrowid
 
@@ -1469,135 +1324,6 @@ def add_model_key_to_db(model_key, chat_id, user_email):
 
     conn.commit()
 
-#For edgar
-queryApi = QueryApi(api_key=sec_api_key)
-
-def check_valid_api(ticker):
-    print("IN CHECK_VALID_API: ", ticker)
-    year = 2023
-
-    ticker_query = 'ticker:({})'.format(ticker)
-    query_string = '{ticker_query} AND filedAt:[{year}-01-01 TO {year}-12-31] AND formType:"10-K" AND NOT formType:"10-K/A" AND NOT formType:NT'.format(ticker_query=ticker_query, year=year)
-
-    query = {
-        "query": { "query_string": {
-            "query": query_string,
-            "time_zone": "America/New_York"
-        } },
-        "from": "0",
-        "size": "200",
-        "sort": [{ "filedAt": { "order": "desc" } }]
-      }
-
-
-    response = queryApi.get_filings(query)
-
-    filings = response['filings']
-
-    if not filings:
-        return False
-    else:
-        return True
-
-
-def download_10K_url_ticker(ticker):
-    year = 2023
-
-    ticker_query = 'ticker:({})'.format(ticker)
-    query_string = '{ticker_query} AND filedAt:[{year}-01-01 TO {year}-12-31] AND formType:"10-K" AND NOT formType:"10-K/A" AND NOT formType:NT'.format(ticker_query=ticker_query, year=year)
-
-    query = {
-        "query": { "query_string": {
-            "query": query_string,
-            "time_zone": "America/New_York"
-        } },
-        "from": "0",
-        "size": "200",
-        "sort": [{ "filedAt": { "order": "desc" } }]
-      }
-
-
-    response = queryApi.get_filings(query)
-
-    filings = response['filings']
-
-    if filings:
-       ticker=filings[0]['ticker']
-       url=filings[0]['linkToFilingDetails']
-    else:
-       ticker = None
-       url = None
-
-    return url, ticker
-
-def download_filing_as_pdf(url, ticker):
-    API_ENDPOINT = "https://api.sec-api.io/filing-reader"
-
-    api_url = API_ENDPOINT + "?token=" + sec_api_key + "&url=" + url + "&type=pdf"
-
-    response = requests.get(api_url)
-
-    file_name = f"{ticker}.pdf"
-
-    with open(file_name, 'wb') as f:
-        f.write(response.content)
-
-    return file_name
-
-def get_text_from_edgar(ticker):
-    try:
-        text = get_form_by_ticker(ticker, '10-K', company='Anote', email='vidranatan@gmail.com')
-    except Exception as e:
-        print(f"Error. This ticker is not valid. Please input a valid ticker")
-        return
-
-    text = re.sub('<[^>]+>', '', text)
-
-    #get rid of blank lines
-    lines = text.split('\n')
-    non_blank_lines = [line for line in lines if line.strip()]
-    text = '\n'.join(non_blank_lines)
-
-    #Get rid of certain sections
-    pattern = r'^X.*?\n-.*?\n(\+.*?\n)+.*?Period Type.*?\n'
-    text = re.sub(pattern, '', text, flags=re.DOTALL|re.MULTILINE)
-
-    #remove css
-    pattern = r'\..*?\{.*?\}'
-    text = re.sub(pattern, '', text, flags=re.DOTALL)
-
-    #remove json like text
-    pattern = r'\{.*?\}'
-    text = re.sub(pattern, '', text, flags=re.DOTALL)
-
-    # pattern = r'\.xlsx.*'
-    #text = re.sub(pattern, '', text, flags=re.DOTALL)
-
-    return text
-
-def add_ticker_to_chat_db(chat_id, ticker, user_email, isUpdate):
-    conn, cursor = get_db_connection()
-
-    if isUpdate:
-        try:
-            reset_chat_db(chat_id, user_email)
-        except:
-            return "Error"
-
-    query = """UPDATE chats
-    JOIN users ON chats.user_id = users.id
-    SET chats.ticker = %s
-    WHERE users.email = %s AND chats.id = %s"""
-
-    cursor.execute(query, (ticker, user_email, chat_id))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return "Success"
-
 
 #specific to PDF reader
 def get_text_from_single_file(file):
@@ -1621,157 +1347,6 @@ def get_text_pages_from_single_file(file):
 
     return pages_text #text
 
-def add_ticker_to_workflow_db(user_email, workflow_id, ticker):
-    print("add_ticker_to_workflow_db")
-    conn, cursor = get_db_connection()
-
-    # Check if the ticker already exists
-    cursor.execute("SELECT id FROM tickers WHERE ticker_name = %s AND workflow_id = %s", (ticker, workflow_id))
-    ticker_row = cursor.fetchone()
-
-    if not ticker_row:
-        # If the ticker doesn't exist for the workflow, insert it into the tickers table
-        cursor.execute("INSERT INTO tickers (ticker_name, workflow_id) VALUES (%s, %s)", (ticker, workflow_id))
-        conn.commit()
-
-    cursor.close()
-    conn.close()
-    print("TICKER ADDED")
-
-    return "Success"
-
-# Adding a prompt to a workflow
-def add_prompt_to_workflow_db(workflow_id, prompt_text):
-    conn, cursor = get_db_connection()
-
-    query = """INSERT INTO prompts (workflow_id, prompt_text) VALUES (%s, %s)"""
-    cursor.execute(query, (workflow_id, prompt_text))
-
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-    return "Success"
-
-def remove_ticker_from_workflow_db(workflow_id, ticker, user_email):
-    conn, cursor = get_db_connection()
-
-    # Retrieve existing tickers
-    cursor.execute("SELECT tickers FROM workflows WHERE id = %s", (workflow_id,))
-    existing_tickers = cursor.fetchone()
-
-    if existing_tickers:
-        existing_tickers = existing_tickers[0]
-        if ticker in existing_tickers:
-            existing_tickers.remove(ticker)
-        else:
-            # Ticker not found in the array
-            return "Ticker not found"
-    else:
-        # No existing tickers
-        return "No tickers to remove"
-
-    # Update the tickers field
-    query = """UPDATE workflows
-               SET tickers = %s
-               WHERE id = %s"""
-
-    cursor.execute(query, (existing_tickers, workflow_id))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return "Success"
-
-# Removing a prompt from a workflow
-def remove_prompt_from_workflow_db(prompt_id):
-    conn, cursor = get_db_connection()
-
-    query = """DELETE FROM prompts WHERE id = %s"""
-    cursor.execute(query, (prompt_id,))
-
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-    return "Success"
-
-
-def process_ticker_info_wf(user_email, workflow_id, ticker):
-    print("PROCESS TICKER INFO FOR TICKER ", ticker)
-
-    if ticker:
-        chunk_size = 1000
-
-        reset_uploaded_docs_for_workflow(workflow_id, user_email)
-
-        url, ticker = download_10K_url_ticker(ticker)
-        filename = download_filing_as_pdf(url, ticker)
-
-        text = get_text_from_single_file(filename)
-        doc_id, doesExist = add_document_to_wfs_db(text, filename, workflow_id)
-        add_ticker_to_workflow_db(user_email, workflow_id, ticker)
-        print("ADDED TICKER TO DB")
-
-        # print("Processing ticker: ", text)
-        # print("Doc Id: ", doc_id)
-
-        if not doesExist:
-            chunk_document.remote(text, chunk_size, doc_id)
-
-        if os.path.exists(filename):
-            os.remove(filename)
-            print(f"File '{filename}' has been deleted.")
-        else:
-            print(f"The file '{filename}' does not exist.")
-
-
-def process_prompt_answer(prompt, workflow_id, user_email):
-    # model_type = request.json.get('model_type')
-    print("process_prompt_answer")
-    print(workflow_id)
-    query = prompt.strip()
-
-    #This adds user message to db
-    add_prompt_to_db(query, workflow_id)
-    print("SUCCESSFULLY ADDED PROMPT")
-
-    # Get most relevant section from the document
-    sources = get_relevant_chunks_wf(2, query, workflow_id, user_email)
-    print("get_relevant_chunks")
-    sources_str = " ".join([", ".join(str(elem) for elem in source) for source in sources])
-
-    print("using existing chunks")
-
-    print("using Claude")
-    anthropic = Anthropic(
-        api_key=os.environ.get("ANTHROPIC_API_KEY")
-    )
-    print("accessed Claude key")
-    completion = anthropic.completions.create(
-        model="claude-2",
-        max_tokens_to_sample=700,
-        prompt = (
-            f"{HUMAN_PROMPT} "
-            f"You are a factual chatbot that answers questions about 10-K documents. You only answer with answers you find in the text, no outside information. "
-            f"please address the question: {query}. "
-            f"Consider the provided text as evidence: {sources_str}. "
-            f"{AI_PROMPT}")
-    )
-    answer = completion.completion
-    print("ANSWER: ", answer)
-
-    answer_id = add_answer_to_db(answer, workflow_id, sources)
-    print("SUCCESSFULLY ADDED PROMPT ANSWER")
-
-    try:
-        add_wf_sources_to_db(prompt_id, sources)
-    except:
-        print("no sources")
-
-    return jsonify(answer=answer)
 
 
 #for the demo
@@ -1877,25 +1452,3 @@ def get_text_from_url(web_url):
     text = text.replace("\n", "").replace("\t", "")
     #text = "".join(text)
     return text
-
-# Add a new organization to the database
-def add_organization_to_db(name, organization_type, website_url=None):
-    conn, cursor = get_db_connection()
-    try:
-        cursor.execute('INSERT INTO organizations (name, organization_type, website_url) VALUES (%s, %s, %s)',
-                       (name, organization_type, website_url))
-        conn.commit()
-        organization_id = cursor.lastrowid
-        return organization_id
-    finally:
-        conn.close()
-
-# Get organization details from the database
-def get_organization_from_db(organization_id):
-    conn, cursor = get_db_connection()
-    try:
-        cursor.execute('SELECT * FROM organizations WHERE id = %s', [organization_id])
-        organization = cursor.fetchone()
-        return organization
-    finally:
-        conn.close()

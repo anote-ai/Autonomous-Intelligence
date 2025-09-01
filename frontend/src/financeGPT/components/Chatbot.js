@@ -13,6 +13,10 @@ import {
   faExclamationTriangle,
   faChevronDown,
   faChevronUp,
+  faArrowRight,
+  faInfoCircle,
+  faSitemap,
+  faLightbulb,
 } from "@fortawesome/free-solid-svg-icons";
 import "../styles/Chatbot.css";
 import fetcher from "../../http/RequestConfig";
@@ -342,10 +346,16 @@ const Chatbot = (props) => {
 
             if (dataContent === "[DONE]") {
               console.log("✅ Stream completed");
-              // Mark streaming as complete
+              // Mark streaming as complete and ensure final state
               setMessages((prev) =>
                 prev.map((msg) =>
-                  msg.id === thinkingId ? { ...msg, isThinking: false } : msg
+                  msg.id === thinkingId 
+                    ? { 
+                        ...msg, 
+                        isThinking: false, 
+                        currentStep: null 
+                      } 
+                    : msg
                 )
               );
               break;
@@ -355,24 +365,46 @@ const Chatbot = (props) => {
               const eventData = JSON.parse(dataContent);
 
               // Update the message directly in the messages array
-              setMessages((prev) =>
-                prev.map((msg) => {
+              setMessages((prev) => {
+                const updated = prev.map((msg) => {
                   if (msg.id === thinkingId) {
-                    return updateMessageWithStreamData(msg, eventData);
+                    const updatedMsg = updateMessageWithStreamData(msg, eventData);
+                    // Force re-render by ensuring object reference changes
+                    return { ...updatedMsg };
                   }
                   return msg;
-                })
-              );
+                });
+                return [...updated]; // Force array reference change
+              });
 
               // Generate chat name when we get the final answer
               if (
-                eventData.type === "complete" &&
+                (eventData.type === "complete" || eventData.type === "step-complete") &&
                 eventData.answer &&
                 !chatNameGenerated
               ) {
                 await inferChatName(originalText, eventData.answer, chatId);
                 setChatNameGenerated(true);
                 props.handleForceUpdate?.();
+              }
+
+              // Force final state update for completion events
+              if (eventData.type === "complete" || eventData.type === "step-complete") {
+                setTimeout(() => {
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === thinkingId
+                        ? {
+                            ...msg,
+                            isThinking: false,
+                            currentStep: null,
+                            content: eventData.answer || msg.content,
+                            sources: eventData.sources || msg.sources || [],
+                          }
+                        : msg
+                    )
+                  );
+                }, 100); // Small delay to ensure all updates are processed
               }
             } catch (e) {
               console.error("Error parsing streaming data:", e);
@@ -461,6 +493,7 @@ const Chatbot = (props) => {
         updatedMessage.content = eventData.answer || "";
         updatedMessage.sources = eventData.sources || [];
         updatedMessage.isThinking = false;
+        updatedMessage.currentStep = null;
 
         // Add completion step to reasoning
         const completeStep = {
@@ -474,13 +507,13 @@ const Chatbot = (props) => {
           ...(updatedMessage.reasoning || []),
           completeStep,
         ];
-        updatedMessage.currentStep = null;
         break;
       case "step-complete":
         // Set final answer and sources
         updatedMessage.content = eventData.answer || "";
         updatedMessage.sources = eventData.sources || [];
         updatedMessage.isThinking = false;
+        updatedMessage.currentStep = null;
 
         // Add completion step to reasoning
         const StepComplete = {
@@ -494,8 +527,96 @@ const Chatbot = (props) => {
           ...(updatedMessage.reasoning || []),
           StepComplete,
         ];
-        updatedMessage.currentStep = null;
         break;
+
+      // Multi-agent system event types
+      case "agent_start":
+        const agentStartStep = {
+          id: `step-${Date.now()}`,
+          type: eventData.type,
+          agent_name: eventData.agent_name,
+          message: eventData.message || `${eventData.agent_name} started`,
+          timestamp: Date.now(),
+        };
+        updatedMessage.reasoning = [
+          ...(updatedMessage.reasoning || []),
+          agentStartStep,
+        ];
+        updatedMessage.currentStep = agentStartStep;
+        break;
+
+      case "agent_progress":
+        const progressStep = {
+          id: `step-${Date.now()}`,
+          type: eventData.type,
+          current_agent: eventData.current_agent,
+          completed_agents: eventData.completed_agents,
+          message: eventData.message || `${eventData.current_agent} completed`,
+          timestamp: Date.now(),
+        };
+        updatedMessage.reasoning = [
+          ...(updatedMessage.reasoning || []),
+          progressStep,
+        ];
+        break;
+
+      case "agent_reasoning":
+        const reasoningStep = {
+          id: `step-${Date.now()}`,
+          type: eventData.type,
+          agent_name: eventData.agent_name,
+          reasoning: eventData.reasoning,
+          message: `${eventData.agent_name} reasoning`,
+          timestamp: Date.now(),
+        };
+        updatedMessage.reasoning = [
+          ...(updatedMessage.reasoning || []),
+          reasoningStep,
+        ];
+        break;
+
+      case "agent_tool_use":
+        const agentToolStep = {
+          id: `step-${Date.now()}`,
+          type: eventData.type,
+          agent_name: eventData.agent_name,
+          tool_name: eventData.tool_name,
+          input: eventData.input,
+          message: eventData.message || `${eventData.agent_name} using ${eventData.tool_name}`,
+          timestamp: Date.now(),
+        };
+        updatedMessage.reasoning = [
+          ...(updatedMessage.reasoning || []),
+          agentToolStep,
+        ];
+        break;
+
+      case "agent_tool_complete":
+        // Update the last agent tool step with output
+        const agentReasoningWithOutput = [...(updatedMessage.reasoning || [])];
+        const lastAgentToolIndex = agentReasoningWithOutput.findLastIndex(
+          (step) => step.type === "agent_tool_use"
+        );
+        if (lastAgentToolIndex !== -1) {
+          agentReasoningWithOutput[lastAgentToolIndex] = {
+            ...agentReasoningWithOutput[lastAgentToolIndex],
+            tool_output: eventData.output,
+            message: eventData.message || "Agent tool execution completed",
+          };
+        }
+        updatedMessage.reasoning = agentReasoningWithOutput;
+        break;
+
+      case "reasoning_step":
+        // Add reasoning step from multi-agent system
+        if (eventData.step) {
+          updatedMessage.reasoning = [
+            ...(updatedMessage.reasoning || []),
+            eventData.step,
+          ];
+        }
+        break;
+
       default:
         console.warn("Unhandled event type:", eventData.type);
     }
@@ -520,6 +641,24 @@ const Chatbot = (props) => {
           return (
             <FontAwesomeIcon icon={faCheckCircle} className="text-green-500" />
           );
+        // Multi-agent system icons
+        case "agent_start":
+          return <FontAwesomeIcon icon={faCog} className="text-yellow-400" />;
+        case "agent_progress":
+          return <FontAwesomeIcon icon={faArrowRight} className="text-orange-400" />;
+        case "agent_reasoning":
+          return <FontAwesomeIcon icon={faBrain} className="text-cyan-400" />;
+        case "agent_tool_use":
+        case "agent_tool_complete":
+          return <FontAwesomeIcon icon={faSearch} className="text-emerald-400" />;
+        case "agent_completion":
+        case "agent_error":
+          return <FontAwesomeIcon icon={faInfoCircle} className="text-indigo-400" />;
+        case "orchestrator_decision":
+        case "orchestrator_synthesis":
+          return <FontAwesomeIcon icon={faSitemap} className="text-pink-400" />;
+        case "reasoning_step":
+          return <FontAwesomeIcon icon={faLightbulb} className="text-amber-400" />;
         default:
           return <FontAwesomeIcon icon={faCog} className="text-gray-400" />;
       }
@@ -536,7 +675,27 @@ const Chatbot = (props) => {
         case "agent_thinking":
           return "border-l-purple-400 bg-purple-950/20";
         case "complete":
+        case "step-complete":
           return "border-l-green-500 bg-green-950/30";
+        // Multi-agent system colors
+        case "agent_start":
+          return "border-l-yellow-400 bg-yellow-950/20";
+        case "agent_progress":
+          return "border-l-orange-400 bg-orange-950/20";
+        case "agent_reasoning":
+          return "border-l-cyan-400 bg-cyan-950/20";
+        case "agent_tool_use":
+        case "agent_tool_complete":
+          return "border-l-emerald-400 bg-emerald-950/20";
+        case "agent_completion":
+          return "border-l-indigo-400 bg-indigo-950/20";
+        case "agent_error":
+          return "border-l-red-400 bg-red-950/20";
+        case "orchestrator_decision":
+        case "orchestrator_synthesis":
+          return "border-l-pink-400 bg-pink-950/20";
+        case "reasoning_step":
+          return "border-l-amber-400 bg-amber-950/20";
         default:
           return "border-l-gray-400 bg-gray-800/20";
       }
@@ -582,6 +741,55 @@ const Chatbot = (props) => {
               : step.tool_output}
           </div>
         )}
+
+        {/* Multi-agent system specific fields */}
+        {step.agent_name && (
+          <div className="text-gray-400 text-xs mb-1">
+            <strong>Agent:</strong> {step.agent_name}
+          </div>
+        )}
+
+        {step.reasoning && (
+          <div className="text-gray-400 text-xs mb-1">
+            <strong>Reasoning:</strong> {step.reasoning.length > 150 ? step.reasoning.substring(0, 150) + "..." : step.reasoning}
+          </div>
+        )}
+
+        {step.current_agent && (
+          <div className="text-gray-400 text-xs mb-1">
+            <strong>Current Agent:</strong> {step.current_agent}
+          </div>
+        )}
+
+        {step.completed_agents && step.completed_agents.length > 0 && (
+          <div className="text-gray-500 text-xs">
+            <strong>Completed:</strong> {step.completed_agents.join(", ")}
+          </div>
+        )}
+
+        {step.final_thought && (
+          <div className="text-gray-400 text-xs mb-1">
+            <strong>Final Thought:</strong> {step.final_thought}
+          </div>
+        )}
+
+        {step.planned_action && (
+          <div className="text-gray-500 text-xs">
+            <strong>Planned Action:</strong> {step.planned_action}
+          </div>
+        )}
+
+        {step.confidence && (
+          <div className="text-gray-500 text-xs">
+            <strong>Confidence:</strong> {Math.round(step.confidence * 100)}%
+          </div>
+        )}
+
+        {step.error && (
+          <div className="text-red-400 text-xs mt-1">
+            <strong>Error:</strong> {step.error}
+          </div>
+        )}
       </div>
     );
   };
@@ -593,6 +801,18 @@ const Chatbot = (props) => {
       [messageId]: !prev[messageId],
     }));
   };
+
+  // Auto-expand reasoning for new thinking messages
+  useEffect(() => {
+    messages.forEach((msg) => {
+      if (msg.role === "assistant" && msg.isThinking && expandedReasoning[msg.id] === undefined) {
+        setExpandedReasoning((prev) => ({
+          ...prev,
+          [msg.id]: true, // Auto-expand reasoning for thinking messages
+        }));
+      }
+    });
+  }, [messages, expandedReasoning]);
 
   const handleGenerateShareableUrl = async () => {
     if (!props.selectedChatId) {
@@ -661,27 +881,20 @@ const Chatbot = (props) => {
 
   return (
     <div
-      className={`py-2 h-full bg-anoteblack-800 w-full flex flex-col ${
+      className={`h-full bg-anoteblack-800 w-full flex flex-col ${
         props.menu ? "md:blur-none blur" : ""
       }`}
     >
-      {/* Chat title for mobile */}
-      <div className="w-full bg-transparent md:py-0 py-4 md:shadow-none shadow-lg md:mb-0 mb-2 items-center flex justify-center flex-shrink-0">
-        <span className="md:hidden rounded py-2 truncate px-4">
-          {props.currChatName}
-        </span>
-      </div>
-
       <div
         ref={(ref) =>
           ref && ref.scrollTo({ top: ref.scrollHeight, behavior: "smooth" })
         }
-        className={`h-full rounded md:mt-8 overflow-auto ${
+        className={`h-full rounded overflow-auto ${
           messages.length > 0 ? "block" : "hidden"
         } flex justify-center`}
       >
-        <div className="py-3 flex-col mt-0 md:mt-4 px-4 flex gap-3 w-full">
-          <div className="bg-anoteblack-800 flex items-center sticky top-0 lg:top-4 z-10 w-full border-b border-gray-400/30 px-2">
+        <div className="py-3 flex-col mt-0 px-4 flex gap-3 w-full">
+          <div className="bg-anoteblack-800 flex items-center sticky top-0 lg:top-0 z-10 w-full border-b border-gray-400/30 px-2">
             {/* Left: Reload button */}
             <div className="flex items-center flex-shrink-0 z-10">
               <button
@@ -741,8 +954,8 @@ const Chatbot = (props) => {
                   }`}
                 >
                   {/* Reasoning Box - Shows during streaming and after completion */}
-                  {msg.role === "assistant" && msg.reasoning?.length > 0 && (
-                    <div className="bg-[#0f1419] border border-[#2e3a4c] rounded-xl p-4">
+                  {msg.role === "assistant" && (msg.reasoning?.length > 0 || msg.isThinking) && (
+                    <div className="bg-[#0f1419] border border-[#2e3a4c] rounded-xl p-4 mb-3">
                       <button
                         onClick={() => toggleReasoningExpansion(msg.id)}
                         className="flex items-center justify-between w-full text-left text-xs text-gray-400 hover:text-gray-200 transition-colors"
@@ -750,7 +963,10 @@ const Chatbot = (props) => {
                         <div className="flex items-center gap-2">
                           <FontAwesomeIcon icon={faBrain} />
                           <span>
-                            AI Reasoning Steps ({msg.reasoning.length})
+                            {msg.isThinking 
+                              ? "AI Reasoning (Live)" 
+                              : `AI Reasoning Steps (${msg.reasoning?.length || 0})`
+                            }
                           </span>
                         </div>
                         <FontAwesomeIcon
@@ -765,7 +981,15 @@ const Chatbot = (props) => {
 
                       {expandedReasoning[msg.id] && (
                         <div className="mt-3 space-y-2 animate-fade-in">
-                          {msg.reasoning.map((step, idx) => (
+                          {/* Show current step during thinking */}
+                          {msg.isThinking && msg.currentStep && (
+                            <div className="border-l-2 border-yellow-400 bg-yellow-950/20 pl-3 py-2 mb-2">
+                              <ThinkingIndicator step={msg.currentStep} />
+                            </div>
+                          )}
+                          
+                          {/* Show completed reasoning steps */}
+                          {msg.reasoning?.map((step, idx) => (
                             <ThinkingIndicator
                               key={step.id || idx}
                               step={step}
@@ -804,11 +1028,6 @@ const Chatbot = (props) => {
                           </span>
                         </div>
 
-                        {/* Current step indicator */}
-                        {msg.currentStep && (
-                          <ThinkingIndicator step={msg.currentStep} />
-                        )}
-
                         {/* Show partial content if available during streaming */}
                         {msg.content && (
                           <div className="mt-3">
@@ -824,35 +1043,6 @@ const Chatbot = (props) => {
                         <p className="whitespace-pre-wrap leading-relaxed text-sm">
                           {msg.content}
                         </p>
-
-                        {/* Sources Section */}
-                        {msg.sources?.length > 0 && (
-                          <div className="mt-4 pt-4 border-t border-[#2e3a4c]">
-                            <div className="flex items-center gap-2 mb-2 text-gray-400 text-xs font-semibold">
-                              <FontAwesomeIcon icon={faFile} />
-                              <span>Sources</span>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {msg.sources.map((source, idx) => (
-                                <span
-                                  key={idx}
-                                  className="text-xs bg-[#2e3a4c] text-gray-300 px-2 py-1 rounded"
-                                >
-                                  {typeof source === "string"
-                                    ? source
-                                    : source.name || "Document"}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Assistant Agent Info */}
-                        {msg.role === "assistant" && msg.agent && (
-                          <div className="mt-2 text-[11px] text-gray-500 italic">
-                            🤖 {msg.agent.name}
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>

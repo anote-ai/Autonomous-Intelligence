@@ -1,11 +1,5 @@
 from flask import Flask, request, jsonify, Response, abort, redirect, stream_with_context, Blueprint, send_file
 from flask_cors import CORS, cross_origin
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-import pandas as pd
-#from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
-import boto3
 from api_endpoints.login.handler import LoginHandler, SignUpHandler, ForgotPasswordHandler, ResetPasswordHandler
 import os
 import pathlib
@@ -23,7 +17,7 @@ from jwt import InvalidTokenError
 from urllib.parse import urlparse
 from database.db import create_user_if_does_not_exist
 from constants.global_constants import kSessionTokenExpirationTime
-from database.db_auth import extractUserEmailFromRequest, is_session_token_valid, is_api_key_valid, user_id_for_email, verifyAuthForPaymentsTrustedTesters, verifyAuthForCheckoutSession, verifyAuthForPortalSession
+from database.db_auth import extractUserEmailFromRequest, is_api_key_valid, user_id_for_email, verifyAuthForPaymentsTrustedTesters, verifyAuthForCheckoutSession, verifyAuthForPortalSession
 from functools import wraps
 from flask_jwt_extended import verify_jwt_in_request
 from api_endpoints.payments.handler import CreateCheckoutSessionHandler, CreatePortalSessionHandler, StripeWebhookHandler
@@ -36,32 +30,13 @@ from enum import Enum
 import stripe
 from dotenv import load_dotenv
 import ray
-from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
-from flask_socketio import SocketIO, emit, disconnect
-from database.db_auth import user_email_for_session_token
-from flask.cli import with_appcontext
-import click
-import threading
-import time
 import csv
-from fpdf import FPDF
 import openai
 import shutil
-from io import BytesIO
 import io
 from tika import parser as p
-import anthropic
 from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
-from datasets import Dataset
 import re
-import ragas
-from ragas.metrics import (
-    faithfulness,
-    answer_relevancy,
-    context_recall,
-    context_precision,
-)
 from bs4 import BeautifulSoup
 from flask_mysql_connector import MySQL
 import MySQLdb.cursors
@@ -69,28 +44,24 @@ from nltk.translate.bleu_score import sentence_bleu
 from datasets import load_dataset
 import nltk
 
-#WESLEY
-from api_endpoints.financeGPT.chatbot_endpoints import create_chat_shareable_url, access_sharable_chat, _get_model
-_get_model()
 from database.db import get_db_connection
 
-from api_endpoints.financeGPT.chatbot_endpoints import add_prompt_to_workflow_db, add_workflow_to_db, \
-    add_chat_to_db, add_message_to_db, chunk_document, get_text_from_single_file, add_document_to_db, get_relevant_chunks,  \
-    remove_prompt_from_workflow_db, remove_ticker_from_workflow_db, reset_uploaded_docs_for_workflow, retrieve_chats_from_db, \
+#WESLEY
+from api_endpoints.financeGPT.chatbot_endpoints import \
+    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
+    retrieve_chats_from_db, create_chat_shareable_url, access_sharable_chat, _get_model, \
     delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, change_chat_mode_db, update_chat_name_db, \
-    add_ticker_to_chat_db, download_10K_url_ticker, download_filing_as_pdf, reset_uploaded_docs, check_valid_api, add_model_key_to_db, get_text_pages_from_single_file, \
-    add_ticker_to_workflow_db, add_chat_to_db, add_message_to_db, chunk_document, get_text_from_single_file, add_document_to_db, get_relevant_chunks, process_ticker_info_wf, \
+    reset_uploaded_docs, add_model_key_to_db, \
+    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
     retrieve_chats_from_db, delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, \
-    change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, process_prompt_answer, \
-    ensure_SDK_user_exists, get_chat_info, ensure_demo_user_exists, get_message_info, get_text_from_url, \
-    add_organization_to_db, get_organization_from_db, update_workflow_name_db, retrieve_messages_from_share_uuid
+    change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, \
+    ensure_SDK_user_exists, get_chat_info, get_message_info, get_text_from_url
 
-from agents.reactive_agent import ReactiveDocumentAgent, WorkflowReactiveAgent
+_get_model()
+from agents.reactive_agent import ReactiveDocumentAgent
 from agents.config import AgentConfig
 
 from datetime import datetime
-
-from database.db_auth import get_db_connection
 
 from api_endpoints.gpt4_gtm.handler import gpt4_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
@@ -99,10 +70,6 @@ from api_endpoints.languages.korean import korean_blueprint
 from api_endpoints.languages.spanish import spanish_blueprint
 from api_endpoints.languages.arabic import arabic_blueprint
 from datetime import datetime
-from flask import current_app
-
-
-
 
 load_dotenv(override=True)
 
@@ -143,6 +110,7 @@ config = {
     'https://dashboard.privatechatbot.ai', # Frontend prod URL,
   ],
 }
+
 CORS(app, resources={ r'/*': {'origins': config['ORIGINS']}}, supports_credentials=True)
 
 app.secret_key = '6cac159dd02c902f822635ee0a6c3078'
@@ -171,15 +139,6 @@ app.config['MYSQL_HOST'] = 'db'
 app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = ''
 app.config['MYSQL_DATABASE'] = 'agents'
-
-
-#debug
-#print("MySQL config:", {
-#    "host": app.config['MYSQL_HOST'],
-#    "user": app.config['MYSQL_USER'],
-#    "password": "***REDACTED***",
-#    "database": app.config['MYSQL_DATABASE']
-#})
 
 mysql = MySQL(app)
 
@@ -247,7 +206,7 @@ def create_shareable_playbook(chat_id):
 @app.route('/playbook/<string:playbook_url>', methods=["POST"])
 @cross_origin(supports_credentials=True)
 def import_shared_chat(playbook_url):
-    return access_sharable_chat(playbook_url) 
+    return access_sharable_chat(playbook_url)
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -279,7 +238,7 @@ def login():
       scheme = "https"
       if "localhost" in netloc:
         scheme = "http"
-    
+
       flow.redirect_uri = f'{scheme}://{netloc}/callback'
     #   flow.redirect_uri = f'https://upreachapi.upreach.ai/callback'
 
@@ -306,7 +265,7 @@ def login():
       )
       response.headers.add('Access-Control-Allow-Headers',
                           'Origin, Content-Type, Accept')
-      
+
       return response
 
 
@@ -519,76 +478,6 @@ def get_text_from_url(web_url):
     text = result.get("content", "").strip()
     return text.replace("\n", "").replace("\t", "")
 
-# Organization routes
-
-@app.route('/create_organization', methods=['POST'])
-@valid_api_key_required
-def create_organization():
-    try:
-        name = request.json.get('name')
-        organization_type = request.json.get('organization_type')  # 'enterprise' or 'individual'
-        website_url = request.json.get('website_url')
-
-        if not name or not organization_type:
-            return jsonify({"error": "Missing required fields"}), 400
-
-        # Add organization to the database
-        organization_id = add_organization_to_db(name, organization_type, website_url)
-
-        # Scrape website if a URL is provided
-        if website_url:
-            print(f"Scraping website {website_url}...")
-            links, links_text = get_links(website_url)
-            for link, link_text in zip(links, links_text):
-                print(f"Processing scraped URL {link}...")
-                # Ingest each sub-URL's text as a document
-                doc_id, doesExist = add_document_to_db(link_text, link, organization_id)
-                if not doesExist:
-                    chunk_document.remote(link_text, 1000, doc_id)
-
-        return jsonify({"organization_id": organization_id}), 201
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/get_organization', methods=['GET'])
-@valid_api_key_required
-def get_organization():
-    try:
-        organization_id = request.args.get('organization_id')
-        if not organization_id:
-            return jsonify({"error": "Missing organization_id"}), 400
-
-        # Get organization info from the database
-        organization = get_organization_from_db(organization_id)
-        if not organization:
-            return jsonify({"error": "Organization not found"}), 404
-
-        return jsonify(organization), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/<organization_name>')
-def chat_with_organization(organization_name):
-    organization = get_organization_from_db_by_name(organization_name)
-    if organization:
-        return jsonify({
-            'name': organization['name'],
-            'website_url': organization['website_url'],
-            'organization_type': organization['organization_type']
-        })
-    else:
-        return jsonify({'error': 'Organization not found'}), 404
-
-def get_organization_from_db_by_name(organization_name):
-    conn, cursor = get_db_connection()
-    cursor.execute('SELECT * FROM organizations WHERE name = %s', [organization_name])
-    organization = cursor.fetchone()
-    conn.close()
-    return organization
-
 ## CHATBOT SECTION
 output_document_path = 'output_document'
 chat_history_file = os.path.join(output_document_path, 'chat_history.csv')
@@ -707,7 +596,7 @@ def retrieve_messages_from_chat():
 
     chat_type = request.json.get('chat_type')
     chat_id = request.json.get('chat_id')
-    
+
     messages = retrieve_message_from_db(user_email, chat_id, chat_type)
     chat_name = get_chat_info(chat_id)[2]
     print("chat_name", chat_name[2])
@@ -724,7 +613,7 @@ def get_playbook_messages():
     messages = retrieve_message_from_db("anon@anote.ai", chat_id, chat_type)
 
     return jsonify(messages=messages)
-    
+
 @app.route('/update-chat-name', methods=['POST'])
 def update_chat_name():
     try:
@@ -753,7 +642,7 @@ def infer_chat_name():
     chat_messages = request.json.get('messages')
     chat_id = request.json.get('chat_id')
 
-    
+
     completion = client.chat.completions.create(
         model="llama2:latest",
         messages=[
@@ -766,24 +655,6 @@ def infer_chat_name():
     update_chat_name_db(user_email, chat_id, new_name)
 
     return jsonify(chat_name=new_name)
-
-@app.route('/update-workflow-name', methods=['POST'])
-def update_workflow_name():
-    print("Print Update-Workflow-Name")
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    workflow_name = request.json.get('workflow_name')
-    workflow_id = request.json.get('workflow_id')
-
-    print("NEW workflow_name", workflow_name)
-
-    update_workflow_name_db(user_email, workflow_id, workflow_name)
-
-    return "Workflow name updated"
 
 
 @app.route('/delete-chat', methods=['POST'])
@@ -848,29 +719,6 @@ def ingest_pdfs():
 
 
     #return text, filename
-
-@app.route('/api/ingest-pdf-wf', methods=['POST'])
-def ingest_pdfs_wf():
-    workflow_id = request.form['workflow_id']
-
-    if 'files' not in request.files:
-        return "No file part in the request", 400
-
-    files = request.files.getlist('files')
-
-    MAX_CHUNK_SIZE = 1000
-
-    for file in files:
-        text = get_text_from_single_file(file)
-        text_pages = get_text_pages_from_single_file(file)
-        filename = file.filename
-
-        text
-        doc_id, doesExist = add_document_to_db(text, filename, workflow_id)
-
-        if not doesExist:
-            chunk_document.remote(text_pages, MAX_CHUNK_SIZE, doc_id)
-    return text, filename
 
 @app.route('/retrieve-current-docs', methods=['POST'])
 def retrieve_current_docs():
@@ -949,7 +797,7 @@ class CustomJSONEncoder(json.JSONEncoder):
             from dataclasses import asdict
             return asdict(o)
         return super().default(o)
-    
+
 @app.route('/process-message-pdf', methods=['POST'])
 def process_message_pdf():
     message = request.json.get('message')
@@ -967,11 +815,11 @@ def process_message_pdf():
         try:
             # Initialize the reactive agent
             agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
-            
+
             # Process the query using the reactive agent
             if not user_email or not isinstance(user_email, str):
                 return jsonify({"error": "User email is missing or invalid"}), 401
-            
+
             result = agent.process_query_stream(message.strip(), chat_id, user_email)
             def generate():
                 for chunk in result:
@@ -990,9 +838,9 @@ def process_message_pdf():
                         print(f"Streamed chunk: {chunk}")
                     except (TypeError, ValueError) as e:
                         print(f"Error serializing chunk {chunk}: {e}")
-            
+
             return Response(generate(), status=200)
-               
+
 
             # return jsonify({
             #     "answer": 1, # result["answer"],
@@ -1000,7 +848,7 @@ def process_message_pdf():
             #     "sources": 1, # result.get("sources", []),
             #     "reasoning": 1 # result.get("agent_reasoning", []) if AgentConfig.LOG_AGENT_REASONING else []
             # })
-            
+
         except Exception as e:
             print(f"Error in reactive agent processing: {str(e)}")
             # Fallback to original implementation if agent fails and fallback is enabled
@@ -1103,7 +951,7 @@ def process_message_pdf_demo():
     print('sources_str is', sources_str)
 
 
-    
+
     completion = client.chat.completions.create(
         model="llama2:latest",
         messages=[
@@ -1226,75 +1074,6 @@ def add_model_key():
 
 
 #Edgar
-@app.route('/check-valid-ticker', methods=['POST'])
-def check_valid_ticker():
-   ticker = request.json.get('ticker')
-   result = check_valid_api(ticker)
-   return jsonify({'isValid': result})
-
-@app.route('/add-ticker-to-chat', methods=['POST'])
-def add_ticker():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    ticker = request.json.get('ticker')
-    chat_id = request.json.get('chat_id')
-    isUpdate = request.json.get('isUpdate')
-
-    return add_ticker_to_chat_db(chat_id, ticker, user_email, isUpdate)
-
-
-@app.route('/process-ticker-info', methods=['POST'])
-def process_ticker_info():
-    chat_id = request.json.get('chat_id')
-    ticker = request.json.get('ticker')
-
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    if ticker:
-        MAX_CHUNK_SIZE = 1000
-
-        reset_uploaded_docs(chat_id, user_email)
-
-
-        url, ticker = download_10K_url_ticker(ticker)
-        filename = download_filing_as_pdf(url, ticker)
-
-        text = get_text_from_single_file(filename)
-
-        #result = p.from_buffer(filename)
-        #text = result["content"].strip()
-
-        #
-        #text_pages = get_text_pages_from_single_file(filename)
-
-        print("test1")
-        doc_id, doesExist = add_document_to_db(text, filename, chat_id)
-
-        if not doesExist:
-            print("test")
-            chunk_document.remote(text, MAX_CHUNK_SIZE, doc_id)
-            #remote_task = chunk_document.remote(text, MAX_CHUNK_SIZE, doc_id)
-            #result = ray.get(remote_task)
-
-        #if os.path.exists(filename):
-        #    os.remove(filename)
-        #    print(f"File '{filename}' has been deleted.")
-        #else:
-        #    print(f"The file '{filename}' does not exist.")
-
-
-    return jsonify({"error": "Invalid JWT"}), 200
-
-
-
 @app.route('/temp-test', methods=['POST'])
 def temp_test():
 
@@ -1324,138 +1103,7 @@ def temp_test():
 
 
 
-## WORKFLOWS SECTION
-
-@app.route('/create-new-workflow', methods=['POST'])
-def create_new_workflow():
-    print('create_new_workflow')
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    workflow_type = request.json.get('workflow_type')
-    model_type = request.json.get('model_type')
-
-    workflow_id = add_workflow_to_db(user_email, workflow_type) #DO I NEED MODEL_TYPE
-    print(f'Workflow_id is APP :', workflow_id)
-    return jsonify(workflow_id=workflow_id)
-
-@app.route('/remove-ticker-from-workflow', methods=['POST'])
-def remove_ticker_from_workflow():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    ticker = request.json.get('ticker')
-    workflow_id = request.json.get('workflow_id')
-
-    return remove_ticker_from_workflow_db(workflow_id, ticker, user_email)
-
-@app.route('/add-prompt-to-workflow', methods=['POST'])
-def add_prompt_to_workflow():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-        workflow_id = request.json.get('workflow_id')
-        prompt_text = request.json.get('prompt_text')
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    return add_prompt_to_workflow_db(workflow_id, prompt_text)
-
-@app.route('/remove-prompt-from-workflow', methods=['POST'])
-def remove_prompt_from_workflow():
-    try:
-        user_email = extractUserEmailFromRequest(request)
-        prompt_id = request.json.get('prompt_id')
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    return remove_prompt_from_workflow_db(prompt_id)
-
-
-
-
-@app.route('/generate_financial_report', methods=['POST'])
-def generate_financial_report():
-    print("generate_financial_report")
-
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-    # If the JWT is invalid, return an error
-        return jsonify({"error": "Invalid JWT"}), 401
-
-    try:
-        tickers = request.json.get('tickers')
-        print(f"tickers: {tickers}")
-        questions = request.json.get('questions')
-        workflowId = request.json.get('workflowId')
-
-        # Initialize a single PDF for all tickers
-        pdf = FPDF()
-        pdf.add_page()
-
-        pdf_title = '_'.join(tickers).upper()
-        pdf_title = f'Financial_Report_{pdf_title}'
-        pdf.set_title(pdf_title)
-
-        for ticker in tickers:
-            print(f"Processing ticker: {ticker}")
-            pdf.set_font('Times', 'B', 16)
-            pdf.ln(2)
-
-            # Include standard header of company information in the PDF
-            pdf.ln(h=5)
-            pdf.set_font('Times', 'B', 12)
-            pdf.write(1, f'Ticker: {ticker.upper()}')
-
-            process_ticker_info_wf(user_email, workflowId, ticker)
-            print("SUCCESSFULLY PROCESSED TICKER")
-
-            # Including Q&A in PDF
-            for question in questions:
-                print(f"Processing question: {question}")
-                try:
-                    # Use workflow reactive agent for processing
-                    workflow_agent = WorkflowReactiveAgent()
-                    answer = workflow_agent.process_workflow_query(question, workflowId, user_email)
-                except Exception as e:
-                    print(f"Workflow agent failed, using fallback: {e}")
-                    # Fallback to original process_prompt_answer
-                    answer = process_prompt_answer(question, workflowId, user_email)
-                
-                print("Successfully processed answer")
-                answer_encoded = answer.encode('latin-1', 'replace').decode('latin-1')
-                question_encoded = question.encode('latin-1', 'replace').decode('latin-1')
-
-                pdf.ln(h=5)
-                pdf.set_font('Times', 'B', 12)
-                pdf.write(1, question_encoded)
-                pdf.set_font('Times', '', 12)
-                pdf.ln(h=5)
-                pdf.multi_cell(0, 5, answer_encoded)
-                print("PRINTED Q&A")
-
-        pdf_output_path = 'financial_report.pdf'
-        pdf.output(pdf_output_path, 'F')
-
-         # Return the single PDF file
-        return send_file(
-            pdf_output_path,
-            as_attachment=True,
-            download_name=pdf_title + '.pdf',
-            mimetype='application/pdf'
-        )
-
-    except Exception as e:
-        print(f'Failed to generate financial report: {str(e)}')
-        return f'Failed to generate financial report: {str(e)}', 500
-
-
-
+## API Keys
 
 @app.route("/generateAPIKey", methods=["POST"])
 @jwt_or_session_token_required
@@ -1549,37 +1197,6 @@ def upload():
                 #chunk_document.remote(text, MAX_CHUNK_SIZE, doc_id)
                 result_id = chunk_document.remote(text, MAX_CHUNK_SIZE, doc_id)
                 result = ray.get(result_id)
-    elif chat_type == "edgar": #edgar
-        print("ticker")
-        ticker = request.form.getlist('ticker')[0]
-
-        ensure_SDK_user_exists(user_email)
-
-        #create new chat
-        model_number = 0 if model_type == "gpt" else 1 if model_type == "claude" else None
-        chat_number = 0 if chat_type == "documents" else 1 if chat_type == "edgar" else None
-        chat_id = add_chat_to_db(user_email, chat_number, model_number)
-
-        if ticker:
-            MAX_CHUNK_SIZE = 1000
-
-            reset_uploaded_docs(chat_id, user_email)
-
-
-            url, ticker = download_10K_url_ticker(ticker)
-            filename = download_filing_as_pdf(url, ticker)
-
-            text = get_text_from_single_file(filename)
-
-            print("test1")
-            doc_id, doesExist = add_document_to_db(text, filename, chat_id)
-
-            if not doesExist:
-                #print("test")
-                #chunk_document.remote(text, MAX_CHUNK_SIZE, doc_id)
-                result_id = chunk_document.remote(text, MAX_CHUNK_SIZE, doc_id)
-                
-                result = ray.get(result_id)
     else:
         return jsonify({"id": "Please enter a valid task type"}), 400
 
@@ -1603,16 +1220,16 @@ def public_ingest_pdf():
             # Use reactive agent for public API
             agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
             result = agent.process_query(message.strip(), chat_id, user_email)
-            
+
             # Format sources for compatibility
             sources_swapped = [[str(elem) for elem in source[::-1]] for source in result.get("sources", [])]
-            
+
             return jsonify(
                 message_id=result.get("message_id"),
                 answer=result["answer"],
                 sources=sources_swapped
             )
-            
+
         except Exception as e:
             print(f"Public chat agent error: {e}")
             # Fallback to original implementation if enabled
@@ -1712,15 +1329,7 @@ def evaluate():
         "contexts": contexts
     }
 
-    dataset = Dataset.from_dict(data)
-
-    result = ragas.evaluate(
-        dataset = dataset,
-        metrics=[
-            faithfulness,
-            answer_relevancy,
-        ],
-    )
+    result = data
 
     return result
 
@@ -1737,7 +1346,7 @@ def get_user_from_token(token):
     if not token:
         return None
 
-    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cursor = mysql.connection.cursor(dictionary=True)
     cursor.execute("""
         SELECT * FROM users WHERE session_token = %s
     """, (token,))

@@ -1,6 +1,6 @@
 
 # Development stage
-FROM python:3.8-slim
+FROM python:3.9-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

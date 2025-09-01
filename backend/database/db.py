@@ -10,32 +10,31 @@ from constants.global_constants import dbName, dbHost, dbUser, dbPassword
 import socket
 import secrets
 
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+import mysql.connector
+
+db_connect = None
+
 def get_db_connection():
-    if ('.local' in socket.gethostname() or '.lan' in socket.gethostname() or 'Shadow' in socket.gethostname()) or ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
-        if ('BL' in os.environ and os.environ['BL'] == 'bl'):
-            conn = mysql.connector.connect(
-                user='root',
-                password='1165205407',
-                host='localhost',
-                port=3306,
-                database=dbName
-            )
-        else:
-            conn = mysql.connector.connect(
-                user='root',
-                unix_socket='/tmp/mysql.sock',
-                database=dbName,
-            )
-    else:
-        conn = mysql.connector.connect(
-            host=dbHost,
-            user=dbUser,
-            password=dbPassword,
-            database=dbName,
-        )
-    return conn, conn.cursor(dictionary=True)
+    global db_connect
+
+    try:
+        if db_connect is not None and db_connect.is_connected():
+            return db_connect, db_connect.cursor(dictionary=True)
+    except Exception:
+        # resets the db ---> None getting it ready for the new connection 
+        db_connect = None
+
+    db_connect = mysql.connector.connect(
+        host=dbHost,
+        user=dbUser,
+        password=dbPassword,
+        database=dbName,
+    )
+    return db_connect, db_connect.cursor(dictionary=True)
+
 
 def create_7_day_free_trial(user_id):
     conn, cursor = get_db_connection()

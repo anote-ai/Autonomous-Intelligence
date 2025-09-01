@@ -20,14 +20,23 @@ function SignUpComponent(props) {
     } else if (password !== repeatPassword) {
       props.setStatusMessage("Passwords much match");
     } else {
+      if (props.addToast) {
+        props.addToast("Creating account...", "info", 3000);
+      }
       dispatch(signUp({ email: email, password: password })).then(
         (response) => {
           if (response.payload["status"] === "OK") {
             if ("token" in response.payload) {
               localStorage.setItem("sessionToken", response.payload["token"]);
+              if (props.addToast) {
+                props.addToast("Account created successfully!", "success", 2000);
+              }
               window.location.reload();
             }
           } else {
+            if (props.addToast) {
+              props.addToast("Sign up failed: " + response.payload["status"], "error", 4000);
+            }
             props.setStatusMessage(response.payload["status"]);
           }
         }

@@ -17,13 +17,22 @@ function LoginComponent(props) {
     } else if (!password) {
       props.setStatusMessage("Must enter a password");
     } else {
+      if (props.addToast) {
+        props.addToast("Signing in...", "info", 3000);
+      }
       dispatch(login({ email: email, password: password })).then((response) => {
         if (response.payload["status"] == "OK") {
           if ("token" in response.payload) {
             localStorage.setItem("sessionToken", response.payload["token"]);
+            if (props.addToast) {
+              props.addToast("Login successful!", "success", 2000);
+            }
             window.location.reload();
           }
         } else {
+          if (props.addToast) {
+            props.addToast("Login failed: " + response.payload["status"], "error", 4000);
+          }
           props.setStatusMessage(response.payload["status"]);
         }
       });

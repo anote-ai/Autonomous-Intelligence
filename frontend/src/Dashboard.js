@@ -16,7 +16,6 @@ import {
   connectorOptions,
   languages, // Import connector options from RouteConstants
   companies,
-  LANGUAGE_ROUTES,
   createcompany,
 } from "./constants/RouteConstants";
 import PaymentsComponent from "./subcomponents/payments/PaymentsComponent";
@@ -25,7 +24,6 @@ import { Flowbite } from "flowbite-react";
 import { refreshCredits, useUser, viewUser } from "./redux/UserSlice";
 import { useDispatch } from "react-redux";
 import { useEffect } from "react";
-import Workflows from "./components/Workflows"
 import Home from "./financeGPT/components/Home";
 import { APISKeyDashboard } from "./subcomponents/api/APISKeyDashboard";
 import DownloadPrivateGPT from "./components/DownloadPrivateGPT.js";
@@ -99,17 +97,22 @@ function Dashboard() {
     <Route key={option.value} path={option.path} element={<Home />} />
   ));
 
-  var publicRoutes = [ //this system needs to be fixed, all routes should be accessible post log-in
-    <Route key="root" index element={<CheckLogin darkTheme={darkTheme} setIsLoggedInParent={setIsLoggedIn} />} />,
+  var publicRoutes = [
+    //this system needs to be fixed, all routes should be accessible post log-in
+    <Route
+      key="root"
+      index
+      element={
+        <CheckLogin darkTheme={darkTheme} setIsLoggedInParent={setIsLoggedIn} />
+      }
+    />,
     <Route path={homePath} element={<Home />} />,
     <Route path={gtmPath} element={<GTMChatbot />} />,
-    <Route path={chatbots} element ={<ChatbotLanding />} />,
-    <Route path={languages} element = {<Languages />} />,
+    <Route path={languages} element={<Languages />} />,
     <Route path="/languages/:lang" element={<Languages />} />,
-    <Route path={createcompany} element = {<CreateCompany />} />,
-    <Route path={companies} element = {<Companies />} />,
-
-  ]
+    <Route path={createcompany} element={<CreateCompany />} />,
+    <Route path={companies} element={<Companies />} />,
+  ];
   var privateRoutes = [
     <Route
       index
@@ -135,9 +138,6 @@ function Dashboard() {
     showRestrictedRouteRequiringUserSession ? (
       <Route path={downloadPrivateGPTPath} element={<DownloadPrivateGPT />} />
     ) : null,
-    // showRestrictedRouteRequiringUserSession ? (
-    //   <Route path={selectWorkflowsPath} element={<SelectWorkflow />} />
-    // ) : null,
     showRestrictedRouteRequiringUserSession ? (
       <Route path={apiKeyDashboardPath} element={<APISKeyDashboard />} />
     ) : null,

@@ -8,6 +8,7 @@ class AgentConfig:
     ENABLE_AGENTS = os.getenv("ENABLE_AGENTS", "true").lower() == "true"
     AGENT_FALLBACK_ENABLED = os.getenv("AGENT_FALLBACK_ENABLED", "true").lower() == "true"
     ENABLE_GENERAL_KNOWLEDGE = os.getenv("ENABLE_GENERAL_KNOWLEDGE", "true").lower() == "true"
+    ENABLE_MULTI_AGENT_SYSTEM = os.getenv("ENABLE_MULTI_AGENT_SYSTEM", "true").lower() == "true"
     
     # MCP Server settings
     MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000")
@@ -33,6 +34,7 @@ class AgentConfig:
             "enable_agents": cls.ENABLE_AGENTS,
             "fallback_enabled": cls.AGENT_FALLBACK_ENABLED,
             "enable_general_knowledge": cls.ENABLE_GENERAL_KNOWLEDGE,
+            "enable_multi_agent": cls.ENABLE_MULTI_AGENT_SYSTEM,
             "mcp_server_url": cls.MCP_SERVER_URL,
             "mcp_timeout": cls.MCP_SERVER_TIMEOUT,
             "default_model_type": cls.DEFAULT_AGENT_MODEL_TYPE,
@@ -58,3 +60,8 @@ class AgentConfig:
     def is_general_knowledge_enabled(cls) -> bool:
         """Check if general knowledge fallback is enabled"""
         return cls.ENABLE_GENERAL_KNOWLEDGE
+    
+    @classmethod
+    def is_multi_agent_enabled(cls) -> bool:
+        """Check if multi-agent system is enabled"""
+        return cls.ENABLE_MULTI_AGENT_SYSTEM

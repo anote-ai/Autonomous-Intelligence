@@ -2,7 +2,6 @@ import os
 import sqlite3
 import numpy as np
 import openai
-from sec_api import QueryApi, RenderApi
 import requests
 import PyPDF2
 import ray
@@ -20,7 +19,7 @@ def dict_factory(cursor, row):
 
 def get_db_connection():
     db_path = os.environ.get('DB_PATH', './database.db') #somehow has to get the path to the .db file inside the private chatbot app
-    
+
     conn = sqlite3.connect(db_path)
     conn.row_factory = dict_factory
     cursor = conn.cursor()
@@ -39,22 +38,22 @@ def create_db_file():
 
         insert_sql = """
         INSERT INTO users (
-            session_token, 
-            session_token_expiration, 
-            password_reset_token, 
-            password_reset_token_expiration, 
-            credits, 
-            credits_updated, 
-            chat_gpt_date, 
+            session_token,
+            session_token_expiration,
+            password_reset_token,
+            password_reset_token_expiration,
+            credits,
+            credits_updated,
+            chat_gpt_date,
             num_chatgpt_requests
         ) VALUES (
-            'sessionToken123', 
-            '2023-01-01 00:00:00', 
-            'passwordResetToken123', 
-            '2023-01-01 00:00:00', 
-            10, 
-            '2023-01-01 00:00:00', 
-            '2023-01-01 00:00:00', 
+            'sessionToken123',
+            '2023-01-01 00:00:00',
+            'passwordResetToken123',
+            '2023-01-01 00:00:00',
+            10,
+            '2023-01-01 00:00:00',
+            '2023-01-01 00:00:00',
             5
         );
         """
@@ -65,7 +64,7 @@ def create_db_file():
 
     connection.commit()
     connection.close()
-    
+
     #return users
     return users[0]
 
@@ -78,13 +77,13 @@ def ensure_SDK_user_exists(user_email):
         return result[0]
     else:
         insert_query = """
-        INSERT INTO users (email, person_name, profile_pic_url, credits) 
+        INSERT INTO users (email, person_name, profile_pic_url, credits)
         VALUES (?, 'SDK User', 'url_to_default_image', 0)
         """
         cursor.execute(insert_query, (user_email,))
         conn.commit()
         return cursor.lastrowid
-    
+
 def add_message_to_db(text, chat_id, isUser):
     #If isUser is 0, it is a bot message, 1 is a user message
     conn, cursor = get_db_connection()
@@ -99,10 +98,10 @@ def add_message_to_db(text, chat_id, isUser):
 
 def get_chat_info(chat_id):
     conn, cursor = get_db_connection()
-    
+
     cursor.execute("SELECT model_type, associated_task FROM chats WHERE id = ?", (chat_id,))
     result = cursor.fetchone()
-        
+
     if result:
         model_type = result['model_type']
         associated_task = result['associated_task']
@@ -110,7 +109,7 @@ def get_chat_info(chat_id):
         model_type, associated_task = None, None
     cursor.close()
     conn.close()
-    
+
     return model_type, associated_task
 
 def get_relevant_chunks(k, question, chat_id):
@@ -200,7 +199,7 @@ def add_sources_to_db(message_id, sources):
 
     cursor.close()
     conn.close()
-    
+
 
 def add_document_to_db(text, document_name, chat_id):
     conn, cursor = get_db_connection()
@@ -255,7 +254,7 @@ def chunk_document(text, maxChunkSize, document_id):
 
     conn.commit()
     conn.close()
-    
+
 def reset_uploaded_docs(chat_id):
     conn, cursor = get_db_connection()
 
@@ -281,51 +280,7 @@ def reset_uploaded_docs(chat_id):
     conn.commit()
 
     conn.close()
-    
 
-def download_10K_url_ticker(ticker):
-    year = 2023
-
-    ticker_query = 'ticker:({})'.format(ticker)
-    query_string = '{ticker_query} AND filedAt:[{year}-01-01 TO {year}-12-31] AND formType:"10-K" AND NOT formType:"10-K/A" AND NOT formType:NT'.format(ticker_query=ticker_query, year=year)
-
-    query = {
-        "query": { "query_string": {
-            "query": query_string,
-            "time_zone": "America/New_York"
-        } },
-        "from": "0",
-        "size": "200",
-        "sort": [{ "filedAt": { "order": "desc" } }]
-      }
-
-
-    response = QueryApi.get_filings(query)
-
-    filings = response['filings']
-
-    if filings:
-       ticker=filings[0]['ticker']
-       url=filings[0]['linkToFilingDetails']
-    else:
-       ticker = None
-       url = None
-
-    return url, ticker
-
-def download_filing_as_pdf(url, ticker):
-    API_ENDPOINT = "https://api.sec-api.io/filing-reader"
-
-    api_url = API_ENDPOINT + "?token=" + sec_api_key + "&url=" + url + "&type=pdf"
-
-    response = requests.get(api_url)
-
-    file_name = f"{ticker}.pdf"
-
-    with open(file_name, 'wb') as f:
-        f.write(response.content)
-
-    return file_name
 
 def get_text_from_single_file(file):
     reader = PyPDF2.PdfReader(file)
@@ -341,14 +296,14 @@ def get_message_info(answer_id):
     conn, cursor = get_db_connection()
 
     answer_query = "SELECT chat_id, message_text, relevant_chunks FROM messages WHERE id = ?"
-    
+
     cursor.execute(answer_query, (answer_id, ))
     answer = cursor.fetchone()
-    
+
     if not answer:
         print("Either the answer does not exist or it doesn't belong to the specified user.")
         return None, None
-    
+
     chat_id = answer['chat_id']
 
     question_query = """
@@ -358,9 +313,9 @@ def get_message_info(answer_id):
     ORDER BY m.id DESC
     LIMIT 1
     """
-    
+
     cursor.execute(question_query, (answer_id, chat_id))
     question = cursor.fetchone()
-        
+
     cursor.close()
     return question, answer
