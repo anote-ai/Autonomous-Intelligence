@@ -7,7 +7,6 @@ python-dateutil
 bcrypt==4.0.1
 boto3
 python-dotenv==1.0.0
-datasets
 flask_mail
 redis
 Werkzeug==2.2.2
@@ -56,4 +55,4 @@ flask-mysql-connector
 mysqlclient
 
 # Evaluation
-ragas>=0.2.0     
+ragas>=0.2.0
