@@ -18,6 +18,7 @@ import {
   companies,
   createcompany,
   evaluations,
+  leaderboard,
   submittoleaderboardPath,
 } from "./constants/RouteConstants";
 import PaymentsComponent from "./subcomponents/payments/PaymentsComponent";
@@ -36,6 +37,7 @@ import Companies from "./landing_page/landing_page_screens/Chatbots/companies/Co
 import CreateCompany from "./landing_page/landing_page_screens/Chatbots/companies/CreateCompany";
 import TranslateSentences from "./landing_page/landing_page_screens/Chatbots/evaluations/Evaluations";
 import SubmitToLeaderboard from "./components/SubmitToLeaderboard";
+import Leaderboard from "./components/Leaderboard";
 
 function Dashboard() {
   const [darkTheme, setDarkTheme] = useState(true);
@@ -117,6 +119,7 @@ function Dashboard() {
     <Route path={createcompany} element={<CreateCompany />} />,
     <Route path={companies} element={<Companies />} />,
     <Route path={evaluations} element={<TranslateSentences />} />,
+    <Route path={leaderboard} element={<Leaderboard />} />,
     <Route path={submittoleaderboardPath} element={<SubmitToLeaderboard />} />,
   ];
   var privateRoutes = [

@@ -6,18 +6,10 @@ const TranslateSentences = () => {
   const [error, setError] = useState(null);
   const [datasets, setDatasets] = useState([]); // Made dynamic
   const [openIndex, setOpenIndex] = useState(null);
-  const [expandedDatasets, setExpandedDatasets] = useState({});
   const navigate = useNavigate();
 
   const handleClick = (index) => {
     setOpenIndex(openIndex === index ? null : index);
-  };
-
-  const toggleDatasetExpansion = (datasetIndex) => {
-    setExpandedDatasets(prev => ({
-      ...prev,
-      [datasetIndex]: !prev[datasetIndex]
-    }));
   };
 
   const faqs = [
@@ -150,7 +142,7 @@ const TranslateSentences = () => {
               View Dataset
             </a>
             <div className="mt-2 space-y-2">
-              {(expandedDatasets[i] ? dataset.models : dataset.models.slice(0, 5)).map((m) => (
+              {dataset.models.slice(0, 5).map((m) => (
                 <div
                   key={m.rank}
                   className="flex items-center justify-between bg-gray-900 p-3 rounded-lg"
@@ -169,10 +161,14 @@ const TranslateSentences = () => {
               {dataset.models.length > 5 && (
                 <div className="mt-4 text-center">
                   <button
-                    onClick={() => toggleDatasetExpansion(i)}
+                    onClick={() => navigate('/leaderboard', { 
+                      state: { 
+                        selectedDataset: dataset.name
+                      } 
+                    })}
                     className="text-blue-400 hover:text-blue-300 underline text-sm font-medium transition-colors"
                   >
-                    {expandedDatasets[i] ? 'Show less' : `View all ${dataset.models.length} models →`}
+                    View all {dataset.models.length} models →
                   </button>
                 </div>
               )}
