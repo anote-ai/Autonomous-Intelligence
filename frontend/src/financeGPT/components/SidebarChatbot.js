@@ -1,4 +1,3 @@
-import { useNavigate } from "react-router-dom";
 import React, {
   useState,
   useEffect,
@@ -9,15 +8,10 @@ import React, {
 import fetcher from "../../http/RequestConfig";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrashCan } from "@fortawesome/free-solid-svg-icons";
-import { faEye } from "@fortawesome/free-solid-svg-icons";
-
-import Sources from "./Sources";
 import ChatHistory from "./ChatHistory";
 import Select from "react-select";
 import { SelectStyles } from "../../styles/SelectStyles";
 import { Modal } from "flowbite-react";
-import { FaDatabase } from "react-icons/fa";
-import { connectorOptions } from "../../constants/RouteConstants";
 
 const SidebarChatbot = forwardRef((props, ref) => {
   const [docs, setDocs] = useState([]);
@@ -790,55 +784,9 @@ const SidebarChatbot = forwardRef((props, ref) => {
     { value: 1, label: "Claude" }
   );
 
-  const taskoptions = [
-    { value: 0, label: "File Uploader" },
-    { value: 1, label: "10-K Edgar" },
-  ];
-
-  // Function to handle when an option is selected
-  const handleChange = (selectedOption) => {
-    props.setcurrTask(selectedOption.value);
-  };
-
-  const handleOpenModal = () => {
-    setIsModalOpen(true);
-  };
-
   const handleCloseModal = () => {
     setIsModalOpen(false);
   };
-
-  const handleDatasetSelect = async (datasetName) => {
-    // navigate to the filePath
-    handleCloseModal(); // Close the modal after download
-  };
-
-  const filteredOptions = connectorOptions.filter(
-    (option) => selectedTaskType === "" || option.taskType === selectedTaskType
-  );
-
-  const onConnectorCardClick = (value) => {
-    handleDatasetSelect(value);
-  };
-
-  // Determine the current selected value based on props.currTask
-  const selectedTaskValue = taskoptions.find(
-    (option) => option.value === props.currTask
-  );
-
-  // Extract unique cited files from messages
-  const citedFiles = React.useMemo(() => {
-    const files = {};
-    (props.messages || []).forEach((msg) => {
-      if (Array.isArray(msg.relevant_chunks)) {
-        msg.relevant_chunks.forEach((chunk) => {
-          const key = chunk.document_name || chunk.filename;
-          if (key) files[key] = chunk;
-        });
-      }
-    });
-    return Object.values(files);
-  }, [props.messages]);
 
   return (
     <>
@@ -1017,26 +965,6 @@ const SidebarChatbot = forwardRef((props, ref) => {
               >
                 All
               </button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {filteredOptions.map((option, index) => (
-                <div
-                  key={index}
-                  className={`p-4 border rounded-lg shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl bg-gray-700 text-gray-200 hover:bg-gray-600
-                    }`}
-                  onClick={() => onConnectorCardClick(option.value)}
-                >
-                  <div className="flex flex-col items-center text-center">
-                    <FaDatabase className="mb-2" size={20} />
-                    <div className="text-sm font-semibold mb-1">
-                      {option.label}
-                    </div>
-                    <div className="text-xs text-gray-300">
-                      {option.taskType}
-                    </div>
-                  </div>
-                </div>
-              ))}
             </div>
           </Modal.Body>
         </Modal>
