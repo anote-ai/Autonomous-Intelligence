@@ -222,22 +222,23 @@ CREATE TABLE evaluation_results (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
     model_submission_id INTEGER NOT NULL,
     score DECIMAL(10, 6) NOT NULL,
+    evaluation_details LONGTEXT,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (model_submission_id) REFERENCES model_submissions(id)
 );
 
 -- Insert benchmark datasets
 INSERT INTO benchmark_datasets (name, task_type, evaluation_metric, reference_data) VALUES
-('flores_spanish_translation', 'translation', 'BLEU', '[]'),
-('flores_spanish_translation_bertscore', 'translation', 'BERTScore', '[]'),
-('flores_arabic_translation', 'translation', 'BLEU', '[]'),
-('flores_arabic_translation_bertscore', 'translation', 'BERTScore', '[]'),
-('flores_japanese_translation', 'translation', 'BLEU', '[]'),
-('flores_japanese_translation_bertscore', 'translation', 'BERTScore', '[]'),
-('flores_chinese_translation', 'translation', 'BLEU', '[]'),
-('flores_chinese_translation_bertscore', 'translation', 'BERTScore', '[]'),
-('flores_korean_translation', 'translation', 'BLEU', '[]'),
-('flores_korean_translation_bertscore', 'translation', 'BERTScore', '[]');
+('flores_spanish_translation', 'translation', 'bleu', '[]'),
+('flores_spanish_translation_bertscore', 'translation', 'bertscore', '[]'),
+('flores_arabic_translation', 'translation', 'bleu', '[]'),
+('flores_arabic_translation_bertscore', 'translation', 'bertscore', '[]'),
+('flores_japanese_translation', 'translation', 'bleu', '[]'),
+('flores_japanese_translation_bertscore', 'translation', 'bertscore', '[]'),
+('flores_chinese_translation', 'translation', 'bleu', '[]'),
+('flores_chinese_translation_bertscore', 'translation', 'bertscore', '[]'),
+('flores_korean_translation', 'translation', 'bleu', '[]'),
+('flores_korean_translation_bertscore', 'translation', 'bertscore', '[]');
 
 CREATE UNIQUE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_chats_user_id ON chats(user_id);
