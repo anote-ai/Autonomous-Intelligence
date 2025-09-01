@@ -6,7 +6,7 @@ import {
   faPaperPlane,
   faUndoAlt,
 } from "@fortawesome/free-solid-svg-icons";
-import "../../landing_page_styles/LandingPageChatbot.css";
+import "../../landing_page_screens/Chatbots/LandingPageChatbot.css";
 import { Flowbite, TextInput } from "flowbite-react";
 import fetcher from "../../../http/RequestConfig";
 

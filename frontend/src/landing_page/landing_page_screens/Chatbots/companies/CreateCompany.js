@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPaperPlane, faUndoAlt } from "@fortawesome/free-solid-svg-icons";
-import PDFUploader from "../../../landing_page_components/Chatbot/PdfUploader";
-import Chatbot from "../../../landing_page_components/Chatbot/Chatbot";
+import PDFUploader from "../../../landing_page_screens/Chatbots/PdfUploader";
+import Chatbot from "../../../landing_page_screens/Chatbots/Chatbot";
 import fetcher from "../../../../http/RequestConfig";
 
 const CreateCompany = () => {
