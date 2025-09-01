@@ -24,7 +24,6 @@ import { Flowbite } from "flowbite-react";
 import { refreshCredits, useUser, viewUser } from "./redux/UserSlice";
 import { useDispatch } from "react-redux";
 import { useEffect } from "react";
-import Workflows from "./components/Workflows";
 import Home from "./financeGPT/components/Home";
 import { APISKeyDashboard } from "./subcomponents/api/APISKeyDashboard";
 import DownloadPrivateGPT from "./components/DownloadPrivateGPT.js";
@@ -139,9 +138,6 @@ function Dashboard() {
     showRestrictedRouteRequiringUserSession ? (
       <Route path={downloadPrivateGPTPath} element={<DownloadPrivateGPT />} />
     ) : null,
-    // showRestrictedRouteRequiringUserSession ? (
-    //   <Route path={selectWorkflowsPath} element={<SelectWorkflow />} />
-    // ) : null,
     showRestrictedRouteRequiringUserSession ? (
       <Route path={apiKeyDashboardPath} element={<APISKeyDashboard />} />
     ) : null,
