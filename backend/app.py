@@ -55,7 +55,7 @@ from agents.config import AgentConfig
 
 from datetime import datetime
 
-from api_endpoints.gpt4_gtm.handler import gpt4_blueprint
+from api_endpoints.languages.gtm import gpt4_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
 from api_endpoints.languages.japanese import japanese_blueprint
 from api_endpoints.languages.korean import korean_blueprint
