@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { LANGUAGE_ROUTES } from "../../../../constants/RouteConstants";
 import { useParams, useNavigate } from "react-router-dom";
-
 
 const LANGUAGE_MODELS = {
   korean: "GPT-4.1",
@@ -35,7 +33,7 @@ const Languages = () => {
     const scrollRef = useRef(null);
     const [file, setFile] = useState(null);
     const fileInputRef = useRef(null);
-  
+
     // Redirect to Spanish if no language is selected
     useEffect(() => {
         if (!lang || !validLanguages.includes(lang)) {
@@ -62,22 +60,22 @@ const Languages = () => {
           behavior: "smooth",
         });
       }, [messages]);
-      
+
     if (!lang || !validLanguages.includes(lang)) return null;
-      
-  
+
+
     const sendMessage = async (text) => {
       console.log("🟡 Attempting to send:", text);
       if (!text.trim()) return;
       inputRef.current.value = "";
-  
+
       const tempId = Date.now();
       setMessages((prev) => [
         ...prev,
         { message: text, direction: "outgoing" },
         { message: "Thinking...", direction: "incoming", id: tempId },
       ]);
-  
+
     //Chatbot remembers convo
     const openAIMessages = [
 
@@ -108,11 +106,11 @@ const Languages = () => {
           // headers: { "Content-Type": "application/json" },
           body: formData,
         });
-  
+
         const data = await res.json();
 
         console.log("Received response:", res);
-  
+
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === tempId
@@ -130,14 +128,14 @@ const Languages = () => {
         );
       }
     };
-  
+
     const handleKeyPress = (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault(); // stops newline
         sendMessage(inputRef.current.value);
       }
     };
-  
+
     // ... rest of your JSX remains unchanged
   return (
   <section className="min-h-screen bg-[#111827] text-white p-8">

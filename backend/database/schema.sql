@@ -11,9 +11,6 @@ DROP TABLE IF EXISTS chat_share_documents;
 DROP TABLE IF EXISTS chat_share_messages;
 DROP TABLE IF EXISTS chat_shares;
 DROP TABLE IF EXISTS chats;
-DROP TABLE IF EXISTS reports;
-DROP TABLE IF EXISTS tickers;
-DROP TABLE IF EXISTS workflows;
 DROP TABLE IF EXISTS apiKeys;
 DROP TABLE IF EXISTS user_company_chatbots;
 DROP TABLE IF EXISTS users;
@@ -90,7 +87,6 @@ CREATE TABLE chats (
     user_id INTEGER NOT NULL,
     model_type TINYINT NOT NULL DEFAULT 0,
     chat_name TEXT,
-    ticker TEXT,
     associated_task INTEGER NOT NULL,
     custom_model_key TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -145,32 +141,14 @@ CREATE TABLE messages (
     FOREIGN KEY (chat_id) REFERENCES chats(id)
 );
 
-CREATE TABLE workflows (
-    id INTEGER PRIMARY KEY AUTO_INCREMENT,
-    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    workflow_name VARCHAR(255),
-    associated_task INTEGER NOT NULL,
-    user_id INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE tickers (
-    id INTEGER PRIMARY KEY AUTO_INCREMENT,
-    ticker_name VARCHAR(255) NOT NULL,
-    workflow_id INTEGER,
-    FOREIGN KEY (workflow_id) REFERENCES workflows(id)
-);
-
 CREATE TABLE documents (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    workflow_id INTEGER,
     chat_id INTEGER,
     organization_id INTEGER,
     storage_key TEXT NOT NULL,
     document_name VARCHAR(255) NOT NULL,
     document_text LONGTEXT NOT NULL,
-    FOREIGN KEY (workflow_id) REFERENCES workflows(id),
     FOREIGN KEY (chat_id) REFERENCES chats(id),
     FOREIGN KEY (organization_id) REFERENCES organizations(id)
 );
@@ -187,9 +165,7 @@ CREATE TABLE chunks (
 
 CREATE TABLE prompts (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
-    workflow_id INTEGER NOT NULL,
-    prompt_text TEXT NOT NULL,
-    FOREIGN KEY (workflow_id) REFERENCES workflows(id)
+    prompt_text TEXT NOT NULL
 );
 
 CREATE TABLE prompt_answers (
@@ -199,15 +175,6 @@ CREATE TABLE prompt_answers (
     answer_text TEXT,
     FOREIGN KEY (prompt_id) REFERENCES prompts(id),
     FOREIGN KEY (citation_id) REFERENCES chunks(id)
-);
-
-CREATE TABLE reports (
-    id INTEGER PRIMARY KEY AUTO_INCREMENT,
-    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    workflow_id INTEGER NOT NULL,
-    report_name VARCHAR(255),
-    storage_key TEXT NOT NULL,
-    FOREIGN KEY (workflow_id) REFERENCES workflows(id)
 );
 
 
@@ -244,15 +211,10 @@ CREATE UNIQUE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_chats_user_id ON chats(user_id);
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
 CREATE INDEX idx_messages_sent_from_user ON messages(sent_from_user);
-CREATE INDEX idx_workflows_user_id ON workflows(user_id);
 CREATE INDEX idx_api_keys_user_id ON apiKeys(user_id);
-CREATE INDEX idx_documents_workflow_id ON documents(workflow_id);
 CREATE INDEX idx_documents_chat_id ON documents(chat_id);
 CREATE INDEX idx_chunks_document_id ON chunks(document_id);
-CREATE INDEX idx_prompts_workflow_id ON prompts(workflow_id);
 CREATE INDEX idx_prompt_answers_prompt_id ON prompt_answers(prompt_id);
 CREATE INDEX idx_prompt_answers_citation_id ON prompt_answers(citation_id);
-CREATE INDEX idx_reports_workflow_id ON reports(workflow_id);
-CREATE INDEX idx_tickers_workflow_id ON tickers(workflow_id);
 CREATE INDEX idx_organizations_name ON organizations(name);
 CREATE UNIQUE INDEX idx_user_chatbot_unique ON user_company_chatbots(user_id, path);
