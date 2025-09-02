@@ -102,24 +102,6 @@ const SubmitToLeaderboard = ({
       if (response.data.success) {
         setApiResponse(response.data);
         setSubmissionStatus(`Success! Your model scored ${response.data.score.toFixed(4)} BLEU score.`);
-        
-        // Also submit to Google Sheets for record keeping (optional)
-        const googleSheetsData = {
-          ...formData,
-          bleuScore: response.data.score,
-          submissionDate: new Date().toISOString()
-        };
-
-        try {
-          await fetch("https://script.google.com/macros/s/YOUR_SCRIPT_URL/exec", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(googleSheetsData),
-          });
-        } catch (googleError) {
-          console.log("Google Sheets submission failed (non-critical):", googleError);
-        }
-
       } else {
         setSubmissionStatus(`Error! ${response.data.error || "Submission failed"}`);
       }
