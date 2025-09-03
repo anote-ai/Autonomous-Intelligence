@@ -8,7 +8,7 @@ const OFFLINE_LOG_INTERVAL = 30000; // Only log offline status every 30 seconds
 // Function to check if error is network-related (backend down) vs auth-related
 function isNetworkError(error) {
   return (
-    error.name === 'TypeError' || 
+    error.name === 'TypeError' ||
     error.message.includes('fetch') ||
     error.message.includes('NetworkError') ||
     error.message.includes('Failed to fetch') ||
@@ -16,27 +16,7 @@ function isNetworkError(error) {
   );
 }
 
-// Function to handle backend connectivity status
-function updateBackendStatus(isOnline) {
-  const wasOffline = !isBackendOnline;
-  isBackendOnline = isOnline;
-  
-  // Only log status changes, not every failed request
-  if (isOnline && wasOffline) {
-    console.log('✅ Backend is back online');
-  } else if (!isOnline && wasOffline) {
-    const now = Date.now();
-    if (now - lastOfflineLog > OFFLINE_LOG_INTERVAL) {
-      console.warn('🔴 Backend is offline');
-      lastOfflineLog = now;
-    }
-  }
-  
-  // Dispatch custom event for UI components to listen to
-  window.dispatchEvent(new CustomEvent('backendStatusChange', { 
-    detail: { isOnline, wasOffline } 
-  }));
-}
+
 
 export function defaultHeaders() {
   const accessToken = localStorage.getItem("accessToken");
@@ -77,7 +57,6 @@ export function refreshAccessToken() {
       // Return a rejected promise if the response is not successful
       throw new Error('Token refresh failed');
     }
-    updateBackendStatus(true); // Backend is working
     return response.json();
   }).then((data) => {
     localStorage.setItem("accessToken", data.accessToken);
@@ -85,14 +64,12 @@ export function refreshAccessToken() {
   }).catch((error) => {
     // Check if this is a network error (backend down) vs auth error
     if (isNetworkError(error)) {
-      updateBackendStatus(false);
       // Don't log every refresh attempt when backend is down
       return Promise.reject({ type: 'NETWORK_ERROR', message: 'Backend offline', silent: true });
     } else {
       // This is likely an auth error - handle normally
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
-      updateBackendStatus(true); // Backend is up, but auth failed
       window.location.replace("/");
       return Promise.reject(error);
     }
@@ -109,7 +86,6 @@ function fetcher(url, options = {}, retryCount = 0) {
   }
 
   return fetch(API_ENDPOINT + "/" + url, updateOptions(options)).then((response) => {
-    updateBackendStatus(true); // Backend is responding
     if (!response.ok) {
       // Return a rejected promise if the response is not successful
       throw new Error('HTTP Error: ' + response.status);
@@ -119,11 +95,10 @@ function fetcher(url, options = {}, retryCount = 0) {
     (error) => {
       // Check if this is a network error (backend down)
       if (isNetworkError(error)) {
-        updateBackendStatus(false);
         // Don't spam console with offline errors
-        
-        return Promise.reject({ 
-          type: 'NETWORK_ERROR', 
+
+        return Promise.reject({
+          type: 'NETWORK_ERROR',
           message: 'Backend offline',
           originalUrl: url,
           silent: true // Flag to indicate this should be handled silently

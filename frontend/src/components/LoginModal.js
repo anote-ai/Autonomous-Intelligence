@@ -6,13 +6,11 @@ import SignUpComponent from "../subcomponents/login/SignUpComponent";
 import ForgotPasswordComponent from "../subcomponents/login/ForgotPasswordComponent";
 import PasswordReset from "../subcomponents/login/PasswordReset";
 import googleIcon from "../assets/google_button_blue_enh.png";
-import { useToast } from "./Toast";
 import "../styles/Login.css";
 
 function LoginModal({ isOpen, onClose, productHash, freeTrialCode }) {
   const dispatch = useDispatch();
-  const { addToast } = useToast();
-  
+
   const onLogin = () => {
     dispatch(
       login({
@@ -80,7 +78,6 @@ function LoginModal({ isOpen, onClose, productHash, freeTrialCode }) {
               setPageState={setPageStateWithReset}
               statusMessage={statusMessage}
               setStatusMessage={setStatusMessage}
-              addToast={addToast}
             />
           )}
           {pageState === 2 && (
@@ -88,7 +85,6 @@ function LoginModal({ isOpen, onClose, productHash, freeTrialCode }) {
               setPageState={setPageStateWithReset}
               statusMessage={statusMessage}
               setStatusMessage={setStatusMessage}
-              addToast={addToast}
             />
           )}
           {pageState === 3 && (

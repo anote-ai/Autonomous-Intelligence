@@ -12,8 +12,6 @@ import {
   downloadPrivateGPTPath,
   homePath,
   gtmPath,
-  chatbots,
-  connectorOptions,
   languages, // Import connector options from RouteConstants
   companies,
   createcompany,
@@ -78,24 +76,6 @@ function Dashboard() {
     var daysDifference = Math.ceil(timeDifference / (1000 * 60 * 60 * 24));
     numDaysLeft = daysDifference.toString();
   }
-
-  // TODO: If you want to enabled restricted routes by default for
-  // specific users.
-  // if (user && user["email"]) {
-  //   var userEmail = user["email"];
-  //   if (
-  //     userEmail == "t.clifford@wustl.edu" ||
-  //     userEmail == "vidranatan@gmail.com" ||
-  //     userEmail == "raghuwanshi.rajat10@gmail.com"
-  //   ) {
-  //     showRestrictedRouteRequiringPayments = true;
-  //   }
-  // }
-
-  // Dynamically generate routes for connector options
-  const connectorRoutes = connectorOptions.map((option) => (
-    <Route key={option.value} path={option.path} element={<Home />} />
-  ));
 
   var publicRoutes = [
     //this system needs to be fixed, all routes should be accessible post log-in
@@ -177,7 +157,6 @@ function Dashboard() {
           <Routes>
             {publicRoutes}
             {privateRoutes}
-            {connectorRoutes}
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         </div>
