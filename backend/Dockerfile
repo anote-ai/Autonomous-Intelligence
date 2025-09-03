@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     default-jdk \
     pkg-config \
     default-libmysqlclient-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -37,6 +38,9 @@ COPY ./database/schema.sql /docker-entrypoint-initdb.d/init.sql
 # Copy requirements first for better caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Download required NLTK data for BLEU score calculation
+RUN python -c "import nltk; nltk.download('punkt')"
 
 # Copy the rest of the application
 COPY . .

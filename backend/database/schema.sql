@@ -197,6 +197,49 @@ CREATE TABLE user_company_chatbots (
 
 
 
+-- Leaderboard tables
+CREATE TABLE benchmark_datasets (
+    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    task_type VARCHAR(100) NOT NULL,
+    evaluation_metric VARCHAR(100) NOT NULL,
+    reference_data LONGTEXT NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE model_submissions (
+    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    benchmark_dataset_id INTEGER NOT NULL,
+    model_name VARCHAR(255) NOT NULL,
+    submitted_by VARCHAR(255) NOT NULL,
+    model_results LONGTEXT NOT NULL,
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (benchmark_dataset_id) REFERENCES benchmark_datasets(id)
+);
+
+CREATE TABLE evaluation_results (
+    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    model_submission_id INTEGER NOT NULL,
+    score DECIMAL(10, 6) NOT NULL,
+    evaluation_details LONGTEXT,
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_submission_id) REFERENCES model_submissions(id)
+);
+
+-- Insert benchmark datasets
+INSERT INTO benchmark_datasets (name, task_type, evaluation_metric, reference_data) VALUES
+('flores_spanish_translation', 'translation', 'bleu', '[]'),
+('flores_spanish_translation_bertscore', 'translation', 'bertscore', '[]'),
+('flores_arabic_translation', 'translation', 'bleu', '[]'),
+('flores_arabic_translation_bertscore', 'translation', 'bertscore', '[]'),
+('flores_japanese_translation', 'translation', 'bleu', '[]'),
+('flores_japanese_translation_bertscore', 'translation', 'bertscore', '[]'),
+('flores_chinese_translation', 'translation', 'bleu', '[]'),
+('flores_chinese_translation_bertscore', 'translation', 'bertscore', '[]'),
+('flores_korean_translation', 'translation', 'bleu', '[]'),
+('flores_korean_translation_bertscore', 'translation', 'bertscore', '[]');
+
 CREATE UNIQUE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_chats_user_id ON chats(user_id);
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
@@ -207,3 +250,5 @@ CREATE INDEX idx_chunks_document_id ON chunks(document_id);
 CREATE INDEX idx_prompt_answers_prompt_id ON prompt_answers(prompt_id);
 CREATE INDEX idx_prompt_answers_citation_id ON prompt_answers(citation_id);
 CREATE UNIQUE INDEX idx_user_chatbot_unique ON user_company_chatbots(user_id, path);
+CREATE INDEX idx_model_submissions_dataset ON model_submissions(benchmark_dataset_id);
+CREATE INDEX idx_evaluation_results_submission ON evaluation_results(model_submission_id);
