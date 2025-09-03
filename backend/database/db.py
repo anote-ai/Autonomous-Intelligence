@@ -27,18 +27,19 @@ def get_db_connection():
         # resets the db ---> None getting it ready for the new connection
         db_connect = None
 
-    db_connect = mysql.connector.connect(
-            user='root',
-            unix_socket='/tmp/mysql.sock',
-            database="agents",
-    )
-
-    # db_connect = mysql.connector.connect(
-    #     host=dbHost,
-    #     user=dbUser,
-    #     password=dbPassword,
-    #     database=dbName,
-    # )
+    if ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
+        db_connect = mysql.connector.connect(
+                user='root',
+                unix_socket='/tmp/mysql.sock',
+                database="agents",
+        )
+    else:
+        db_connect = mysql.connector.connect(
+            host=dbHost,
+            user=dbUser,
+            password=dbPassword,
+            database=dbName,
+        )
     return db_connect, db_connect.cursor(dictionary=True)
 
 
