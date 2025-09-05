@@ -20,3 +20,9 @@ __pycache__
 .env
 *.env
 venv
+kubernetes-local.yml
+api-keys-secret.yml
+sec-api-key.txt
+*.key
+*.txt
+!requirements.txt

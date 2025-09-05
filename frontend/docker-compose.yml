@@ -1,17 +1,38 @@
+# services:
+#   frontend:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     ports:
+#       - "3000:3000" # container:host. Map the container port 3000 to the host port 3000
+#     volumes:
+#       - .:/app # host:container. Mount the host directory ./ to the container directory /app
+#       - /app/node_modules # prevents the node_modules directory from being overwritten by the volume mount,
+#       # ensuring that the container uses its own installed dependencies instead of those in the host machine
+#     environment:
+#       - NODE_ENV=development # Enables hot-reloading, detailed error messages, and development-specific features
+#       # BACKEND_URL: "http://localhost:5000" # The URL of the backend API. This is the default value, but it may not work in all cases.
+#       # On macOS/Windows, you can often use http://host.docker.internal:8090 to reach a port on the host machine from inside the container.
+#       # On Linux, you might need an alternative approach (e.g., use the container name if they share a Docker network, or configure /etc/hosts).
+#       - REACT_APP_BACK_END_HOST=http://backend:5000 # Use backend service name for Docker network
+
+
 services:
   frontend:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000" # container:host. Map the container port 3000 to the host port 3000
+      - "3000:3000"
     volumes:
-      - .:/app # host:container. Mount the host directory ./ to the container directory /app
-      - /app/node_modules # prevents the node_modules directory from being overwritten by the volume mount,
-      # ensuring that the container uses its own installed dependencies instead of those in the host machine
+      - .:/app
+      - /app/node_modules
     environment:
-      - NODE_ENV=development # Enables hot-reloading, detailed error messages, and development-specific features
-      # BACKEND_URL: "http://localhost:5000" # The URL of the backend API. This is the default value, but it may not work in all cases.
-      # On macOS/Windows, you can often use http://host.docker.internal:8090 to reach a port on the host machine from inside the container.
-      # On Linux, you might need an alternative approach (e.g., use the container name if they share a Docker network, or configure /etc/hosts).
-      - REACT_APP_BACK_END_HOST=http://localhost:8000 # Use backend service name for Docker network
+      - NODE_ENV=development
+      - REACT_APP_BACK_END_HOST=http://backend:5000  # Use backend service name
+    networks:
+      - anote-network
+
+networks:
+  anote-network:
+    external: true

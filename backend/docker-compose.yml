@@ -1,15 +1,19 @@
+
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: anote-backend
+    restart: unless-stopped
     ports:
-      - "8000:5000"  # Map container's 5000 to host's 5000
+      - "8000:5000"  # Map container's 5000 to host's 8000
+      - "10001:10001"  # Ray dashboard
     volumes:
       - ./:/app
+      - ./db:/app/db
       - ./models:/app/models
-      - huggingface-cache:/cache
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
     env_file:
       - .env
     environment:
@@ -19,36 +23,24 @@ services:
       - FLASK_DEBUG=1
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - DD_AGENT_HOST=datadog
-      - GIT_PYTHON_REFRESH=quiet
-      - DD_LLMOBS_ENABLED=1
-      - DD_LLMOBS_ML_APP=quickstart-app
-      - DD_API_KEY=${DD_API_KEY}  # ensure this is in your .env
-      - HF_HOME=/cache
+      - REDIS_HOST=redis # Use Docker service name
+      - REDIS_PORT=6379 # Use internal Redis port
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      # tika:
+      #   condition: service_healthy
     networks:
       - anote-network
     shm_size: "2.44gb"
-    logging:
-      driver: "json-file"   # optional for local rotation
-      options:
-        max-size: "10m"
-        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    command: >
-      bash -c "ray start --head --port=6379 --dashboard-port=9998 &&
-               ddtrace-run flask run --host=0.0.0.0 --port=5000 --no-reload"
 
   db:
     image: mysql:8.0
@@ -91,7 +83,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-
   redis:
     image: redis:7-alpine
     container_name: anote-redis
@@ -109,26 +100,25 @@ services:
       retries: 5
       start_period: 10s
 
-  datadog:
+  # Datadog Agent for monitoring
+  datadog-agent:
     image: gcr.io/datadoghq/agent:latest
     container_name: datadog-agent
     restart: unless-stopped
     environment:
-      - DD_API_KEY=${DD_API_KEY}   # make sure .env has this
+      - DD_API_KEY=${DD_API_KEY:-your-datadog-api-key}
       - DD_SITE=us5.datadoghq.com
-      - DD_TAGS="env:${DD_ENV}"
       - DD_LOGS_ENABLED=true
       - DD_APM_ENABLED=true
-      - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
       - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
-      - DD_CONTAINER_LABELS_AS_TAGS={"my.custom.label.color":"color"}
+      - DD_CONTAINER_EXCLUDE_LOGS="name:datadog-agent"
     ports:
-      - "8125:8125/udp"   # DogStatsD
-      - "8126:8126"       # APM traces
+      - "8126:8126"  # APM traces
+      - "8125:8125/udp"  # DogStatsD metrics
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /proc/:/host/proc/:ro
-      - /sys/fs/cgroup:/host/sys/cgroup:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
     networks:
       - anote-network
 
@@ -139,5 +129,4 @@ networks:
 volumes:
   mysql-data:
   redis-data:
-  tika-data:
-  huggingface-cache:
+  tika-data: # Volume for Tika server data

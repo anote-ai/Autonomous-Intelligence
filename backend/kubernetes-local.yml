@@ -10,7 +10,8 @@ metadata:
   namespace: anote-local
 type: Opaque
 stringData:
-  DD_API_KEY: "75ca876ae5522eddfc7a9c2db382598e"
+  # Make sure this is your valid Datadog API Key
+  DD_API_KEY: "0ddd21ab1be376220a64d8a435b5b282"
 ---
 apiVersion: v1
 kind: Secret
@@ -19,11 +20,13 @@ metadata:
   namespace: anote-local
 type: Opaque
 stringData:
-  DB_HOST: "db"
+  # Changed to 'redis' to match the service name
+  DB_HOST: "redis"
   DB_USER: "root"
   DB_PASSWORD: ""
   DB_NAME: "agents"
-  DB_PORT: "3306"
+  # Changed to the correct Redis port
+  DB_PORT: "6379"
   DD_AGENT_HOST: "datadog-agent"
 ---
 apiVersion: apps/v1
@@ -71,6 +74,14 @@ spec:
               value: "1"
             - name: DD_LLMOBS_ML_APP
               value: quickstart-app
+            - name: DD_SITE
+              value: "us5.datadoghq.com"
+            - name: DD_LOGS_ENABLED
+              value: "true"
+            - name: DD_APM_ENABLED
+              value: "true"
+            - name: DD_TRACE_ENABLED
+              value: "true"
             - name: DD_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -78,6 +89,35 @@ spec:
                   key: DD_API_KEY
             - name: HF_HOME
               value: /cache
+            - name: RAY_PORT
+              value: "10001"
+            - name: GIT_PYTHON_REFRESH
+              value: "quiet"
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys-secret
+                  key: OPENAI_API_KEY
+            - name: SEC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys-secret
+                  key: SEC_API_KEY
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys-secret
+                  key: ANTHROPIC_API_KEY
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys-secret
+                  key: STRIPE_SECRET_KEY
+            - name: DEFAULT_REFERRER
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys-secret
+                  key: DEFAULT_REFERRER
           volumeMounts:
             - name: models
               mountPath: /app/models
@@ -86,7 +126,8 @@ spec:
       volumes:
         - name: models
           hostPath:
-            path: /absolute/path/to/models   # <-- replace with your actual absolute path
+            # ⬇️ IMPORTANT: Replace this with the real absolute path on your machine!
+            path: /Users/rishavacharya/Desktop/Autonomous-Intelligence/backend/models
         - name: huggingface-cache
           emptyDir: {}
 ---
@@ -175,6 +216,19 @@ spec:
               value: "true"
             - name: DD_DOGSTATSD_NON_LOCAL_TRAFFIC
               value: "true"
+            - name: DD_CONTAINER_EXCLUDE_LOGS
+              value: "name:datadog-agent"
+            - name: DD_CONTAINER_INCLUDE_LOGS
+              value: "name:backend"
+          ports:
+            # Port for APM traces
+            - containerPort: 8126
+              name: traceport
+              protocol: TCP
+            # Port for DogStatsD metrics
+            - containerPort: 8125
+              name: dogstatsdport
+              protocol: UDP
           volumeMounts:
             - name: dockersock
               mountPath: /var/run/docker.sock
@@ -192,7 +246,13 @@ spec:
   selector:
     app: datadog-agent
   ports:
-    - protocol: TCP
+    # Port for APM traces
+    - name: apm
+      protocol: TCP
       port: 8126
       targetPort: 8126
-
+    # Port for DogStatsD metrics
+    - name: dogstatsd
+      protocol: UDP
+      port: 8125
+      targetPort: 8125
