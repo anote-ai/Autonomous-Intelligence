@@ -5,6 +5,7 @@ import {
   generateAPIKey,
   deleteAPIKey,
   getAPIKeys,
+  useNumCredits,
 } from "../../redux/UserSlice";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -13,8 +14,8 @@ import {
   faArrowLeft,
   faPlus,
   faKey,
-  faCalendar,
   faExclamationTriangle,
+  faCoins,
 } from "@fortawesome/free-solid-svg-icons";
 import copy from "copy-to-clipboard";
 import "../../styles/APIKeyDashboard.css";
@@ -32,13 +33,22 @@ import {
 export function APISKeyDashboard() {
   const dispatch = useDispatch();
   const apiKeys = useAPIKeys();
+  const numCredits = useNumCredits();
   const [copiedKey, setCopiedKey] = useState(null);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState(null); // Track newly created key
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [keyName, setKeyName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
+  const hasSufficientCredits = numCredits >= 1;
+
   const handleGenerateAPIKeys = () => {
+    if (!hasSufficientCredits) {
+      alert(
+        "Insufficient credits. You need at least 1 credit to generate an API key."
+      );
+      return;
+    }
     setShowCreateModal(true);
   };
 
@@ -50,7 +60,7 @@ export function APISKeyDashboard() {
     setIsCreating(true);
     try {
       const result = await dispatch(generateAPIKey({ name: keyName.trim() }));
-      if (result.payload) {
+      if (result.payload && !result.payload.error) {
         setNewlyCreatedKey(result.payload.key);
         setShowCreateModal(false);
         setKeyName("");
@@ -58,9 +68,13 @@ export function APISKeyDashboard() {
         setTimeout(() => {
           setNewlyCreatedKey(null);
         }, 30000);
+      } else if (result.payload && result.payload.error) {
+        // Handle credit insufficiency or other errors
+        alert(`Failed to create API key: ${result.payload.error}`);
       }
     } catch (error) {
       console.error("Failed to create API key:", error);
+      alert("Failed to create API key. Please try again.");
     } finally {
       setIsCreating(false);
     }
@@ -117,20 +131,43 @@ export function APISKeyDashboard() {
               <FontAwesomeIcon className="w-4 h-4 mr-2" icon={faArrowLeft} />
               Back
             </Button>
-            <div>
-              <p className="text-gray-400 mt-1">
-                Manage your API keys and access tokens
-              </p>
+            <div className="flex items-center gap-2">
+              <FontAwesomeIcon
+                icon={faCoins}
+                className={`w-4 h-4 ${
+                  hasSufficientCredits ? "text-green-400" : "text-red-400"
+                }`}
+              />
+              <span
+                className={`text-sm font-medium ${
+                  hasSufficientCredits ? "text-green-400" : "text-red-400"
+                }`}
+              >
+                {numCredits} Credits
+              </span>
             </div>
           </div>
 
-          <Button
-            onClick={handleGenerateAPIKeys}
-            className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold"
-          >
-            <FontAwesomeIcon className="w-4 h-4 mr-2" icon={faPlus} />
-            Create New API Key
-          </Button>
+          <div className="flex flex-col items-end gap-2">
+          
+              <Button
+                onClick={handleGenerateAPIKeys}
+                disabled={!hasSufficientCredits}
+                className={`font-semibold ${
+                  hasSufficientCredits
+                    ? "bg-cyan-600 hover:bg-cyan-700 text-white"
+                    : "bg-gray-500 text-gray-300 cursor-not-allowed"
+                }`}
+              >
+                <FontAwesomeIcon className="w-4 h-4 mr-2" icon={faPlus} />
+                Create New API Key
+              </Button>
+            {!hasSufficientCredits && (
+              <p className="text-red-400 text-xs text-right">
+                Need at least 1 credit to create API keys
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Security Notice */}
@@ -201,6 +238,31 @@ export function APISKeyDashboard() {
           <Card className="bg-gray-800 border-gray-700">
             <div className="flex items-center justify-between">
               <div>
+                <p className="text-gray-400 text-sm">Available Credits</p>
+                <p
+                  className={`text-2xl font-bold ${
+                    hasSufficientCredits ? "text-green-400" : "text-red-400"
+                  }`}
+                >
+                  {numCredits}
+                </p>
+              </div>
+              <div
+                className={`p-3 rounded-lg ${
+                  hasSufficientCredits ? "bg-green-600" : "bg-red-600"
+                }`}
+              >
+                <FontAwesomeIcon
+                  icon={faCoins}
+                  className="w-6 h-6 text-white"
+                />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="bg-gray-800 border-gray-700">
+            <div className="flex items-center justify-between">
+              <div>
                 <p className="text-gray-400 text-sm">Total Keys</p>
                 <p className="text-2xl font-bold text-white">
                   {apiKeys.length}
@@ -222,23 +284,6 @@ export function APISKeyDashboard() {
               </div>
               <div className="p-3 bg-green-600 rounded-lg">
                 <FontAwesomeIcon icon={faKey} className="w-6 h-6 text-white" />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="bg-gray-800 border-gray-700">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Last Created</p>
-                <p className="text-2xl font-bold text-white">
-                  {apiKeys.length > 0 ? "Recently" : "None"}
-                </p>
-              </div>
-              <div className="p-3 bg-purple-600 rounded-lg">
-                <FontAwesomeIcon
-                  icon={faCalendar}
-                  className="w-6 h-6 text-white"
-                />
               </div>
             </div>
           </Card>
@@ -363,8 +408,9 @@ export function APISKeyDashboard() {
                   No API Keys Found
                 </h3>
                 <p className="text-gray-400 mb-6">
-                  Use the "Create New API Key" button above to start using our
-                  services
+                  {hasSufficientCredits
+                    ? 'Use the "Create New API Key" button above to start using our services'
+                    : "You need at least 1 credit to create API keys"}
                 </p>
               </div>
             )}

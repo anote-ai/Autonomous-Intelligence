@@ -147,7 +147,11 @@ def valid_api_key_required(fn):
         if len(splits) > 1:
           api_key = auth_header.split(' ')[1]
           if is_api_key_valid(api_key):
-            # If api key is valid, return the decorated function
+            # Check if the user has credits before allowing API usage
+            from database.db_auth import api_key_user_has_credits
+            if not api_key_user_has_credits(api_key, min_credits=1):
+              return jsonify({"error": "Insufficient credits. Please add credits to your account to use the API."}), 403
+            # If api key is valid and user has credits, return the decorated function
             return fn(*args, **kwargs)
     # If API key is not present or valid, return an error message or handle it as needed
     return "Unauthorized", 401
@@ -1135,6 +1139,21 @@ def upload():
     print("Form data:", request.form)
     print("Files:", request.files)
 
+    # Extract API key for credit deduction
+    auth_header = request.headers.get('Authorization')
+    api_key = auth_header.split(' ')[1] if auth_header and auth_header.startswith('Bearer ') else None
+    
+    # Calculate credits needed (1 credit per file/URL)
+    files = request.files.getlist('files[]')
+    paths = request.form.getlist('html_paths')
+    total_items = len(files) + len(paths)
+    credits_needed = max(1, total_items)  # At least 1 credit, more for multiple files
+    
+    # Deduct credits before processing
+    from database.db_auth import deduct_credits_from_api_key_user
+    if not deduct_credits_from_api_key_user(api_key, credits_needed):
+        return jsonify({"error": f"Insufficient credits. You need {credits_needed} credits for this operation."}), 403
+
     #chat_type = int(request.form.getlist('task_type')[0])  # Convert to int
     #model_type = int(request.form.getlist('model_type')[0])
 
@@ -1146,8 +1165,6 @@ def upload():
     print("CHAT TYPE IS", chat_type)
     if chat_type == "documents": #question-answering
         print("question answer")
-        files = request.files.getlist('files[]')
-        paths = request.form.getlist('html_paths')
 
         print("paths is", paths)
 
@@ -1199,6 +1216,15 @@ def upload():
 def public_ingest_pdf():
     user_email = USER_EMAIL_API
     ensure_SDK_user_exists(user_email)
+
+    # Extract API key for credit deduction
+    auth_header = request.headers.get('Authorization')
+    api_key = auth_header.split(' ')[1] if auth_header and auth_header.startswith('Bearer ') else None
+    
+    # Deduct 1 credit for each chat message
+    from database.db_auth import deduct_credits_from_api_key_user
+    if not deduct_credits_from_api_key_user(api_key, 1):
+        return jsonify({"error": "Insufficient credits. You need 1 credit per chat message."}), 403
 
     message = request.json['message']
     chat_id = request.json['chat_id']

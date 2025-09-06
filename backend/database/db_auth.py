@@ -99,6 +99,86 @@ def is_api_key_valid(api_key):
     else:
         return False
 
+def user_has_credits(user_email, min_credits=1):
+    """
+    Check if a user has sufficient credits.
+    
+    Args:
+        user_email (str): The user's email
+        min_credits (int): Minimum credits required (default: 1)
+    
+    Returns:
+        bool: True if user has sufficient credits, False otherwise
+    """
+    conn, cursor = get_db_connection()
+    cursor.execute('SELECT credits FROM users WHERE email=%s', [user_email])
+    user = cursor.fetchone()
+    conn.close()
+    
+    if user and user["credits"] >= min_credits:
+        return True
+    return False
+
+def api_key_user_has_credits(api_key, min_credits=1):
+    """
+    Check if the user associated with an API key has sufficient credits.
+    
+    Args:
+        api_key (str): The API key
+        min_credits (int): Minimum credits required (default: 1)
+    
+    Returns:
+        bool: True if user has sufficient credits, False otherwise
+    """
+    conn, cursor = get_db_connection()
+    cursor.execute('''
+        SELECT p.credits 
+        FROM users p 
+        JOIN apiKeys c ON c.user_id=p.id 
+        WHERE c.api_key=%s
+    ''', [api_key])
+    user = cursor.fetchone()
+    conn.close()
+    
+    if user and user["credits"] >= min_credits:
+        return True
+    return False
+
+def deduct_credits_from_api_key_user(api_key, credits_to_deduct=1):
+    """
+    Deduct credits from the user associated with an API key.
+    
+    Args:
+        api_key (str): The API key
+        credits_to_deduct (int): Number of credits to deduct (default: 1)
+    
+    Returns:
+        bool: True if credits were successfully deducted, False otherwise
+    """
+    conn, cursor = get_db_connection()
+    
+    # First check if user has enough credits
+    cursor.execute('''
+        SELECT p.id, p.credits, p.email
+        FROM users p 
+        JOIN apiKeys c ON c.user_id=p.id 
+        WHERE c.api_key=%s
+    ''', [api_key])
+    user = cursor.fetchone()
+    
+    if not user or user["credits"] < credits_to_deduct:
+        conn.close()
+        return False
+    
+    # Deduct credits
+    new_credits = user["credits"] - credits_to_deduct
+    cursor.execute('UPDATE users SET credits=%s WHERE id=%s', [new_credits, user["id"]])
+    conn.commit()
+    conn.close()
+    
+    print(f"Deducted {credits_to_deduct} credits from user {user['email']}. New balance: {new_credits}")
+    return True
+
 def user_id_for_email(email):
     conn, cursor = get_db_connection()
     cursor.execute('SELECT id FROM users WHERE email=%s', [email])

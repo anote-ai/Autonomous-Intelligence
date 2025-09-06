@@ -1354,12 +1354,14 @@ def ensure_SDK_user_exists(user_email):
     if result:
         return result['id']  # Assuming 'id' is the column name for user ID
     else:
-        # Insert demo user
+        # Insert SDK user with some initial credits for testing
+        # NOTE: In production, you might want to set this to 0 and require users to purchase credits
+        initial_credits = 0  # Give new SDK users 10 credits to start
         insert_query = """
         INSERT INTO users (email, person_name, profile_pic_url, credits)
-        VALUES (%s, 'SDK User', 'url_to_default_image', 0)
+        VALUES (%s, 'SDK User', 'url_to_default_image', %s)
         """
-        cursor.execute(insert_query, (user_email,))
+        cursor.execute(insert_query, (user_email, initial_credits))
         conn.commit()
         return cursor.lastrowid  # Return the newly created user ID
 
