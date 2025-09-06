@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   useAPIKeys,
@@ -11,117 +11,393 @@ import {
   faTrash,
   faCopy,
   faArrowLeft,
+  faPlus,
+  faKey,
+  faCalendar,
+  faEye,
+  faEyeSlash,
+  faExclamationTriangle,
 } from "@fortawesome/free-solid-svg-icons";
 import copy from "copy-to-clipboard";
 import "../../styles/APIKeyDashboard.css";
-import { Button, Table } from "flowbite-react";
+import { Button, Table, Card, Badge, Tooltip, Modal } from "flowbite-react";
 import { useNavigation, useLocation } from "react-router-dom";
 
 export function APISKeyDashboard() {
   const dispatch = useDispatch();
   const apiKeys = useAPIKeys();
+  const [copiedKey, setCopiedKey] = useState(null);
+  const [visibleKeys, setVisibleKeys] = useState({});
+  const [newlyCreatedKey, setNewlyCreatedKey] = useState(null); // Track newly created key
+  const [showRevokeModal, setShowRevokeModal] = useState(false);
+  const [keyToRevoke, setKeyToRevoke] = useState(null);
 
   const handleGenerateAPIKeys = () => {
-    dispatch(generateAPIKey());
+    dispatch(generateAPIKey()).then((result) => {
+      // Assuming the action returns the new key
+      if (result.payload) {
+        setNewlyCreatedKey(result.payload.key);
+        // Auto-hide after 30 seconds for security
+        setTimeout(() => {
+          setNewlyCreatedKey(null);
+        }, 30000);
+      }
+    });
   };
 
   const handleDeleteAPIKey = (apiKeyId) => {
     dispatch(deleteAPIKey(apiKeyId));
+    setShowRevokeModal(false);
+    setKeyToRevoke(null);
   };
 
-  const handleCopyAPIKey = (apiKey) => {
+  const handleCopyAPIKey = (apiKey, keyId) => {
     copy(apiKey);
-    // Handle the success or error notification for copying if required
+    setCopiedKey(keyId);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  // useEffect(() => {
-  //   dispatch(getAPIKeys());
-  // }, [dispatch]);
-
-  // unused func 
-  const lastUsedDisplay = (lastUsed) => {
-    return lastUsed ? lastUsed : "Never";
+  const handleViewKeyRequest = (apiKey) => {
+    setKeyToRevoke(apiKey);
+    setShowRevokeModal(true);
   };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const maskApiKey = (key) => {
+    if (key.length <= 8) return "••••••••";
+    return `${key.substring(0, 4)}${"•".repeat(key.length - 8)}${key.substring(
+      key.length - 4
+    )}`;
+  };
+
+  const isKeyVisible = (apiKey) => {
+    return newlyCreatedKey === apiKey.key;
+  };
+
+  useEffect(() => {
+    dispatch(getAPIKeys());
+  }, [dispatch]);
 
   return (
-    <div className="dashboard-container">
-      <div className="dashboard-card w-1/2 bg-[#141414]
- border-2">
-        <div className="relative">
-          <Button
-            color="gray"
-            outline
-            className="absolute left-10"
-            onClick={() => window.history.back()}
-          >
-            <div className="flex items-center">
-              <FontAwesomeIcon className="w-4 h-4 mr-1" icon={faArrowLeft} />
-              <span className="font-semibold">Back</span>
+    <div className="min-h-screen bg-gray-900 pt-20">
+      <div className="max-w-6xl mx-auto px-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <Button
+              color="gray"
+              outline
+              size="sm"
+              onClick={() => window.history.back()}
+              className="hover:bg-gray-700 border-gray-600 text-gray-300"
+            >
+            <FontAwesomeIcon className="w-4 h-4 mr-2" icon={faArrowLeft} />
+            Back
+            </Button>
+            <div>
+              <p className="text-gray-400 mt-1">
+                Manage your API keys and access tokens
+              </p>
             </div>
-          </Button>
-          <h1 className="dashboard-title font-bold">API Key Dashboard</h1>
-        </div>
-        <div className="button-container">
-        </div>
-          <div onClick={handleGenerateAPIKeys} className="button-container">
-      
-            Create New API Key
-         
-        </div>
-        <div className="api-keys-container overflow-auto max-h-96">
-          {apiKeys.length > 0 && (
-            <Table className="api-keys-table" hoverable>
-              <Table.Head>
-                {/* Update these headers as required. I've used the headers you commented out as a reference */}
-                {/* <Table.HeadCell>Key Name</Table.HeadCell> */}
-                <Table.HeadCell>API Key</Table.HeadCell>
-                <Table.HeadCell>Created</Table.HeadCell>
-                {/* <Table.HeadCell>Last Used</Table.HeadCell> */}
-                <Table.HeadCell>
-                  Actions
-                </Table.HeadCell>
-              </Table.Head>
-              <Table.Body className="divide-y">
-                {apiKeys.map((apiKey) => (
-                  <Table.Row
-                    key={apiKey.id}
-                    className="bg-white dark:border-gray-700 dark:bg-[#141414]
-"
-                  >
-                    {/* <Table.Cell className="whitespace-nowrap font-medium text-gray-900 dark:text-white">{apiKey.key_name}</Table.Cell> */}
-                    <Table.Cell key={apiKey.id} className="whitespace-nowrap font-medium dark:text-white">
-                      {apiKey.key}
-                    </Table.Cell>
-                    <Table.Cell>{apiKey.created}</Table.Cell>
-                    {/* <Table.Cell>{lastUsedDisplay(apiKey.last_used)}</Table.Cell> */}
-                    <Table.Cell>
-                      <button
-                        className="font-medium text-[#40C6FF] hover:underline dark:text-[#40C6FF] trashButton"
-                        onClick={() => handleDeleteAPIKey(apiKey.id)}
-                      >
-                        <FontAwesomeIcon icon={faTrash} />
-                      </button>
-                      <button
-                        className="copy-key-button ml-3"
-                        onClick={() => handleCopyAPIKey(apiKey.key)}
-                      >
-                        <FontAwesomeIcon icon={faCopy} />
-                      </button>
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-            </Table>
-          )}
-          {apiKeys.length === 0 && (
-            <p className="text-white">No API keys found.</p>
-          )}
-          {/* <a
-            className="border-cyan-600 text-cyan-600 hover:bg-cyan-600 hover:text-white px-4 py-2 rounded transition duration-300"
-            href={"https://docs.anote.ai/api/anoteapi.html"}
+          </div>
+
+          <Button
+            onClick={handleGenerateAPIKeys}
+            className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold"
           >
-            Docs
-          </a> */}
+            <FontAwesomeIcon className="w-4 h-4 mr-2" icon={faPlus} />
+            Create New API Key
+          </Button>
+        </div>
+
+        {/* Security Notice */}
+        {newlyCreatedKey && (
+          <div className="mb-6 p-4 bg-yellow-900 border border-yellow-700 rounded-lg">
+            <div className="flex items-start gap-3">
+              <FontAwesomeIcon
+                icon={faExclamationTriangle}
+                className="text-yellow-400 mt-1"
+              />
+              <div>
+                <h3 className="text-yellow-200 font-semibold">
+                  Security Notice
+                </h3>
+                <p className="text-yellow-300 text-sm mt-1">
+                  Your API key is shown below. This is the only time it will be
+                  displayed. Make sure to copy and store it securely. This
+                  message will disappear in 30 seconds.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <Card className="bg-gray-800 border-gray-700">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Total Keys</p>
+                <p className="text-2xl font-bold text-white">
+                  {apiKeys.length}
+                </p>
+              </div>
+              <div className="p-3 bg-cyan-600 rounded-lg">
+                <FontAwesomeIcon icon={faKey} className="w-6 h-6 text-white" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="bg-gray-800 border-gray-700">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Active Keys</p>
+                <p className="text-2xl font-bold text-white">
+                  {apiKeys.length}
+                </p>
+              </div>
+              <div className="p-3 bg-green-600 rounded-lg">
+                <FontAwesomeIcon icon={faKey} className="w-6 h-6 text-white" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="bg-gray-800 border-gray-700">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Last Created</p>
+                <p className="text-2xl font-bold text-white">
+                  {apiKeys.length > 0 ? "Recently" : "None"}
+                </p>
+              </div>
+              <div className="p-3 bg-purple-600 rounded-lg">
+                <FontAwesomeIcon
+                  icon={faCalendar}
+                  className="w-6 h-6 text-white"
+                />
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* API Keys Table */}
+        <Card className="bg-gray-800 border-gray-700">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-white">
+                Your API Keys
+              </h2>
+              <Badge color="info" size="sm">
+                {apiKeys.length} {apiKeys.length === 1 ? "Key" : "Keys"}
+              </Badge>
+            </div>
+
+            {apiKeys.length > 0 ? (
+              <div className="overflow-x-auto">
+                <Table className="w-full bg-black">
+                  <Table.Head>
+                    <Table.HeadCell className="font-semibold">
+                      API Key
+                    </Table.HeadCell>
+                    <Table.HeadCell className=" font-semibold">
+                      Created
+                    </Table.HeadCell>
+                    <Table.HeadCell className="font-semibold">
+                      Status
+                    </Table.HeadCell>
+                    <Table.HeadCell className=" font-semibold">
+                      Actions
+                    </Table.HeadCell>
+                  </Table.Head>
+                  <Table.Body className="divide-y divide-gray-700">
+                    {apiKeys.map((apiKey) => (
+                      <Table.Row
+                        key={apiKey.id}
+                        className="bg-gray-800 border hover:bg-gray-750 transition-colors"
+                      >
+                        <Table.Cell className="font-mono text-gray-300">
+                          <div className="flex items-center gap-2">
+                            <code
+                              className={`px-3 py-2 rounded w-full text-sm ${
+                                isKeyVisible(apiKey)
+                                  ? "bg-green-900 text-green-300 border border-green-700"
+                                  : "bg-gray-700 text-gray-300"
+                              }`}
+                            >
+                              {isKeyVisible(apiKey)
+                                ? apiKey.key
+                                : maskApiKey(apiKey.key)}
+                            </code>
+                            {!isKeyVisible(apiKey) && (
+                              <button
+                                onClick={() => handleViewKeyRequest(apiKey)}
+                                className="text-gray-400 hover:text-white transition-colors p-1"
+                                title="Revoke and recreate to view key"
+                              >
+                                <FontAwesomeIcon
+                                  icon={faEye}
+                                  className="w-4 h-4"
+                                />
+                              </button>
+                            )}
+                          </div>
+                        </Table.Cell>
+                        <Table.Cell className="text-gray-300">
+                          {formatDate(apiKey.created)}
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Badge color="success" size="sm">
+                            Active
+                          </Badge>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <div className="flex items-center gap-2">
+                            {isKeyVisible(apiKey) && (
+                              <Tooltip
+                                content={
+                                  copiedKey === apiKey.id
+                                    ? "Copied!"
+                                    : "Copy to clipboard"
+                                }
+                              >
+                                <button
+                                  className={`p-2 rounded transition-colors ${
+                                    copiedKey === apiKey.id
+                                      ? "text-green-400 bg-green-900"
+                                      : "text-cyan-400 hover:bg-gray-700"
+                                  }`}
+                                  onClick={() =>
+                                    handleCopyAPIKey(apiKey.key, apiKey.id)
+                                  }
+                                >
+                                  <FontAwesomeIcon
+                                    icon={faCopy}
+                                    className="w-4 h-4"
+                                  />
+                                </button>
+                              </Tooltip>
+                            )}
+                            <Tooltip content="Delete API key">
+                              <button
+                                className="p-2 rounded text-red-400 hover:bg-gray-700 transition-colors"
+                                onClick={() => handleDeleteAPIKey(apiKey.id)}
+                              >
+                                <FontAwesomeIcon
+                                  icon={faTrash}
+                                  className="w-4 h-4"
+                                />
+                              </button>
+                            </Tooltip>
+                          </div>
+                        </Table.Cell>
+                      </Table.Row>
+                    ))}
+                  </Table.Body>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <FontAwesomeIcon
+                  icon={faKey}
+                  className="w-16 h-16 text-gray-600 mb-4"
+                />
+                <h3 className="text-lg font-semibold text-gray-300 mb-2">
+                  No API Keys Found
+                </h3>
+                <p className="text-gray-400 mb-6">
+                  Use the "Create New API Key" button above to start using our
+                  services
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Revoke Modal */}
+        <Modal
+          show={showRevokeModal}
+          onClose={() => setShowRevokeModal(false)}
+          size="md"
+        >
+          <Modal.Header className="bg-gray-800 border-gray-700">
+            <span className="text-white">API Key Hidden for Security</span>
+          </Modal.Header>
+          <Modal.Body className="bg-gray-800">
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <FontAwesomeIcon
+                  icon={faExclamationTriangle}
+                  className="text-yellow-400 mt-1"
+                />
+                <div>
+                  <h3 className="text-white font-semibold mb-2">
+                    Security Policy
+                  </h3>
+                  <p className="text-gray-300 text-sm mb-4">
+                    For security reasons, API keys are only displayed once when
+                    first created. To view this key again, you'll need to revoke
+                    it and create a new one.
+                  </p>
+                  {keyToRevoke && (
+                    <div className="bg-gray-700 p-3 rounded">
+                      <p className="text-gray-400 text-xs mb-1">
+                        Current Key (masked):
+                      </p>
+                      <code className="text-gray-300 font-mono text-sm">
+                        {maskApiKey(keyToRevoke.key)}
+                      </code>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Modal.Body>
+          <Modal.Footer className="bg-gray-800 border-gray-700">
+            <Button
+              color="gray"
+              onClick={() => setShowRevokeModal(false)}
+              className="bg-gray-600 hover:bg-gray-700"
+            >
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              onClick={() => handleDeleteAPIKey(keyToRevoke?.id)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Revoke Key
+            </Button>
+            <Button
+              onClick={() => {
+                handleDeleteAPIKey(keyToRevoke?.id);
+                setTimeout(() => handleGenerateAPIKeys(), 500);
+              }}
+              className="bg-cyan-600 hover:bg-cyan-700"
+            >
+              Revoke & Create New
+            </Button>
+          </Modal.Footer>
+        </Modal>
+
+        {/* Documentation Link */}
+        <div className="mt-8 text-center">
+          <a
+            href="https://docs.anote.ai/api/anoteapi.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors"
+          >
+            📚 View API Documentation
+          </a>
         </div>
       </div>
     </div>

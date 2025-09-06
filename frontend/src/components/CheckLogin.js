@@ -1,10 +1,8 @@
 import React from "react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import PaymentsComponent from "../subcomponents/payments/PaymentsComponent";
 import { useLocation } from "react-router-dom";
 import "../styles/Login.css";
-import { pricingRedirectPath } from "../constants/RouteConstants";
 import HomeChatbot from "../financeGPT/components/Home";
 import LoginModal from "./LoginModal";
 
@@ -100,7 +98,7 @@ function CheckLogin(props) {
   }, [location]);
 
   return (
-    <div className="App">
+    <div className="">
       {mainView}
       <LoginModal 
         isOpen={showLogin}
