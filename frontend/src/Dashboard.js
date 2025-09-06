@@ -144,13 +144,12 @@ function Dashboard() {
             Your free trial ends in {daysStr}
             <Link to={accountPath} className="ml-3 text-blue-500">Upgrade</Link>
           </div>} */}
-          {isLoggedIn && (
             <MainNav
               // darkTheme={darkTheme}
               // setDarkTheme={setDarkTheme}
+              isLoggedIn={isLoggedIn}
               setIsLoggedInParent={setIsLoggedIn}
             />
-          )}
           <Helmet>
             <title>Panacea</title>
           </Helmet>

@@ -1,11 +1,7 @@
 import React, { Component, useState, useEffect, useRef } from "react";
-import Navbarchatbot from "./NavbarChatbot";
 import Chatbot from "./Chatbot";
-import "../styles/Chatbot.css";
-import SidebarChatbot from "./SidebarChatbot";
 import fetcher from "../../http/RequestConfig";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
-import Popout from "./Popout";
+import { useNavigate } from "react-router-dom";
 import ChatHistory from "./ChatHistory";
 
 function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent }) {
@@ -14,16 +10,11 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
   const [isPrivate, setIsPrivate] = useState(0);
   const [currChatName, setCurrChatName] = useState("");
   const [currTask, setcurrTask] = useState(0); //0 is file upload, 1 EDGAR, 2 mySQL db; have 0 be the default
-  const [showChatbot, setShowChatbot] = useState(false);
-  const [isEdit, setIsEdit] = useState(0);
   const [activeMessageIndex, setActiveMessageIndex] = useState(null);
   const [relevantChunk, setRelevantChunk] = useState("");
   const [menu, setMenu] = useState(false);
   const [chats, setChats] = useState([]);
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(!isGuestMode);
-  const { id } = useParams();
-  const location = useLocation();
 
   // Upload-related state
   const [isUploading, setIsUploading] = useState(false);
@@ -106,11 +97,6 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
       // Fallback to trigger approach
       setTriggerUpload(true);
     }
-  };
-
-  // Reset upload trigger (called by sidebar after handling)
-  const resetUploadTrigger = () => {
-    setTriggerUpload(false);
   };
 
   // Handle file upload
@@ -203,10 +189,8 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
 
   return (
     <div className="h-screen flex flex-col bg-gray-900">
-
-
       {/* ChatGPT-style top navigation */}
-      <Navbarchatbot
+      {/* <Navbarchatbot
         selectedChatId={selectedChatId}
         onChatSelect={handleChatSelect}
         handleForceUpdate={handleForceUpdate}
@@ -229,10 +213,10 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
         isGuestMode={isGuestMode}
         onRequestLogin={onRequestLogin}
         setIsLoggedInParent={setIsLoggedInParent}
-      />
+      /> */}
 
       {/* Main content area with proper top spacing */}
-      <div className="flex-1 w-full pt-16 h-full overflow-hidden flex">
+      <div className="flex-1 w-full h-full overflow-hidden flex">
         {/* Sidebar for chat history - show when menu is true and not in guest mode */}
         {menu && !isGuestMode && (
           <div className="w-80 border-r border-gray-700 bg-gray-800 flex-shrink-0">

@@ -1,10 +1,5 @@
 const API_ENDPOINT = process.env.REACT_APP_BACK_END_HOST;
 
-// Global state for backend connectivity
-let isBackendOnline = true;
-let lastOfflineLog = 0;
-const OFFLINE_LOG_INTERVAL = 30000; // Only log offline status every 30 seconds
-
 // Function to check if error is network-related (backend down) vs auth-related
 function isNetworkError(error) {
   return (
@@ -60,7 +55,7 @@ export function refreshAccessToken() {
     return response.json();
   }).then((data) => {
     localStorage.setItem("accessToken", data.accessToken);
-    return Promise.resolve({ok: true});
+    return Promise.resolve({ ok: true });
   }).catch((error) => {
     // Check if this is a network error (backend down) vs auth error
     if (isNetworkError(error)) {
@@ -85,10 +80,10 @@ function fetcher(url, options = {}, retryCount = 0) {
     console.log("Making request to:", url);
   }
 
-  return fetch(API_ENDPOINT + "/" + url, updateOptions(options)).then((response) => {
+  return fetch(`${API_ENDPOINT}/${url}`, updateOptions(options)).then((response) => {
     if (!response.ok) {
       // Return a rejected promise if the response is not successful
-      throw new Error('HTTP Error: ' + response.status);
+      throw new Error(`HTTP Error: ${response.status}`);
     }
     return response;
   }).catch(

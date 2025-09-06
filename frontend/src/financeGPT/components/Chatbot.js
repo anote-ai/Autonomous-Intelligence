@@ -18,7 +18,6 @@ import {
   faSitemap,
   faLightbulb,
 } from "@fortawesome/free-solid-svg-icons";
-import "../styles/Chatbot.css";
 import fetcher from "../../http/RequestConfig";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -881,7 +880,7 @@ const Chatbot = (props) => {
 
   return (
     <div
-      className={`h-full bg-anoteblack-800 w-full flex flex-col ${
+      className={`h-full bg-anoteblack-800 w-full ${messages.length !== 0 && "pt-16"} flex flex-col ${
         props.menu ? "md:blur-none blur" : ""
       }`}
     >
@@ -895,19 +894,6 @@ const Chatbot = (props) => {
       >
         <div className="py-3 flex-col mt-0 px-4 flex gap-3 w-full">
           <div className="bg-anoteblack-800 flex items-center sticky top-0 lg:top-0 z-10 w-full border-b border-gray-400/30 px-2">
-            {/* Left: Reload button */}
-            <div className="flex items-center flex-shrink-0 z-10">
-              <button
-                onClick={handleRefreshChatName}
-                className="p-2 hover:bg-gray-700 rounded transition-colors"
-                title="Refresh chat name"
-              >
-                <FontAwesomeIcon
-                  icon={faSyncAlt}
-                  className="text-lg text-[#DFDFDF]"
-                />
-              </button>
-            </div>
             {/* Center: Chat name */}
             <div className="absolute left-0 right-0 flex justify-center items-center pointer-events-none h-14">
               <h1 className="text-white truncate text-center w-2/3 pointer-events-auto">
@@ -1062,7 +1048,7 @@ const Chatbot = (props) => {
       >
         {/* Welcome message */}
         {messages.length === 0 && (
-          <div className="w-full text-anoteblack-100 animate-typing overflow-hidden whitespace-nowrap flex items-center justify-center font-bold text-2xl mb-4">
+          <div className="w-full text-white animate-typing overflow-hidden whitespace-nowrap flex items-center justify-center font-bold text-2xl mb-4">
             What can I help you with?
           </div>
         )}
@@ -1097,9 +1083,9 @@ const Chatbot = (props) => {
             {/* Center - Input */}
             <div className="flex-1">
               <div className="relative">
-                <div className="relative flex items-center bg-gray-700 rounded-3xl border border-gray-600 focus-within:border-gray-500 transition-colors">
+                <div className="relative border  flex items-center bg-gray-700 rounded-3xl border-gray-600 focus-within:border-gray-500 transition-colors">
                   <textarea
-                    className="w-full border-none resize-none text-lg px-6 py-2 focus:ring-0 focus:outline-none text-white placeholder:text-gray-400 bg-anoteblack-800 rounded-3xl"
+                    className="w-full border-none resize-none text-lg px-6 py-2 focus:ring-0 focus:outline-none text-white placeholder:text-gray-400 bg-transparent rounded-3xl"
                     rows={1}
                     placeholder="Ask your document a question"
                     value={message}

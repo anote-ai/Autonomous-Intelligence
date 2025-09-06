@@ -275,15 +275,17 @@
 
 // export default Pricing;
 
-import React, { useState, useEffect } from "react";
+
+// @TODO 
+
+import React, { useState } from "react";
 import { useDispatch } from "react-redux";
-import fetcher from "../../http/RequestConfig";
 import { createPortalSession } from "../../redux/UserSlice";
 import { GetPrivateGPTDashboardUrl } from "../../util/DomainParsing";
 
 const Pricing = (props) => {
   let dispatch = useDispatch();
-  var showCurrentPlan = !(typeof props.currentPlanIndexOverride == "undefined");
+  var showCurrentPlan = !(typeof props.currentPlanIndexOverride === "undefined");
   // const product3 = {
   //   id: 3,
   //   title: "Private Chatbot",
@@ -402,7 +404,7 @@ const Pricing = (props) => {
   };
 
 
-  const [product, setProduct] = useState(product3);
+  const [product] = useState(product3);
   function buttonText(
     tier,
     product,
@@ -412,11 +414,11 @@ const Pricing = (props) => {
   ) {
     console.log(tier.price);
     console.log(product.forceContactUs);
-    if (tier.price == "Contact us" || product.forceContactUs == true) {
+    if (tier.price === "Contact us" || product.forceContactUs === true) {
       console.log(1);
       return "Contact us";
     } else {
-      if (tier.name == "Basic") {
+      if (tier.name === "Basic") {
         // return "Try Now";
         return "Contact Us"
       }
@@ -426,7 +428,7 @@ const Pricing = (props) => {
       if (!showCurrentPlan) {
         return "Sign Up";
       } else {
-        if (currentPlanIndexOverride == index) {
+        if (currentPlanIndexOverride === index) {
           return "Cancel";
         } else {
           if (props.disableUpgrade) {
