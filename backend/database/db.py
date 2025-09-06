@@ -627,25 +627,44 @@ def check_and_debit_gpt_credit(userEmail, numCredits):
     return isOk
 
 
-def generate_api_key(email):
+def generate_api_key(email, key_name=None):
+    print(f"generate_api_key called with email: {email}, key_name: {key_name}")
     conn, cursor = get_db_connection()
     api_key = secrets.token_hex(16)
+    
+    print(f"Executing query: SELECT id from users WHERE email = '{email}'")
     cursor.execute('SELECT id from users WHERE email = %s', [email])
     userId = cursor.fetchone()
+    print(f"Query result: {userId}")
+    
+    if userId is None:
+        conn.close()
+        raise ValueError(f"User with email {email} not found")
+    
     userIdStr = userId["id"]
     time = datetime.now()
+    
+    # Use provided name or default to None
+    if key_name is None:
+        key_name = "Untitled Key"
+    
+    print(f"Inserting API key with user_id: {userIdStr}, key_name: {key_name}")
     # Insert the generated API key into the apiKeys table
-    cursor.execute('INSERT INTO apiKeys (user_id, api_key, created) VALUES (%s, %s, %s)', (userIdStr, api_key, time))
+    cursor.execute('INSERT INTO apiKeys (user_id, api_key, created, key_name) VALUES (%s, %s, %s, %s)', (userIdStr, api_key, time, key_name))
     cursor.execute('SELECT LAST_INSERT_ID()')
     keyId = cursor.fetchone()["LAST_INSERT_ID()"]
     conn.commit()
     conn.close()
-    return {
+    
+    result = {
         "id": keyId,
         "key": api_key,
         "created": time,
-        "last_used": None
+        "last_used": None,
+        "name": key_name
     }
+    print(f"Returning result: {result}")
+    return result
 
 def delete_api_key(api_key_id):
     conn, cursor = get_db_connection()
@@ -665,7 +684,7 @@ def get_api_keys(email):
     userIdStr = userId["id"]
 
     # Get the API keys associated with the user ID from the apiKeys table
-    cursor.execute('SELECT id, api_key, created, last_used FROM apiKeys WHERE user_id = %s', (userIdStr,))
+    cursor.execute('SELECT id, api_key, created, last_used, key_name FROM apiKeys WHERE user_id = %s', (userIdStr,))
     keysDb = cursor.fetchall()
     keys = []
     for keyDb in keysDb:
@@ -673,7 +692,8 @@ def get_api_keys(email):
             "id": keyDb["id"],
             "key": keyDb["api_key"],
             "created": keyDb["created"],
-            "last_used": keyDb["last_used"]
+            "last_used": keyDb["last_used"],
+            "name": keyDb["key_name"] or "Untitled Key"
         })
     conn.close()
 

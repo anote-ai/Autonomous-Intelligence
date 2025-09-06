@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch } from "react-redux";
 import {
   useAPIKeys,
   generateAPIKey,
@@ -14,52 +14,66 @@ import {
   faPlus,
   faKey,
   faCalendar,
-  faEye,
-  faEyeSlash,
   faExclamationTriangle,
 } from "@fortawesome/free-solid-svg-icons";
 import copy from "copy-to-clipboard";
 import "../../styles/APIKeyDashboard.css";
-import { Button, Table, Card, Badge, Tooltip, Modal } from "flowbite-react";
-import { useNavigation, useLocation } from "react-router-dom";
+import {
+  Button,
+  Table,
+  Card,
+  Badge,
+  Tooltip,
+  Modal,
+  TextInput,
+  Label,
+} from "flowbite-react";
 
 export function APISKeyDashboard() {
   const dispatch = useDispatch();
   const apiKeys = useAPIKeys();
   const [copiedKey, setCopiedKey] = useState(null);
-  const [visibleKeys, setVisibleKeys] = useState({});
   const [newlyCreatedKey, setNewlyCreatedKey] = useState(null); // Track newly created key
-  const [showRevokeModal, setShowRevokeModal] = useState(false);
-  const [keyToRevoke, setKeyToRevoke] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [keyName, setKeyName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
 
   const handleGenerateAPIKeys = () => {
-    dispatch(generateAPIKey()).then((result) => {
-      // Assuming the action returns the new key
+    setShowCreateModal(true);
+  };
+
+  const handleCreateAPIKey = async () => {
+    if (!keyName.trim()) {
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const result = await dispatch(generateAPIKey({ name: keyName.trim() }));
       if (result.payload) {
         setNewlyCreatedKey(result.payload.key);
+        setShowCreateModal(false);
+        setKeyName("");
         // Auto-hide after 30 seconds for security
         setTimeout(() => {
           setNewlyCreatedKey(null);
         }, 30000);
       }
-    });
+    } catch (error) {
+      console.error("Failed to create API key:", error);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const handleDeleteAPIKey = (apiKeyId) => {
     dispatch(deleteAPIKey(apiKeyId));
-    setShowRevokeModal(false);
-    setKeyToRevoke(null);
   };
 
   const handleCopyAPIKey = (apiKey, keyId) => {
     copy(apiKey);
     setCopiedKey(keyId);
     setTimeout(() => setCopiedKey(null), 2000);
-  };
-
-  const handleViewKeyRequest = (apiKey) => {
-    setKeyToRevoke(apiKey);
-    setShowRevokeModal(true);
   };
 
   const formatDate = (dateString) => {
@@ -100,8 +114,8 @@ export function APISKeyDashboard() {
               onClick={() => window.history.back()}
               className="hover:bg-gray-700 border-gray-600 text-gray-300"
             >
-            <FontAwesomeIcon className="w-4 h-4 mr-2" icon={faArrowLeft} />
-            Back
+              <FontAwesomeIcon className="w-4 h-4 mr-2" icon={faArrowLeft} />
+              Back
             </Button>
             <div>
               <p className="text-gray-400 mt-1">
@@ -121,24 +135,65 @@ export function APISKeyDashboard() {
 
         {/* Security Notice */}
         {newlyCreatedKey && (
-          <div className="mb-6 p-4 bg-yellow-900 border border-yellow-700 rounded-lg">
-            <div className="flex items-start gap-3">
-              <FontAwesomeIcon
-                icon={faExclamationTriangle}
-                className="text-yellow-400 mt-1"
-              />
-              <div>
-                <h3 className="text-yellow-200 font-semibold">
-                  Security Notice
-                </h3>
-                <p className="text-yellow-300 text-sm mt-1">
-                  Your API key is shown below. This is the only time it will be
-                  displayed. Make sure to copy and store it securely. This
-                  message will disappear in 30 seconds.
-                </p>
+          <Modal
+            show={!!newlyCreatedKey}
+            onClose={() => setNewlyCreatedKey(null)}
+            size="lg"
+          >
+            <Modal.Header className="bg-gray-800 border-gray-700">
+              <span className="text-white">API Key Created Successfully</span>
+            </Modal.Header>
+            <Modal.Body className="bg-gray-800">
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <FontAwesomeIcon
+                    icon={faExclamationTriangle}
+                    className="text-yellow-400 mt-1"
+                  />
+                  <div className="flex-1">
+                    <h3 className="text-yellow-200 font-semibold mb-2">
+                      Important Security Notice
+                    </h3>
+                    <p className="text-yellow-300 text-sm mb-4">
+                      Your API key is shown below. This is the only time it will
+                      be displayed. Make sure to copy and store it securely
+                      before closing this modal.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-700 p-4 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-gray-400 text-sm">Your API Key:</p>
+                    <button
+                      onClick={() =>
+                        handleCopyAPIKey(newlyCreatedKey, "new-key")
+                      }
+                      className={`px-3 py-1 rounded text-sm transition-colors ${
+                        copiedKey === "new-key"
+                          ? "text-green-400 bg-green-900"
+                          : "text-cyan-400 hover:bg-gray-600"
+                      }`}
+                    >
+                      <FontAwesomeIcon icon={faCopy} className="w-3 h-3 mr-1" />
+                      {copiedKey === "new-key" ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                  <code className="text-green-300 font-mono text-sm bg-gray-900 p-3 rounded block overflow-x-auto">
+                    {newlyCreatedKey}
+                  </code>
+                </div>
               </div>
-            </div>
-          </div>
+            </Modal.Body>
+            <Modal.Footer className="bg-gray-800 border-gray-700">
+              <Button
+                onClick={() => setNewlyCreatedKey(null)}
+                className="bg-cyan-600 hover:bg-cyan-700"
+              >
+                I've Saved My API Key
+              </Button>
+            </Modal.Footer>
+          </Modal>
         )}
 
         {/* Stats Cards */}
@@ -206,6 +261,9 @@ export function APISKeyDashboard() {
                 <Table className="w-full bg-black">
                   <Table.Head>
                     <Table.HeadCell className="font-semibold">
+                      Name
+                    </Table.HeadCell>
+                    <Table.HeadCell className="font-semibold">
                       API Key
                     </Table.HeadCell>
                     <Table.HeadCell className=" font-semibold">
@@ -224,6 +282,9 @@ export function APISKeyDashboard() {
                         key={apiKey.id}
                         className="bg-gray-800 border hover:bg-gray-750 transition-colors"
                       >
+                        <Table.Cell className="text-gray-300 font-medium">
+                          {apiKey.name || "Untitled Key"}
+                        </Table.Cell>
                         <Table.Cell className="font-mono text-gray-300">
                           <div className="flex items-center gap-2">
                             <code
@@ -237,18 +298,6 @@ export function APISKeyDashboard() {
                                 ? apiKey.key
                                 : maskApiKey(apiKey.key)}
                             </code>
-                            {!isKeyVisible(apiKey) && (
-                              <button
-                                onClick={() => handleViewKeyRequest(apiKey)}
-                                className="text-gray-400 hover:text-white transition-colors p-1"
-                                title="Revoke and recreate to view key"
-                              >
-                                <FontAwesomeIcon
-                                  icon={faEye}
-                                  className="w-4 h-4"
-                                />
-                              </button>
-                            )}
                           </div>
                         </Table.Cell>
                         <Table.Cell className="text-gray-300">
@@ -322,68 +371,59 @@ export function APISKeyDashboard() {
           </div>
         </Card>
 
-        {/* Revoke Modal */}
+        {/* Create API Key Modal */}
         <Modal
-          show={showRevokeModal}
-          onClose={() => setShowRevokeModal(false)}
+          show={showCreateModal}
+          onClose={() => {
+            setShowCreateModal(false);
+            setKeyName("");
+          }}
           size="md"
         >
           <Modal.Header className="bg-gray-800 border-gray-700">
-            <span className="text-white">API Key Hidden for Security</span>
+            <span className="text-white">Create New API Key</span>
           </Modal.Header>
           <Modal.Body className="bg-gray-800">
             <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <FontAwesomeIcon
-                  icon={faExclamationTriangle}
-                  className="text-yellow-400 mt-1"
+              <div>
+                <Label
+                  htmlFor="keyName"
+                  className="block text-sm font-medium text-gray-300 mb-2"
+                >
+                  API Key Name
+                </Label>
+                <TextInput
+                  id="keyName"
+                  type="text"
+                  placeholder="Enter a name for your API key"
+                  value={keyName}
+                  onChange={(e) => setKeyName(e.target.value)}
+                  className="w-full"
+                  required
                 />
-                <div>
-                  <h3 className="text-white font-semibold mb-2">
-                    Security Policy
-                  </h3>
-                  <p className="text-gray-300 text-sm mb-4">
-                    For security reasons, API keys are only displayed once when
-                    first created. To view this key again, you'll need to revoke
-                    it and create a new one.
-                  </p>
-                  {keyToRevoke && (
-                    <div className="bg-gray-700 p-3 rounded">
-                      <p className="text-gray-400 text-xs mb-1">
-                        Current Key (masked):
-                      </p>
-                      <code className="text-gray-300 font-mono text-sm">
-                        {maskApiKey(keyToRevoke.key)}
-                      </code>
-                    </div>
-                  )}
-                </div>
+                <p className="text-gray-400 text-xs mt-1">
+                  Choose a descriptive name to help you identify this key later
+                </p>
               </div>
             </div>
           </Modal.Body>
           <Modal.Footer className="bg-gray-800 border-gray-700">
             <Button
               color="gray"
-              onClick={() => setShowRevokeModal(false)}
+              onClick={() => {
+                setShowCreateModal(false);
+                setKeyName("");
+              }}
               className="bg-gray-600 hover:bg-gray-700"
             >
               Cancel
             </Button>
             <Button
-              color="red"
-              onClick={() => handleDeleteAPIKey(keyToRevoke?.id)}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Revoke Key
-            </Button>
-            <Button
-              onClick={() => {
-                handleDeleteAPIKey(keyToRevoke?.id);
-                setTimeout(() => handleGenerateAPIKeys(), 500);
-              }}
+              onClick={handleCreateAPIKey}
+              disabled={!keyName.trim() || isCreating}
               className="bg-cyan-600 hover:bg-cyan-700"
             >
-              Revoke & Create New
+              {isCreating ? "Creating..." : "Create API Key"}
             </Button>
           </Modal.Footer>
         </Modal>
