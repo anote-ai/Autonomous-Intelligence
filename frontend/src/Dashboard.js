@@ -5,7 +5,7 @@ import MainNav from "./components/MainNav";
 import { Helmet } from "react-helmet";
 import { Routes, Route, Navigate } from "react-router-dom";
 import {
-  accountPath,
+  billingPath,
   pricingRedirectPath,
   chatbotPath,
   apiKeyDashboardPath,
@@ -107,7 +107,7 @@ function Dashboard() {
       }
     />,
     showRestrictedRouteRequiringUserSession ? (
-      <Route path={accountPath} element={<PaymentsComponent />} />
+      <Route path={billingPath} element={<PaymentsComponent />} />
     ) : null,
     showRestrictedRouteRequiringUserSession ? (
       <Route path={pricingRedirectPath} element={<PaymentsProduct />} />

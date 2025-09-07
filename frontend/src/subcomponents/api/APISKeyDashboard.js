@@ -18,17 +18,16 @@ import {
   faCoins,
 } from "@fortawesome/free-solid-svg-icons";
 import copy from "copy-to-clipboard";
-import "../../styles/APIKeyDashboard.css";
 import {
   Button,
   Table,
-  Card,
   Badge,
   Tooltip,
   Modal,
   TextInput,
   Label,
 } from "flowbite-react";
+import { useNavigate } from "react-router-dom"
 
 export function APISKeyDashboard() {
   const dispatch = useDispatch();
@@ -39,6 +38,7 @@ export function APISKeyDashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [keyName, setKeyName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const navigate = useNavigate()
 
   const hasSufficientCredits = numCredits >= 1;
 
@@ -65,9 +65,7 @@ export function APISKeyDashboard() {
         setShowCreateModal(false);
         setKeyName("");
         // Auto-hide after 30 seconds for security
-        setTimeout(() => {
-          setNewlyCreatedKey(null);
-        }, 30000);
+        setTimeout(() => setNewlyCreatedKey(null), 30000);
       } else if (result.payload && result.payload.error) {
         // Handle credit insufficiency or other errors
         alert(`Failed to create API key: ${result.payload.error}`);
@@ -125,7 +123,7 @@ export function APISKeyDashboard() {
               color="gray"
               outline
               size="sm"
-              onClick={() => window.history.back()}
+              onClick={() => navigate("/")}
               className="hover:bg-gray-700 border-gray-600 text-gray-300"
             >
               <FontAwesomeIcon className="w-4 h-4 mr-2" icon={faArrowLeft} />
@@ -149,19 +147,18 @@ export function APISKeyDashboard() {
           </div>
 
           <div className="flex flex-col items-end gap-2">
-          
-              <Button
-                onClick={handleGenerateAPIKeys}
-                disabled={!hasSufficientCredits}
-                className={`font-semibold ${
-                  hasSufficientCredits
-                    ? "bg-cyan-600 hover:bg-cyan-700 text-white"
-                    : "bg-gray-500 text-gray-300 cursor-not-allowed"
-                }`}
-              >
-                <FontAwesomeIcon className="w-4 h-4 mr-2" icon={faPlus} />
-                Create New API Key
-              </Button>
+            <Button
+              onClick={handleGenerateAPIKeys}
+              disabled={!hasSufficientCredits}
+              className={`font-semibold ${
+                hasSufficientCredits
+                  ? "bg-cyan-600 hover:bg-cyan-700 text-white"
+                  : "bg-gray-500 text-gray-300 cursor-not-allowed"
+              }`}
+            >
+              <FontAwesomeIcon className="w-4 h-4 mr-2" icon={faPlus} />
+              Create New API Key
+            </Button>
             {!hasSufficientCredits && (
               <p className="text-red-400 text-xs text-right">
                 Need at least 1 credit to create API keys
@@ -233,189 +230,121 @@ export function APISKeyDashboard() {
           </Modal>
         )}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="bg-gray-800 border-gray-700">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Available Credits</p>
-                <p
-                  className={`text-2xl font-bold ${
-                    hasSufficientCredits ? "text-green-400" : "text-red-400"
-                  }`}
-                >
-                  {numCredits}
-                </p>
-              </div>
-              <div
-                className={`p-3 rounded-lg ${
-                  hasSufficientCredits ? "bg-green-600" : "bg-red-600"
-                }`}
-              >
-                <FontAwesomeIcon
-                  icon={faCoins}
-                  className="w-6 h-6 text-white"
-                />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="bg-gray-800 border-gray-700">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Total Keys</p>
-                <p className="text-2xl font-bold text-white">
-                  {apiKeys.length}
-                </p>
-              </div>
-              <div className="p-3 bg-cyan-600 rounded-lg">
-                <FontAwesomeIcon icon={faKey} className="w-6 h-6 text-white" />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="bg-gray-800 border-gray-700">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Active Keys</p>
-                <p className="text-2xl font-bold text-white">
-                  {apiKeys.length}
-                </p>
-              </div>
-              <div className="p-3 bg-green-600 rounded-lg">
-                <FontAwesomeIcon icon={faKey} className="w-6 h-6 text-white" />
-              </div>
-            </div>
-          </Card>
-        </div>
-
         {/* API Keys Table */}
-        <Card className="bg-gray-800 border-gray-700">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-white">
-                Your API Keys
-              </h2>
-              <Badge color="info" size="sm">
-                {apiKeys.length} {apiKeys.length === 1 ? "Key" : "Keys"}
-              </Badge>
-            </div>
-
-            {apiKeys.length > 0 ? (
-              <div className="overflow-x-auto">
-                <Table className="w-full bg-black">
-                  <Table.Head>
-                    <Table.HeadCell className="font-semibold">
-                      Name
-                    </Table.HeadCell>
-                    <Table.HeadCell className="font-semibold">
-                      API Key
-                    </Table.HeadCell>
-                    <Table.HeadCell className=" font-semibold">
-                      Created
-                    </Table.HeadCell>
-                    <Table.HeadCell className="font-semibold">
-                      Status
-                    </Table.HeadCell>
-                    <Table.HeadCell className=" font-semibold">
-                      Actions
-                    </Table.HeadCell>
-                  </Table.Head>
-                  <Table.Body className="divide-y divide-gray-700">
-                    {apiKeys.map((apiKey) => (
-                      <Table.Row
-                        key={apiKey.id}
-                        className="bg-gray-800 border hover:bg-gray-750 transition-colors"
-                      >
-                        <Table.Cell className="text-gray-300 font-medium">
-                          {apiKey.name || "Untitled Key"}
-                        </Table.Cell>
-                        <Table.Cell className="font-mono text-gray-300">
-                          <div className="flex items-center gap-2">
-                            <code
-                              className={`px-3 py-2 rounded w-full text-sm ${
-                                isKeyVisible(apiKey)
-                                  ? "bg-green-900 text-green-300 border border-green-700"
-                                  : "bg-gray-700 text-gray-300"
-                              }`}
+        <div>
+          {apiKeys.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table className="w-full bg-black">
+                <Table.Head>
+                  <Table.HeadCell className="font-semibold">
+                    Name
+                  </Table.HeadCell>
+                  <Table.HeadCell className="font-semibold">
+                    API Key
+                  </Table.HeadCell>
+                  <Table.HeadCell className=" font-semibold">
+                    Created
+                  </Table.HeadCell>
+                  <Table.HeadCell className="font-semibold">
+                    Status
+                  </Table.HeadCell>
+                  <Table.HeadCell className=" font-semibold">
+                    Actions
+                  </Table.HeadCell>
+                </Table.Head>
+                <Table.Body className="divide-y divide-gray-700">
+                  {apiKeys.map((apiKey) => (
+                    <Table.Row
+                      key={apiKey.id}
+                      className="bg-gray-800 border hover:bg-gray-750 transition-colors"
+                    >
+                      <Table.Cell className="text-gray-300 font-medium">
+                        {apiKey.name || "Untitled Key"}
+                      </Table.Cell>
+                      <Table.Cell className="font-mono text-gray-300">
+                        <div className="flex items-center gap-2">
+                          <code
+                            className={`px-3 py-2 rounded w-full text-sm ${
+                              isKeyVisible(apiKey)
+                                ? "bg-green-900 text-green-300 border border-green-700"
+                                : "bg-gray-700 text-gray-300"
+                            }`}
+                          >
+                            {isKeyVisible(apiKey)
+                              ? apiKey.key
+                              : maskApiKey(apiKey.key)}
+                          </code>
+                        </div>
+                      </Table.Cell>
+                      <Table.Cell className="text-gray-300">
+                        {formatDate(apiKey.created)}
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Badge color="success" size="sm">
+                          Active
+                        </Badge>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <div className="flex items-center gap-2">
+                          {isKeyVisible(apiKey) && (
+                            <Tooltip
+                              content={
+                                copiedKey === apiKey.id
+                                  ? "Copied!"
+                                  : "Copy to clipboard"
+                              }
                             >
-                              {isKeyVisible(apiKey)
-                                ? apiKey.key
-                                : maskApiKey(apiKey.key)}
-                            </code>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell className="text-gray-300">
-                          {formatDate(apiKey.created)}
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Badge color="success" size="sm">
-                            Active
-                          </Badge>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="flex items-center gap-2">
-                            {isKeyVisible(apiKey) && (
-                              <Tooltip
-                                content={
+                              <button
+                                className={`p-2 rounded transition-colors ${
                                   copiedKey === apiKey.id
-                                    ? "Copied!"
-                                    : "Copy to clipboard"
+                                    ? "text-green-400 bg-green-900"
+                                    : "text-cyan-400 hover:bg-gray-700"
+                                }`}
+                                onClick={() =>
+                                  handleCopyAPIKey(apiKey.key, apiKey.id)
                                 }
                               >
-                                <button
-                                  className={`p-2 rounded transition-colors ${
-                                    copiedKey === apiKey.id
-                                      ? "text-green-400 bg-green-900"
-                                      : "text-cyan-400 hover:bg-gray-700"
-                                  }`}
-                                  onClick={() =>
-                                    handleCopyAPIKey(apiKey.key, apiKey.id)
-                                  }
-                                >
-                                  <FontAwesomeIcon
-                                    icon={faCopy}
-                                    className="w-4 h-4"
-                                  />
-                                </button>
-                              </Tooltip>
-                            )}
-                            <Tooltip content="Delete API key">
-                              <button
-                                className="p-2 rounded text-red-400 hover:bg-gray-700 transition-colors"
-                                onClick={() => handleDeleteAPIKey(apiKey.id)}
-                              >
                                 <FontAwesomeIcon
-                                  icon={faTrash}
+                                  icon={faCopy}
                                   className="w-4 h-4"
                                 />
                               </button>
                             </Tooltip>
-                          </div>
-                        </Table.Cell>
-                      </Table.Row>
-                    ))}
-                  </Table.Body>
-                </Table>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <FontAwesomeIcon
-                  icon={faKey}
-                  className="w-16 h-16 text-gray-600 mb-4"
-                />
-                <h3 className="text-lg font-semibold text-gray-300 mb-2">
-                  No API Keys Found
-                </h3>
-                <p className="text-gray-400 mb-6">
-                  {hasSufficientCredits
-                    ? 'Use the "Create New API Key" button above to start using our services'
-                    : "You need at least 1 credit to create API keys"}
-                </p>
-              </div>
-            )}
-          </div>
-        </Card>
+                          )}
+                          <Tooltip content="Delete API key">
+                            <button
+                              className="p-2 rounded text-red-400 hover:bg-gray-700 transition-colors"
+                              onClick={() => handleDeleteAPIKey(apiKey.id)}
+                            >
+                              <FontAwesomeIcon
+                                icon={faTrash}
+                                className="w-4 h-4"
+                              />
+                            </button>
+                          </Tooltip>
+                        </div>
+                      </Table.Cell>
+                    </Table.Row>
+                  ))}
+                </Table.Body>
+              </Table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <FontAwesomeIcon
+                icon={faKey}
+                className="w-16 h-16 text-gray-600 mb-4"
+              />
+              <h3 className="text-2xl font-semibold text-gray-400 mb-2">
+                No API Keys Found
+              </h3>
+              <p className="text-gray-500 mb-6 max-w-md">
+                You haven't created any API keys yet. Create your first API key
+                to start using the service.
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* Create API Key Modal */}
         <Modal
@@ -472,19 +401,7 @@ export function APISKeyDashboard() {
               {isCreating ? "Creating..." : "Create API Key"}
             </Button>
           </Modal.Footer>
-        </Modal>
-
-        {/* Documentation Link */}
-        <div className="mt-8 text-center">
-          <a
-            href="https://docs.anote.ai/api/anoteapi.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors"
-          >
-            📚 View API Documentation
-          </a>
-        </div>
+        </Modal>    
       </div>
     </div>
   );

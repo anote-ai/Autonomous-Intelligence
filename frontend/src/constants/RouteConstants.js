@@ -1,5 +1,6 @@
 export const pricingRedirectPath = "/pricingRedirect";
 export const accountPath = "/account";
+export const billingPath = "/billing";
 export const contactPath = "/contact";
 export const tosPath = "/termsofservice";
 export const privatePolicyPath = "/privacypolicy";
