@@ -3,8 +3,13 @@ import Chatbot from "./Chatbot";
 import fetcher from "../../http/RequestConfig";
 import { useNavigate } from "react-router-dom";
 import ChatHistory from "./ChatHistory";
+import Sidebar from "../Sidebar";
 
-function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent }) {
+function HomeChatbot({
+  isGuestMode = false,
+  onRequestLogin,
+  setIsLoggedInParent,
+}) {
   const [selectedChatId, setSelectedChatId] = useState(isGuestMode ? 0 : null);
   const [forceUpdate, setForceUpdate] = useState(0);
   const [isPrivate, setIsPrivate] = useState(0);
@@ -26,10 +31,10 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
   const handleMenu = () => {
     setMenu((prev) => !prev);
   };
-  const [confirmedModelKey, setConfirmedModelKey] = useState("");
+  const [confirmedModelKey] = useState("");
 
   const handleChatSelect = (chatId) => {
-    console.log("select")
+    console.log("select");
     setSelectedChatId(chatId);
   };
 
@@ -63,7 +68,7 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
       if (!error.silent) {
         console.error("Error creating new chat:", error);
       }
-      if (error.type === 'NETWORK_ERROR') {
+      if (error.type === "NETWORK_ERROR") {
         // Backend is offline, create a temporary local chat ID
         const tempChatId = Date.now(); // Use timestamp as temp ID
         handleChatSelect(tempChatId);
@@ -131,7 +136,6 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
 
       // Force update to refresh documents list
       handleForceUpdate();
-
     } catch (error) {
       console.error("File upload error:", error);
     } finally {
@@ -139,7 +143,7 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
       setUploadProgress(0);
       // Clear the file input
       if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+        fileInputRef.current.value = "";
       }
     }
   };
@@ -174,7 +178,7 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
         }
         // If it's a network error (backend down), don't show error UI
         // Just keep the existing state and let the user know backend is offline
-        if (error.type !== 'NETWORK_ERROR') {
+        if (error.type !== "NETWORK_ERROR") {
           // Handle other types of errors if needed
           if (!error.silent) {
             console.error("Non-network error:", error);
@@ -189,88 +193,36 @@ function HomeChatbot({ isGuestMode = false, onRequestLogin, setIsLoggedInParent 
 
   return (
     <div className="h-screen flex flex-col bg-gray-900">
-      {/* ChatGPT-style top navigation */}
-      {/* <Navbarchatbot
-        selectedChatId={selectedChatId}
-        onChatSelect={handleChatSelect}
-        handleForceUpdate={handleForceUpdate}
-        isPrivate={isPrivate}
-        loading={loading}
-        setIsPrivate={setIsPrivate}
-        menu={menu}
-        handleMenu={handleMenu}
-        chats={chats}
-        setcurrTask={setcurrTask}
-        currTask={currTask}
-        setConfirmedModelKey={setConfirmedModelKey}
-        confirmedModelKey={confirmedModelKey}
-        setCurrChatName={setCurrChatName}
-        setIsEdit={setIsEdit}
-        setShowChatbot={setShowChatbot}
-        createNewChat={createNewChat}
-        handleChatSelect={handleChatSelect}
-        forceUpdate={forceUpdate}
-        isGuestMode={isGuestMode}
-        onRequestLogin={onRequestLogin}
-        setIsLoggedInParent={setIsLoggedInParent}
-      /> */}
-
       {/* Main content area with proper top spacing */}
       <div className="flex-1 w-full h-full overflow-hidden flex">
         {/* Sidebar for chat history - show when menu is true and not in guest mode */}
-        {menu && !isGuestMode && (
-          <div className="w-80 border-r border-gray-700 bg-gray-800 flex-shrink-0">
-            <div className="border-t border-gray-700 pt-4">
-              <div className="px-2">
-                <ChatHistory
-                  chats={chats}
-                  selectedChatId={selectedChatId}
-                  handleChatSelect={handleChatSelect}
-                  handleForceUpdate={handleForceUpdate}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
+        {!isGuestMode && <Sidebar handleChatSelect={handleChatSelect} />}
         {/* Chat area */}
         <div className="flex-1 h-full">
-          {currTask === 0 && (
-            <Chatbot
-              chat_type={currTask}
-              selectedChatId={selectedChatId}
-              handleChatSelect={handleChatSelect}
-              handleMenu={handleMenu}
-              chats={chats}
-              createNewChat={createNewChat}
-              menu={menu}
-              handleForceUpdate={handleForceUpdate}
-              forceUpdate={forceUpdate}
-              isPrivate={isPrivate}
-              currChatName={currChatName}
-              confirmedModelKey={confirmedModelKey}
-              setCurrChatName={setCurrChatName}
-              activeMessageIndex={activeMessageIndex}
-              setActiveMessageIndex={setActiveMessageIndex}
-              setRelevantChunk={setRelevantChunk}
-              isUploading={isUploading}
-              uploadProgress={uploadProgress}
-              onUploadClick={handleUploadClick}
-              isGuestMode={isGuestMode}
-            />
-          )}
+          <Chatbot
+            chat_type={currTask}
+            selectedChatId={selectedChatId}
+            handleChatSelect={handleChatSelect}
+            handleMenu={handleMenu}
+            chats={chats}
+            createNewChat={createNewChat}
+            menu={menu}
+            handleForceUpdate={handleForceUpdate}
+            forceUpdate={forceUpdate}
+            isPrivate={isPrivate}
+            currChatName={currChatName}
+            confirmedModelKey={confirmedModelKey}
+            setCurrChatName={setCurrChatName}
+            activeMessageIndex={activeMessageIndex}
+            setActiveMessageIndex={setActiveMessageIndex}
+            setRelevantChunk={setRelevantChunk}
+            isUploading={isUploading}
+            uploadProgress={uploadProgress}
+            onUploadClick={handleUploadClick}
+            isGuestMode={isGuestMode}
+          />
         </div>
       </div>
-
-      {/* Hidden file input for direct upload */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileUpload}
-        accept=".pdf,.doc,.docx,.txt,.csv"
-        multiple
-        style={{ display: "none" }}
-      />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { faPlus } from "@fortawesome/free-solid-svg-icons";
 
 function ChatHistory(props) {
   const [chats, setChats] = useState([]);
+  const [hoveredChatId, setHoveredChatId] = useState(null);
   const [chatIdToDelete, setChatIdToDelete] = useState(null);
   const [chatToDelete, setChatToDelete] = useState("");
   const [showConfirmPopupChat, setShowConfirmPopupChat] = useState(false);
@@ -192,30 +193,25 @@ function ChatHistory(props) {
           document.body
         )}
 
-      <div className="px-3 mt-16">
+      <div className="px-3 mt-3">
         <div className="flex justify-between items-center mb-2">
           <h2
-            className={`text-xl text-anoteblack-100 ${
+            className={`text-gray-400 text-sm ${
               chats.length === 0 ? "hidden" : ""
             } font-bold`}
           >
             Chat History
           </h2>
-          <button
-            onClick={() => navigate("/")}
-            className="bg-anoteblack-700  cursor-pointer hover:bg-anoteblack-600 text-white rounded-lg transition-colors"
-            title="Create new chat"
-          >
-            <FontAwesomeIcon icon={faPlus} className="text-base font-bold" />
-          </button>
         </div>
-        <ul className="flex-col py-2 justify-around w-full h-full flex overflow-y-auto">
+        <ul className="flex-col justify-around w-full h-full flex overflow-y-auto">
           {[...chats].reverse().map((chat, index) => (
             <li
               key={index}
-              className={`group hover:bg-softBlue/80  mb-1 ${
+              className={`group hover:bg-gray-800 rounded px-2 py-1 cursor-pointer text-sm text-white mb-1 ${
                 chat.id === Number(id) ? "bg-softBlue/30" : ""
-              } flex w-full items-center rounded-md px-2 py-1 text-gray-800`}
+              } flex w-full items-center rounded-md px-2 py-1 text-gray-800 relative`}
+              onMouseEnter={() => setHoveredChatId(chat.id)}
+              onMouseLeave={() => setHoveredChatId(null)}
             >
               <span className="cursor-pointer w-5/6 truncate max-w-2xl">
                 <Link
@@ -245,6 +241,12 @@ function ChatHistory(props) {
                   Delete
                 </Dropdown.Item>
               </Dropdown>
+              {/* Sidebar hover popup */}
+              {hoveredChatId === chat.id && (
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-50 bg-white border border-gray-300 shadow-lg rounded-lg px-4 py-2 min-w-[120px] text-gray-900 text-base">
+                  <span className="font-semibold">{chat.chat_name}</span>
+                </div>
+              )}
             </li>
           ))}
         </ul>

@@ -98,7 +98,7 @@ function CheckLogin(props) {
   }, [location]);
 
   return (
-    <div className="">
+    <div>
       {mainView}
       <LoginModal 
         isOpen={showLogin}
