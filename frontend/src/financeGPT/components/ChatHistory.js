@@ -6,7 +6,6 @@ import { Dropdown } from "flowbite-react";
 
 function ChatHistory(props) {
   const [chats, setChats] = useState([]);
-  const [hoveredChatId, setHoveredChatId] = useState(null);
   const [chatIdToDelete, setChatIdToDelete] = useState(null);
   const [chatToDelete, setChatToDelete] = useState("");
   const [showConfirmPopupChat, setShowConfirmPopupChat] = useState(false);
