@@ -3,8 +3,6 @@ import { createPortal } from "react-dom";
 import fetcher from "../../http/RequestConfig";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { Dropdown } from "flowbite-react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus } from "@fortawesome/free-solid-svg-icons";
 
 function ChatHistory(props) {
   const [chats, setChats] = useState([]);
@@ -16,7 +14,7 @@ function ChatHistory(props) {
   const [chatIdToRename, setChatIdToRename] = useState(null);
   const [newChatName, setNewChatName] = useState("");
   const { id } = useParams();
-  const navigate = useNavigate();
+  
   const retrieveAllChats = async () => {
     console.log("i am in retrieve chats");
     try {
@@ -209,11 +207,10 @@ function ChatHistory(props) {
               key={index}
               className={`group hover:bg-gray-800 rounded px-2 py-1 cursor-pointer text-sm text-white mb-1 ${
                 chat.id === Number(id) ? "bg-softBlue/30" : ""
-              } flex w-full items-center rounded-md px-2 py-1 text-gray-800 relative`}
-              onMouseEnter={() => setHoveredChatId(chat.id)}
-              onMouseLeave={() => setHoveredChatId(null)}
+              } flex w-full items-center rounded-md px-2 py-1 gap-4 text-gray-800 relative`}
+      
             >
-              <span className="cursor-pointer w-5/6 truncate max-w-2xl">
+              <span className="cursor-pointer  w-full truncate max-w-2xl">
                 <Link
                   onClick={async () => {
                     props.handleChatSelect(chat.id);
@@ -240,13 +237,7 @@ function ChatHistory(props) {
                 <Dropdown.Item onClick={() => handleDeleteChat(chat.id)}>
                   Delete
                 </Dropdown.Item>
-              </Dropdown>
-              {/* Sidebar hover popup */}
-              {hoveredChatId === chat.id && (
-                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-50 bg-white border border-gray-300 shadow-lg rounded-lg px-4 py-2 min-w-[120px] text-gray-900 text-base">
-                  <span className="font-semibold">{chat.chat_name}</span>
-                </div>
-              )}
+              </Dropdown>            
             </li>
           ))}
         </ul>

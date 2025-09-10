@@ -32,16 +32,6 @@ function CheckLogin(props) {
     }
   }, [accessToken, sessionToken, isLoggedIn]);
 
-  // if (isLoggedIn && productHash !== null && productHash !== "") {
-  //   setProductHash("");
-  //   var fullPath = pricingRedirectPath + "?product_hash=" + productHash;
-  //   if (freeTrialCode !== null && freeTrialCode !== "") {
-  //     setFreeTrialCode("");
-  //     fullPath += "&free_trial_code=";
-  //     fullPath += freeTrialCode;
-  //   }
-  //   navigate(fullPath);
-  // }
 
   // Listen for the custom event to show login
   useEffect(() => {

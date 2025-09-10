@@ -32,16 +32,20 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
   }
 
   return (
-    <div className="fixed z-50 flex items-center justify-between w-full px-2 py-4 text-white">
+    <div
+      className={`fixed ${
+        isLoggedIn && "md:pl-72"
+      } z-50 flex items-center justify-between w-full px-2 py-4 text-white`}
+    >
       {showLoginModal && (
         <LoginModal
           onClose={() => setShowLoginModal((p) => !p)}
           isOpen={showLoginModal}
         />
       )}
-      <div className="flex items-center">
+      <div className={"flex items-center"}>
         <button className="flex" onClick={() => navigate("/")}>
-          <img alt="pancea logo" width={30} height={30} src="/logonew.png" />
+          <img alt="pancea logo" className={isLoggedIn && "hidden"} width={30} height={30} src="/logonew.png" />
           <span className="self-center whitespace-nowrap text-lg font-semibold text-white pl-2">
             Panacea
           </span>
