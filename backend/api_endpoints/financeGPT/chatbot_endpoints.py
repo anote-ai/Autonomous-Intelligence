@@ -14,7 +14,7 @@ import os
 import uuid
 from flask import jsonify
 import requests
-from database.db import get_db_connection
+from database.db import get_db_connection, deduct_credits_from_user
 from tika import parser as p
 
 

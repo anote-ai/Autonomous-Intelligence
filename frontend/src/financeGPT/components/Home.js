@@ -4,6 +4,8 @@ import fetcher from "../../http/RequestConfig";
 import { useNavigate } from "react-router-dom";
 import ChatHistory from "./ChatHistory";
 import Sidebar from "../Sidebar";
+import { useDispatch } from "react-redux";
+import { deductCreditsLocal } from "../../redux/UserSlice";
 
 function HomeChatbot({
   isGuestMode = false,
@@ -27,6 +29,7 @@ function HomeChatbot({
   const [triggerUpload, setTriggerUpload] = useState(false);
   const sidebarRef = useRef(null);
   const fileInputRef = useRef(null);
+  const dispatch = useDispatch();
 
   const handleMenu = () => {
     setMenu((prev) => !prev);
@@ -51,6 +54,10 @@ function HomeChatbot({
     }
 
     try {
+      // First, deduct credits via server call
+      await dispatch(deductCreditsLocal(1)).unwrap();
+
+      // Then create the chat
       const response = await fetcher("create-new-chat", {
         method: "POST",
         headers: {
@@ -61,6 +68,14 @@ function HomeChatbot({
       });
 
       const response_data = await response.json();
+
+      // Check if the response contains an error
+      if (response_data.error) {
+        // Show error to user
+        alert(response_data.error);
+        throw new Error(response_data.error);
+      }
+
       handleChatSelect(response_data.chat_id);
       return response_data.chat_id;
     } catch (error) {

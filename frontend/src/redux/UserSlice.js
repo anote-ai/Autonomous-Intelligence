@@ -149,6 +149,23 @@ export const refreshCredits = createAsyncThunk(
   }
 );
 
+// Action to deduct credits by making a server call
+export const deductCreditsLocal = createAsyncThunk(
+  "user/deductCreditsLocal",
+  async (creditsToDeduct = 1, thunk) => {
+    const response = await fetcher("deductCredits", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-type": "application/json",
+      },
+      body: JSON.stringify({ creditsToDeduct }),
+    });
+    const response_str = await response.json();
+    return response_str;
+  }
+);
+
 export const createCheckoutSession = createAsyncThunk(
   "user/createCheckoutSession",
   async (payload, thunk) => {
@@ -306,6 +323,20 @@ export const userSlice = createSlice({
         if (state.currentUser && state.entities.users.byId[state.currentUser]) {
           state.entities.users.byId[state.currentUser].credits =
             action.payload["numCredits"];
+        }
+      })
+      .addCase(deductCreditsLocal.fulfilled, (state, action) => {
+        // The server should return the new credit balance
+        if (action.payload && action.payload.newCredits !== undefined) {
+          state.numCredits = action.payload.newCredits;
+          // Also update the user object's credits field if user exists
+          if (
+            state.currentUser &&
+            state.entities.users.byId[state.currentUser]
+          ) {
+            state.entities.users.byId[state.currentUser].credits =
+              action.payload.newCredits;
+          }
         }
       })
       .addCase(viewUser.fulfilled, (state, action) => {

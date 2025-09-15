@@ -361,6 +361,7 @@ def resetPassword():
   return ResetPasswordHandler(request)
 
 @app.route('/refreshCredits', methods = ['POST'])
+@cross_origin(supports_credentials=True)
 @jwt_or_session_token_required
 def RefreshCredits():
   try:
@@ -369,6 +370,41 @@ def RefreshCredits():
     # If the JWT is invalid, return an error
     return jsonify({"error": "Invalid JWT"}), 401
   return jsonify(RefreshCreditsHandler(request, user_email))
+
+@app.route('/deductCredits', methods = ['POST'])
+@cross_origin(supports_credentials=True)
+@jwt_or_session_token_required
+def DeductCredits():
+  try:
+    user_email = extractUserEmailFromRequest(request)
+  except InvalidTokenError:
+    # If the JWT is invalid, return an error
+    return jsonify({"error": "Invalid JWT"}), 401
+  
+  credits_to_deduct = request.json.get('creditsToDeduct', 1)
+  
+  # Import the deduct function and db connection
+  from database.db import deduct_credits_from_user, get_db_connection
+  
+  # Try to deduct credits
+  success = deduct_credits_from_user(user_email, credits_to_deduct)
+  
+  if not success:
+    return jsonify({"error": "Insufficient credits"}), 400
+  
+  # Get updated credit balance directly from database
+  conn, cursor = get_db_connection()
+  cursor.execute('SELECT credits FROM users WHERE email = %s', [user_email])
+  user = cursor.fetchone()
+  conn.close()
+  
+  new_credits = user["credits"] if user else 0
+  
+  return jsonify({
+    "success": True,
+    "newCredits": new_credits,
+    "creditsDeducted": credits_to_deduct
+  })
 
 # Billing
 

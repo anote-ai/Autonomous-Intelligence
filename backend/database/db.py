@@ -624,6 +624,37 @@ def check_and_debit_gpt_credit(userEmail, numCredits):
     return isOk
 
 
+def deduct_credits_from_user(user_email, credits_to_deduct=1):
+    """
+    Deduct credits from a user by email.
+    
+    Args:
+        user_email (str): The user's email
+        credits_to_deduct (int): Number of credits to deduct (default: 1)
+    
+    Returns:
+        bool: True if credits were successfully deducted, False otherwise
+    """
+    conn, cursor = get_db_connection()
+    
+    # First check if user has enough credits
+    cursor.execute('SELECT id, credits FROM users WHERE email = %s', [user_email])
+    user = cursor.fetchone()
+    
+    if not user or user["credits"] < credits_to_deduct:
+        conn.close()
+        return False
+    
+    # Deduct credits
+    new_credits = user["credits"] - credits_to_deduct
+    cursor.execute('UPDATE users SET credits=%s WHERE id=%s', [new_credits, user["id"]])
+    conn.commit()
+    conn.close()
+    
+    print(f"Deducted {credits_to_deduct} credits from user {user_email}. New balance: {new_credits}")
+    return True
+
+
 def generate_api_key(email, key_name=None):
     print(f"generate_api_key called with email: {email}, key_name: {key_name}")
     conn, cursor = get_db_connection()
