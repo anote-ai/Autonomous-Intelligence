@@ -20,6 +20,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import fetcher from "../../http/RequestConfig";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { deductCreditsLocal } from "../../redux/UserSlice";
+import { useDispatch } from "react-redux";
 
 const Chatbot = (props) => {
   const [message, setMessage] = useState("");
@@ -27,6 +29,7 @@ const Chatbot = (props) => {
   const navigate = useNavigate();
   const pollingStartedRef = useRef(false);
   const { id } = useParams();
+  const dispatch = useDispatch()
   const location = useLocation();
   const [chatNameGenerated, setChatNameGenerated] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -205,6 +208,7 @@ const Chatbot = (props) => {
   const handleSendMessage = async (event) => {
     event.preventDefault();
     if (!message.trim()) return;
+    await dispatch(deductCreditsLocal(1)).unwrap();
 
     const currentMessage = message.trim();
     setMessage("");

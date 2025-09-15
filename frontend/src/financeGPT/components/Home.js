@@ -54,9 +54,6 @@ function HomeChatbot({
     }
 
     try {
-      // First, deduct credits via server call
-      await dispatch(deductCreditsLocal(1)).unwrap();
-
       // Then create the chat
       const response = await fetcher("create-new-chat", {
         method: "POST",
