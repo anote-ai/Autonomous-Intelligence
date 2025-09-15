@@ -49,7 +49,7 @@ def create_user_if_does_not_exist(email, google_id, person_name, profile_pic_url
     user_id = -1
     if count is None or count["COUNT(*)"] == 0:
         # Create new user with 20 credits by default
-        cursor.execute('INSERT INTO users (credits, email, google_id, person_name, profile_pic_url) VALUES (20, %s,%s,%s,%s)', [email, google_id, person_name, profile_pic_url])
+        cursor.execute('INSERT INTO users (credits, email, google_id, person_name, profile_pic_url) VALUES (100, %s,%s,%s,%s)', [email, google_id, person_name, profile_pic_url])
         row = cursor.fetchone()
         conn.commit()
         conn.close()

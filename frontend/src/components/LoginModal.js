@@ -114,7 +114,7 @@ function LoginModal({ isOpen, onClose, productHash, freeTrialCode }) {
                 <button
                   onClick={onLogin}
                   type="button"
-                  className="login-with-google-btn-new"
+                  className="login-with-google-btn-new cursor-pointer"
                   style={{
                     backgroundImage: `url(${googleIcon})`,
                     textColor: "transparent",
