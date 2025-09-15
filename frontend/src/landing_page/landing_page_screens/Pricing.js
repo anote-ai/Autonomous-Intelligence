@@ -244,7 +244,7 @@ const Pricing = (props) => {
                 >
                   {((tier.popular && !showCurrentPlan) ||
                     props.currentPlanIndexOverride == index) && (
-                    <span class="bg-gradient-to-r from-[#EDDC8F] to-[#F1CA57] text-black font-semibold px-3 py-1 tracking-widest text-xs absolute right-0 top-0 rounded-bl">
+                    <span className="bg-gradient-to-r from-[#EDDC8F] to-[#F1CA57] text-black font-semibold px-3 py-1 tracking-widest text-xs absolute right-0 top-0 rounded-bl">
                       {showCurrentPlan ? "CURRENT PLAN" : "POPULAR"}
                     </span>
                   )}
@@ -258,7 +258,7 @@ const Pricing = (props) => {
                   >
                     <span>{tier.price}</span>
                     {tier.month && (
-                      <span class="text-lg ml-1 font-normal text-gray-500">
+                      <span className="text-lg ml-1 font-normal text-gray-500">
                         /mo
                       </span>
                     )}
@@ -270,9 +270,9 @@ const Pricing = (props) => {
                           <svg
                             fill="none"
                             stroke="currentColor"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2.5"
                             className="w-3 h-3"
                             viewBox="0 0 24 24"
                           >
@@ -310,9 +310,9 @@ const Pricing = (props) => {
                     <svg
                       fill="none"
                       stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
                       className="w-4 h-4 ml-auto"
                       viewBox="0 0 24 24"
                     >

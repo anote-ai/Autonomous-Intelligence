@@ -32,6 +32,7 @@ export const logout = createAsyncThunk("user/logout", async (thunk) => {
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
   localStorage.removeItem("sessionToken");
+  localStorage.removeItem("persist:root")
 
   // Return an empty response
   return {};
@@ -297,40 +298,41 @@ export const userSlice = createSlice({
       state.refreshToken = action.payload;
     },
   },
-  extraReducers: {
-    [refreshCredits.fulfilled]: (state, action) => {
-      state.numCredits = action.payload["numCredits"];
-    },
-    [viewUser.fulfilled]: (state, action) => {
-      clearUser(state);
-      var id = action.payload["id"];
-      state.currentUser = id;
-      state.entities.users.allIds.push(id);
-      state.entities.users.byId[id] = action.payload;
-    },
-    [getAPIKeys.fulfilled]: (state, action) => {
-      clearApiKeys(state);
-      var apiKeys = action.payload["keys"];
-      apiKeys.forEach((apiKey) => {
-        var id = apiKey["id"];
-        state.entities.apiKeys.allIds.push(id);
-        state.entities.apiKeys.byId[id] = apiKey;
+  extraReducers: (builder) => {
+    builder
+      .addCase(refreshCredits.fulfilled, (state, action) => {
+        state.numCredits = action.payload["numCredits"];
+      })
+      .addCase(viewUser.fulfilled, (state, action) => {
+        clearUser(state);
+        var id = action.payload["id"];
+        state.currentUser = id;
+        state.entities.users.allIds.push(id);
+        state.entities.users.byId[id] = action.payload;
+      })
+      .addCase(getAPIKeys.fulfilled, (state, action) => {
+        clearApiKeys(state);
+        var apiKeys = action.payload["keys"];
+        apiKeys.forEach((apiKey) => {
+          var id = apiKey["id"];
+          state.entities.apiKeys.allIds.push(id);
+          state.entities.apiKeys.byId[id] = apiKey;
+        });
+      })
+      .addCase(generateAPIKey.fulfilled, (state, action) => {
+        var payload = action.payload;
+        state.entities.apiKeys.allIds.push(payload["id"]);
+        state.entities.apiKeys.byId[payload["id"]] = payload;
+      })
+      .addCase(deleteAPIKey.fulfilled, (state, action) => {
+        var id = action.payload;
+        const index = state.entities.apiKeys.allIds.indexOf(id);
+        if (index > -1) {
+          // only splice array when item is found
+          state.entities.apiKeys.allIds.splice(index, 1); // 2nd parameter means remove one item only
+        }
+        delete state.entities.apiKeys.byId[id];
       });
-    },
-    [generateAPIKey.fulfilled]: (state, action) => {
-      var payload = action.payload;
-      state.entities.apiKeys.allIds.push(payload["id"]);
-      state.entities.apiKeys.byId[payload["id"]] = payload;
-    },
-    [deleteAPIKey.fulfilled]: (state, action) => {
-      var id = action.payload;
-      const index = state.entities.apiKeys.allIds.indexOf(id);
-      if (index > -1) {
-        // only splice array when item is found
-        state.entities.apiKeys.allIds.splice(index, 1); // 2nd parameter means remove one item only
-      }
-      delete state.entities.apiKeys.byId[id];
-    },
   },
 });
 
