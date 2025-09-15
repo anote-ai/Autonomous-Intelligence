@@ -2,7 +2,6 @@ import React from "react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLocation } from "react-router-dom";
-import "../styles/Login.css";
 import HomeChatbot from "../financeGPT/components/Home";
 import LoginModal from "./LoginModal";
 
