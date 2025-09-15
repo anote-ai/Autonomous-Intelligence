@@ -32,7 +32,7 @@ export const logout = createAsyncThunk("user/logout", async (thunk) => {
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
   localStorage.removeItem("sessionToken");
-  localStorage.removeItem("persist:root")
+  localStorage.removeItem("persist:root");
 
   // Return an empty response
   return {};
@@ -302,6 +302,11 @@ export const userSlice = createSlice({
     builder
       .addCase(refreshCredits.fulfilled, (state, action) => {
         state.numCredits = action.payload["numCredits"];
+        // Also update the user object's credits field if user exists
+        if (state.currentUser && state.entities.users.byId[state.currentUser]) {
+          state.entities.users.byId[state.currentUser].credits =
+            action.payload["numCredits"];
+        }
       })
       .addCase(viewUser.fulfilled, (state, action) => {
         clearUser(state);
@@ -309,6 +314,10 @@ export const userSlice = createSlice({
         state.currentUser = id;
         state.entities.users.allIds.push(id);
         state.entities.users.byId[id] = action.payload;
+        // Sync numCredits with the credits from the user object
+        if (action.payload["credits"] !== undefined) {
+          state.numCredits = action.payload["credits"];
+        }
       })
       .addCase(getAPIKeys.fulfilled, (state, action) => {
         clearApiKeys(state);
@@ -332,6 +341,12 @@ export const userSlice = createSlice({
           state.entities.apiKeys.allIds.splice(index, 1); // 2nd parameter means remove one item only
         }
         delete state.entities.apiKeys.byId[id];
+      })
+      .addCase(logout.fulfilled, (state, action) => {
+        // Clear user data and reset credits on logout
+        clearUser(state);
+        clearApiKeys(state);
+        state.numCredits = 0;
       });
   },
 });

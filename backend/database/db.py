@@ -442,6 +442,7 @@ def view_user(user_email):
             "name": user["person_name"],
             "email": user["email"],
             "paid_user": paid_level,
+            "credits": user['credits'],
             "is_free_trial": is_free_trial,
             "next_plan": next_plan,
             "end_date": end_date_str,
