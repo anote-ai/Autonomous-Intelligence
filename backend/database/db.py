@@ -15,18 +15,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 import mysql.connector
 
-db_connect = None
-
 def get_db_connection():
-    global db_connect
-
-    try:
-        if db_connect is not None and db_connect.is_connected():
-            return db_connect, db_connect.cursor(dictionary=True)
-    except Exception:
-        # resets the db ---> None getting it ready for the new connection
-        db_connect = None
-
     if ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
         db_connect = mysql.connector.connect(
                 user='root',
@@ -413,48 +402,55 @@ def next_anchor_time_for_user(user_id):
 
 def view_user(user_email):
     conn, cursor = get_db_connection()
-    cursor.execute('SELECT * FROM users WHERE email = %s LIMIT 1', [user_email])
-    user = cursor.fetchone()
-    if user is None:
-        return {"error": "User not found"}, 404
-    # if user["credits_updated"]:
-    #     credits_refresh_date = user["credits_updated"] + relativedelta(months=1)
-    #     credits_refresh_str = credits_refresh_date.strftime('%Y-%m-%d')
-    # else:
-    #     credits_refresh_str = None
-    cursor.execute('SELECT anchor_date FROM StripeInfo WHERE user_id = %s', [user["id"]])
-    stripeInfo = cursor.fetchone()
-    credits_refresh_str = None
-    if stripeInfo and stripeInfo["anchor_date"]:
-        credits_refresh_date = next_anchor_time_for_user_with_cursor(conn, cursor, user["id"])
-        if credits_refresh_date:
-            credits_refresh_str = credits_refresh_date.strftime('%Y-%m-%d')
+    try:
+        cursor.execute('SELECT * FROM users WHERE email = %s LIMIT 1', [user_email])
+        user = cursor.fetchone()
+        if not user:
+            return {"error": "User not found"}, 404
 
-    paidLevel = paid_user_for_user_email_with_cursor(conn, cursor, user_email)
-    cursor.execute('SELECT c.paid_user FROM Subscriptions c JOIN StripeInfo p ON p.id=c.stripe_info_id WHERE p.user_id = %s AND c.end_date IS NULL AND c.start_date > CURRENT_TIMESTAMP ORDER BY c.start_date DESC LIMIT 1', [user["id"]])
-    next_plan = None
-    nextPlanDb = cursor.fetchone()
-    if nextPlanDb:
-        next_plan = nextPlanDb["paid_user"]
+        # Stripe anchor date → next credits refresh
+        cursor.execute('SELECT anchor_date FROM StripeInfo WHERE user_id = %s', [user["id"]])
+        stripe_info = cursor.fetchone()
+        credits_refresh_str = None
+        if stripe_info and stripe_info["anchor_date"]:
+            refresh_date = next_anchor_time_for_user_with_cursor(conn, cursor, user["id"])
+            if refresh_date:
+                credits_refresh_str = refresh_date.strftime('%Y-%m-%d')
 
-    end_date = end_date_for_user_email_with_cursor(conn, cursor, user_email)
-    if end_date:
-        end_date = end_date.strftime("%Y-%m-%d")
+        paid_level = paid_user_for_user_email_with_cursor(conn, cursor, user_email)
 
-    is_free_trial = is_free_trial_for_user_email_with_cursor(conn, cursor, user_email)
+        # Future plan
+        cursor.execute('''
+            SELECT c.paid_user
+            FROM Subscriptions c
+            JOIN StripeInfo p ON p.id = c.stripe_info_id
+            WHERE p.user_id = %s
+              AND c.end_date IS NULL
+              AND c.start_date > CURRENT_TIMESTAMP
+            ORDER BY c.start_date DESC
+            LIMIT 1
+        ''', [user["id"]])
+        next_plan = (cursor.fetchone() or {}).get("paid_user")
 
-    conn.close()
-    return jsonify({
-        "id": user["id"],
-        "name": user["person_name"],
-        "email": user["email"],
-        "paid_user": paidLevel,
-        "is_free_trial": is_free_trial,
-        "next_plan": next_plan,
-        "end_date": end_date,
-        "credits_refresh": credits_refresh_str,
-        "profile_pic_url": user["profile_pic_url"]
-     })
+        # End date + free trial
+        end_date = end_date_for_user_email_with_cursor(conn, cursor, user_email)
+        end_date_str = end_date.strftime("%Y-%m-%d") if end_date else None
+        is_free_trial = is_free_trial_for_user_email_with_cursor(conn, cursor, user_email)
+
+        return jsonify({
+            "id": user["id"],
+            "name": user["person_name"],
+            "email": user["email"],
+            "paid_user": paid_level,
+            "is_free_trial": is_free_trial,
+            "next_plan": next_plan,
+            "end_date": end_date_str,
+            "credits_refresh": credits_refresh_str,
+            "profile_pic_url": user["profile_pic_url"],
+        })
+    finally:
+        conn.close()
+
 
 def config_for_payment_tiers(userEmail, newPaymentTier):
     conn, cursor = get_db_connection()

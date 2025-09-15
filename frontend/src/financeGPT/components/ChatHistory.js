@@ -190,8 +190,8 @@ function ChatHistory(props) {
           document.body
         )}
 
-      <div className="px-3 mt-3">
-        <div className="flex justify-between items-center mb-2">
+      <div className="h-full py-2">
+        <div className="flex justify-between items-center ">
           <h2
             className={`text-gray-400 text-sm ${
               chats.length === 0 ? "hidden" : ""
@@ -200,12 +200,12 @@ function ChatHistory(props) {
             Chat History
           </h2>
         </div>
-        <ul className="flex-col justify-around w-full h-full flex overflow-y-auto">
+        <ul className="flex-col  w-full h-full py-2 flex">
           {[...chats].reverse().map((chat, index) => (
             <li
               key={index}
               className={`group hover:bg-gray-800 rounded px-2 py-1 cursor-pointer text-sm text-white mb-1 ${
-                chat.id === Number(id) ? "bg-softBlue/30" : ""
+                chat.id === Number(id) ? "bg-slate-300/20" : ""
               } flex w-full items-center rounded-md px-2 py-1 gap-4 text-gray-800 relative`}
       
             >
