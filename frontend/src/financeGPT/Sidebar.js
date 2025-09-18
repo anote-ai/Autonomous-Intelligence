@@ -1,5 +1,6 @@
 import ChatHistory from "./components/ChatHistory";
 import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
 
 // Example SVG icons (replace with your own or use a library like react-icons)
 const icons = {
@@ -12,20 +13,52 @@ const icons = {
         strokeLinecap="round"
       />
     </svg>
-  )
+  ),
 };
 
-
 const Sidebar = ({ handleChatSelect }) => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Listen for sidebar collapse events
+  useEffect(() => {
+    const handleSidebarToggle = () => {
+      setIsCollapsed((prev) => !prev);
+    };
+
+    window.addEventListener("toggleSidebar", handleSidebarToggle);
+    return () => {
+      window.removeEventListener("toggleSidebar", handleSidebarToggle);
+    };
+  }, []);
+
+  // Emit sidebar state changes
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("sidebarStateChange", {
+        detail: { isCollapsed },
+      })
+    );
+  }, [isCollapsed]);
+
+  const handleToggle = () => {
+    setIsCollapsed((prev) => !prev);
+  };
   return (
-    <aside className="flex flex-col z-50 h-screen w-72 bg-slate-900/20 text-white p-2 mt-3 justify-between shadow-lg">
+    <aside
+      className={`flex flex-col z-50 h-screen bg-slate-900/20 text-white p-2 mt-3 justify-between shadow-lg transition-all duration-300 ${
+        isCollapsed ? "w-16" : "w-72"
+      }`}
+    >
       <div className="pt-10 md:pt-0 md:z-50">
         {/* Top logo and collapse icon */}
         <div className="flex items-center mb-2 justify-between px-2">
-          <img alt="pancea logo" width={30} height={30} src="/logonew.png" />
+          {!isCollapsed && (
+            <img alt="pancea logo" width={30} height={30} src="/logonew.png" />
+          )}
           <button
+            onClick={handleToggle}
             data-slot="sidebar-trigger"
-            class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&amp;_svg]:pointer-events-none [&amp;_svg:not([class*='size-'])]:size-4 shrink-0 [&amp;_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-7 -ml-1"
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-7 -ml-1"
             data-sidebar="trigger"
           >
             <svg
@@ -35,21 +68,25 @@ const Sidebar = ({ handleChatSelect }) => {
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="lucide lucide-panel-left"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="lucide lucide-panel-left"
             >
               <rect width="18" height="18" x="3" y="3" rx="2"></rect>
               <path d="M9 3v18"></path>
             </svg>
-            <span class="sr-only">Toggle Sidebar</span>
+            <span className="sr-only">Toggle Sidebar</span>
           </button>
         </div>
-        <Link to="/">
-          <SidebarItem icon={icons.newChat} label="New chat" />
-        </Link>
-        <ChatHistory handleChatSelect={handleChatSelect} />
+        {!isCollapsed && (
+          <>
+            <Link to="/">
+              <SidebarItem icon={icons.newChat} label="New chat" />
+            </Link>
+            <ChatHistory handleChatSelect={handleChatSelect} />
+          </>
+        )}
       </div>
     </aside>
   );

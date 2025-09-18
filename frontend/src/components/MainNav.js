@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { logout, useNumCredits } from "../redux/UserSlice";
 import { useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
@@ -15,6 +15,7 @@ import LoginModal from "./LoginModal";
 
 export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
   const [showLoginModal, setShowLoginModal] = useState();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   let user = useUser();
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -23,6 +24,21 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
   if (user && "profile_pic_url" in user) {
     imageUrl = user["profile_pic_url"];
   }
+
+  // Listen for sidebar state changes
+  useEffect(() => {
+    const handleSidebarStateChange = (event) => {
+      setIsSidebarCollapsed(event.detail.isCollapsed);
+    };
+
+    window.addEventListener("sidebarStateChange", handleSidebarStateChange);
+    return () => {
+      window.removeEventListener(
+        "sidebarStateChange",
+        handleSidebarStateChange
+      );
+    };
+  }, []);
 
   function handleLogout() {
     dispatch(logout()).then(() => {
@@ -34,8 +50,8 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
   return (
     <div
       className={`fixed ${
-        isLoggedIn && "md:pl-72"
-      } z-50 flex items-center justify-between w-full px-2 py-4 text-white`}
+        isLoggedIn ? (isSidebarCollapsed ? "md:pl-16" : "md:pl-72") : ""
+      } z-50 flex items-center justify-between w-full px-2 py-4 text-white transition-all duration-300`}
     >
       {showLoginModal && (
         <LoginModal
@@ -45,7 +61,13 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
       )}
       <div className={"flex items-center"}>
         <button className="flex" onClick={() => navigate("/")}>
-          <img alt="pancea logo" className={isLoggedIn && "hidden"} width={30} height={30} src="/logonew.png" />
+          <img
+            alt="pancea logo"
+            className={isLoggedIn && !isSidebarCollapsed && "hidden"}
+            width={30}
+            height={30}
+            src="/logonew.png"
+          />
           <span className="self-center whitespace-nowrap text-lg font-semibold text-white pl-2">
             Panacea
           </span>

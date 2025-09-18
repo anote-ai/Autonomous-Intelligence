@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Link, BrowserRouter as Router } from "react-router-dom";
 import CheckLogin from "./components/CheckLogin";
 import MainNav from "./components/MainNav";
 import { Helmet } from "react-helmet";
@@ -19,14 +18,13 @@ import {
 import PaymentsComponent from "./subcomponents/payments/PaymentsComponent";
 import PaymentsProduct from "./subcomponents/payments/PaymentsProduct";
 import { Flowbite } from "flowbite-react";
-import { refreshCredits, useUser, viewUser } from "./redux/UserSlice";
+import { useUser, viewUser } from "./redux/UserSlice";
 import { useDispatch } from "react-redux";
 import { useEffect } from "react";
 import Home from "./financeGPT/components/Home";
 import { APISKeyDashboard } from "./subcomponents/api/APISKeyDashboard";
 import DownloadPrivateGPT from "./components/DownloadPrivateGPT.js";
 import GTMChatbot from "./landing_page/landing_page_screens/Chatbots/companies/GTMChatbot";
-import ChatbotLanding from "./landing_page/landing_page_screens/Chatbots/ChatbotLanding";
 import Languages from "./landing_page/landing_page_screens/Chatbots/languages/Languages";
 import Companies from "./landing_page/landing_page_screens/Chatbots/companies/Companies";
 import CreateCompany from "./landing_page/landing_page_screens/Chatbots/companies/CreateCompany";
