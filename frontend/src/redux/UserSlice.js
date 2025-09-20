@@ -6,7 +6,10 @@ export const login = createAsyncThunk("user/login", async (payload, thunk) => {
   var requestPath = "login";
   if ("email" in payload && "password" in payload) {
     requestPath +=
-      "?email=" + payload["email"] + "&password=" + payload["password"];
+      "?email=" +
+      encodeURIComponent(payload["email"]) +
+      "&password=" +
+      encodeURIComponent(payload["password"]);
   }
   if ("product_hash" in payload) {
     if ("email" in payload && "password" in payload) {

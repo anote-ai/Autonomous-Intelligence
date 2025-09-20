@@ -38,6 +38,7 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
         handleSidebarStateChange
       );
     };
+
   }, []);
 
   function handleLogout() {
@@ -50,7 +51,7 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
   return (
     <div
       className={`fixed ${
-        isLoggedIn ? (isSidebarCollapsed ? "md:pl-16" : "md:pl-72") : ""
+        isLoggedIn ? (isSidebarCollapsed ? "md:pl-16" : "md:pl-72 md:blur-none blur md:fixed") : ""
       } z-50 flex items-center justify-between w-full px-2 py-4 text-white transition-all duration-300`}
     >
       {showLoginModal && (
@@ -63,12 +64,12 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
         <button className="flex" onClick={() => navigate("/")}>
           <img
             alt="pancea logo"
-            className={isLoggedIn && !isSidebarCollapsed && "hidden"}
+            className={(isLoggedIn && !isSidebarCollapsed && "hidden") || (isSidebarCollapsed && "md:block hidden")}
             width={30}
             height={30}
             src="/logonew.png"
           />
-          <span className="self-center whitespace-nowrap text-lg font-semibold text-white pl-2">
+          <span className="self-center whitespace-nowrap text-lg font-semibold text-white md:pl-2 pl-8">
             Panacea
           </span>
         </button>

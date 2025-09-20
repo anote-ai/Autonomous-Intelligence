@@ -22,6 +22,7 @@ import fetcher from "../../http/RequestConfig";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { deductCreditsLocal } from "../../redux/UserSlice";
 import { useDispatch } from "react-redux";
+import FileUpload from "../../components/FileUpload";
 
 const Chatbot = (props) => {
   const [message, setMessage] = useState("");
@@ -29,7 +30,7 @@ const Chatbot = (props) => {
   const navigate = useNavigate();
   const pollingStartedRef = useRef(false);
   const { id } = useParams();
-  const dispatch = useDispatch()
+  const dispatch = useDispatch();
   const location = useLocation();
   const [chatNameGenerated, setChatNameGenerated] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -38,6 +39,109 @@ const Chatbot = (props) => {
 
   // State for tracking expanded reasoning sections
   const [expandedReasoning, setExpandedReasoning] = useState({});
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [showFileUpload, setShowFileUpload] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+
+  const handleFileSelect = (files) => {
+    console.log("Files selected:", files);
+    setSelectedFiles(Array.isArray(files) ? files : [files]);
+  };
+
+  const handleFileRemove = (removedFile) => {
+    console.log("File removed:", removedFile);
+    setSelectedFiles((prev) => prev.filter((f) => f.id !== removedFile.id));
+  };
+
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) {
+      alert("Please select files to upload");
+      return;
+    }
+
+    try {
+      // Check if we have a chat ID, if not, create a new chat first
+      let chatId = id || props.selectedChatId;
+
+      if (!chatId) {
+        // Create a new chat first
+        try {
+          chatId = await props.createNewChat();
+          // Navigate to the new chat
+          navigate(`/chat/${chatId}`, { id: chatId });
+        } catch (err) {
+          console.error("Failed to create chat:", err);
+          alert("Failed to create a new chat. Please try again.");
+          return;
+        }
+      }
+
+      // Create FormData for file upload to match backend API
+      const formData = new FormData();
+
+      // Add files as 'files[]' to match backend expectation
+      selectedFiles.forEach((fileObj) => {
+        formData.append("files[]", fileObj.file);
+      });
+
+      // Add required chat_id parameter for ingest-pdf endpoint
+      formData.append("chat_id", chatId);
+
+      // Upload files using your existing fetcher to ingest-pdf endpoint
+      const response = await fetcher("ingest-pdf", {
+        method: "POST",
+        body: formData,
+        // Don't set Content-Type header for FormData, let browser set it
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("Upload successful:", result);
+
+        // Add uploaded files to the state for display
+        const uploadedFileInfo = selectedFiles.map((fileObj) => ({
+          name: fileObj.name,
+          size: fileObj.size,
+          uploadTime: new Date().toISOString(),
+        }));
+        setUploadedFiles((prev) => [...prev, ...uploadedFileInfo]);
+
+        // Add a system message to show files were uploaded
+        const systemMessage = {
+          id: `upload-${Date.now()}`,
+          chat_id: chatId,
+          role: "system",
+          content: `📎 Uploaded ${selectedFiles.length} file(s): ${selectedFiles
+            .map((f) => f.name)
+            .join(", ")}`,
+          isFileUpload: true,
+          uploadedFiles: uploadedFileInfo,
+          timestamp: Date.now(), // Add timestamp for proper sorting
+        };
+
+        setMessages((prev) => [...prev, systemMessage]);
+
+        // Close modal and reset state
+        setShowFileUpload(false);
+        setSelectedFiles([]);
+
+        // Optionally trigger a refresh or update
+        if (props.onUploadComplete) {
+          props.onUploadComplete(result);
+        }
+
+        // Don't show alert since we're showing it in chat
+        // alert(`Successfully uploaded ${selectedFiles.length} file(s) to chat`);
+      } else {
+        const errorData = await response.json();
+        console.error("Upload failed:", errorData);
+        alert(errorData.error || "Upload failed. Please try again.");
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Upload failed. Please check your connection and try again.");
+    }
+  };
 
   const inferChatName = async (text, answer, chatId) => {
     const combinedText = `${text} ${answer}`;
@@ -83,6 +187,7 @@ const Chatbot = (props) => {
             relevant_chunks: m.relevant_chunks,
             reasoning: m.reasoning || [], // Include reasoning data from database
             sources: m.sources || [], // Include sources if available
+            timestamp: new Date(m.created).getTime(), // Add timestamp from database
           }));
           setMessages(formatted);
           localStorage.removeItem(`pending-message-${chatId}`);
@@ -127,6 +232,55 @@ const Chatbot = (props) => {
     pollingTimeoutRef.current = setTimeout(poll, 2000);
   }, []);
 
+  // Function to fetch uploaded documents for a chat and create system messages
+  const fetchUploadedDocuments = useCallback(async (chatId) => {
+    try {
+      const response = await fetcher("retrieve-current-docs", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ chat_id: chatId }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("Backend doc_info response:", result.doc_info);
+        if (result.doc_info && result.doc_info.length > 0) {
+          // Create system messages for uploaded files
+          const fileSystemMessages = result.doc_info.map((doc, index) => {
+            console.log("Processing doc:", doc);
+            return {
+              id: `file-system-${doc.id}`,
+              chat_id: chatId,
+              role: "system",
+              content: doc.documents ? doc.documents :`📎 Uploaded 1 file(s): ${doc.document_name}`,
+              isFileUpload: true,
+              uploadedFiles: [
+                {
+                  name: doc.document_name,
+                  size: 0, // Size not available from database
+                  uploadTime: doc.created || new Date().toISOString(), // Fallback if created is undefined
+                  id: doc.id,
+                },
+              ],
+              // Use current time so uploaded files appear at current position in chat
+              timestamp: doc.created
+                ? new Date(doc.created).getTime() + index
+                : Date.now() + index,
+            };
+          });
+          console.log(fileSystemMessages);
+          return fileSystemMessages;
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching uploaded documents:", error);
+    }
+    return [];
+  }, []);
+
   const handleLoadChat = useCallback(async () => {
     if (!id) return;
 
@@ -164,6 +318,7 @@ const Chatbot = (props) => {
             chat_id: id,
             role: "user",
             content: pending,
+            timestamp: Date.now(),
           };
           const thinkingMsg = {
             id: `thinking-${Date.now()}`,
@@ -173,6 +328,7 @@ const Chatbot = (props) => {
             isThinking: true,
             reasoning: [],
             sources: [],
+            timestamp: Date.now() + 1,
           };
           setMessages([userMsg, thinkingMsg]);
           if (location.state?.message) {
@@ -198,12 +354,27 @@ const Chatbot = (props) => {
         relevant_chunks: m.relevant_chunks,
         reasoning: m.reasoning || [], // Include reasoning data from database
         sources: m.sources || [], // Include sources if available
+        timestamp: new Date(m.created).getTime(), // Add timestamp from database
       }));
-      setMessages(formatted);
+
+      // Fetch uploaded documents and create system messages for them
+      const fileSystemMessages = await fetchUploadedDocuments(id);
+
+      // Combine regular messages with file system messages and sort by timestamp
+      const allMessages = [...formatted, ...fileSystemMessages];
+
+      // Sort messages by timestamp
+      allMessages.sort((a, b) => {
+        const aTime = a.timestamp || 0;
+        const bTime = b.timestamp || 0;
+        return aTime - bTime;
+      });
+
+      setMessages(allMessages);
     } catch (err) {
       console.error("Failed to load chat:", err);
     }
-  }, [id, location.state?.message, pollForMessages]);
+  }, [id, location.state?.message, fetchUploadedDocuments]);
 
   const handleSendMessage = async (event) => {
     event.preventDefault();
@@ -235,6 +406,7 @@ const Chatbot = (props) => {
           role: "user",
           relevant_chunks: [],
           content: currentMessage,
+          timestamp: Date.now(),
         };
         const thinkingMsg = {
           id: `thinking-${Date.now()}`,
@@ -244,6 +416,7 @@ const Chatbot = (props) => {
           isThinking: true,
           reasoning: [],
           sources: [],
+          timestamp: Date.now(),
         };
 
         setMessages([userMsg, thinkingMsg]);
@@ -263,13 +436,15 @@ const Chatbot = (props) => {
 
     // For existing chat
     const thinkingId = `thinking-${Date.now()}`;
+    const now = Date.now();
     setMessages((prev) => [
       ...prev,
       {
-        id: `user-${Date.now()}`,
+        id: `user-${now}`,
         chat_id: targetChatId,
         role: "user",
         content: currentMessage,
+        timestamp: now,
       },
       {
         id: thinkingId,
@@ -279,6 +454,7 @@ const Chatbot = (props) => {
         isThinking: true,
         reasoning: [],
         sources: [],
+        timestamp: now + 1, // Slightly later timestamp for thinking message
       },
     ]);
 
@@ -352,12 +528,12 @@ const Chatbot = (props) => {
               // Mark streaming as complete and ensure final state
               setMessages((prev) =>
                 prev.map((msg) =>
-                  msg.id === thinkingId 
-                    ? { 
-                        ...msg, 
-                        isThinking: false, 
-                        currentStep: null 
-                      } 
+                  msg.id === thinkingId
+                    ? {
+                        ...msg,
+                        isThinking: false,
+                        currentStep: null,
+                      }
                     : msg
                 )
               );
@@ -371,7 +547,10 @@ const Chatbot = (props) => {
               setMessages((prev) => {
                 const updated = prev.map((msg) => {
                   if (msg.id === thinkingId) {
-                    const updatedMsg = updateMessageWithStreamData(msg, eventData);
+                    const updatedMsg = updateMessageWithStreamData(
+                      msg,
+                      eventData
+                    );
                     // Force re-render by ensuring object reference changes
                     return { ...updatedMsg };
                   }
@@ -382,7 +561,8 @@ const Chatbot = (props) => {
 
               // Generate chat name when we get the final answer
               if (
-                (eventData.type === "complete" || eventData.type === "step-complete") &&
+                (eventData.type === "complete" ||
+                  eventData.type === "step-complete") &&
                 eventData.answer &&
                 !chatNameGenerated
               ) {
@@ -392,7 +572,10 @@ const Chatbot = (props) => {
               }
 
               // Force final state update for completion events
-              if (eventData.type === "complete" || eventData.type === "step-complete") {
+              if (
+                eventData.type === "complete" ||
+                eventData.type === "step-complete"
+              ) {
                 setTimeout(() => {
                   setMessages((prev) =>
                     prev.map((msg) =>
@@ -585,7 +768,9 @@ const Chatbot = (props) => {
           agent_name: eventData.agent_name,
           tool_name: eventData.tool_name,
           input: eventData.input,
-          message: eventData.message || `${eventData.agent_name} using ${eventData.tool_name}`,
+          message:
+            eventData.message ||
+            `${eventData.agent_name} using ${eventData.tool_name}`,
           timestamp: Date.now(),
         };
         updatedMessage.reasoning = [
@@ -648,25 +833,33 @@ const Chatbot = (props) => {
         case "agent_start":
           return <FontAwesomeIcon icon={faCog} className="text-yellow-400" />;
         case "agent_progress":
-          return <FontAwesomeIcon icon={faArrowRight} className="text-orange-400" />;
+          return (
+            <FontAwesomeIcon icon={faArrowRight} className="text-orange-400" />
+          );
         case "agent_reasoning":
           return <FontAwesomeIcon icon={faBrain} className="text-cyan-400" />;
         case "agent_tool_use":
         case "agent_tool_complete":
-          return <FontAwesomeIcon icon={faSearch} className="text-emerald-400" />;
+          return (
+            <FontAwesomeIcon icon={faSearch} className="text-emerald-400" />
+          );
         case "agent_completion":
         case "agent_error":
-          return <FontAwesomeIcon icon={faInfoCircle} className="text-indigo-400" />;
+          return (
+            <FontAwesomeIcon icon={faInfoCircle} className="text-indigo-400" />
+          );
         case "orchestrator_decision":
         case "orchestrator_synthesis":
           return <FontAwesomeIcon icon={faSitemap} className="text-pink-400" />;
         case "reasoning_step":
-          return <FontAwesomeIcon icon={faLightbulb} className="text-amber-400" />;
+          return (
+            <FontAwesomeIcon icon={faLightbulb} className="text-amber-400" />
+          );
         default:
           return <FontAwesomeIcon icon={faCog} className="text-gray-400" />;
       }
     };
-    console.log("stepsss", step)
+    console.log("stepsss", step);
     const getStepColor = (type) => {
       switch (type) {
         case "llm_reasoning":
@@ -754,7 +947,10 @@ const Chatbot = (props) => {
 
         {step.reasoning && (
           <div className="text-gray-400 text-xs mb-1">
-            <strong>Reasoning:</strong> {step.reasoning.length > 150 ? step.reasoning.substring(0, 150) + "..." : step.reasoning}
+            <strong>Reasoning:</strong>{" "}
+            {step.reasoning.length > 150
+              ? step.reasoning.substring(0, 150) + "..."
+              : step.reasoning}
           </div>
         )}
 
@@ -808,7 +1004,11 @@ const Chatbot = (props) => {
   // Auto-expand reasoning for new thinking messages
   useEffect(() => {
     messages.forEach((msg) => {
-      if (msg.role === "assistant" && msg.isThinking && expandedReasoning[msg.id] === undefined) {
+      if (
+        msg.role === "assistant" &&
+        msg.isThinking &&
+        expandedReasoning[msg.id] === undefined
+      ) {
         setExpandedReasoning((prev) => ({
           ...prev,
           [msg.id]: true, // Auto-expand reasoning for thinking messages
@@ -855,6 +1055,7 @@ const Chatbot = (props) => {
     } else {
       setMessages([]);
       setChatNameGenerated(false);
+      setUploadedFiles([]); // Clear uploaded files when switching chats
     }
 
     return () => {
@@ -874,19 +1075,11 @@ const Chatbot = (props) => {
     }
   };
 
-  const handleRefreshChatName = async () => {
-    if (typeof handleLoadChat === "function") {
-      await handleLoadChat();
-    }
-  };
-
-  console.log(messages);
-
   return (
     <div
-      className={`h-full bg-anoteblack-800 w-full ${messages.length !== 0 && "pt-16"} flex flex-col ${
-        props.menu ? "md:blur-none blur" : ""
-      }`}
+      className={`h-full bg-anoteblack-800 w-full ${
+        messages.length !== 0 && "pt-16"
+      } flex flex-col ${props.menu ? "md:blur-none blur" : ""}`}
     >
       <div
         ref={(ref) =>
@@ -932,111 +1125,144 @@ const Chatbot = (props) => {
               <div
                 key={`${msg.chat_id}-${msg.id || index}`}
                 className={`flex items-start gap-4 mb-4 ${
-                  msg.role === "user" ? "justify-end" : "justify-start"
+                  msg.role === "user"
+                    ? "justify-end"
+                    : msg.role === "system"
+                    ? "justify-center"
+                    : "justify-start"
                 }`}
               >
-                {/* FIXED: Responsive width for assistant messages */}
-                <div
-                  className={`space-y-3 ${
-                    msg.role === "assistant"
-                      ? "w-full md:w-5/6 lg:w-3/4 xl:w-2/3"
-                      : ""
-                  }`}
-                >
-                  {/* Reasoning Box - Shows during streaming and after completion */}
-                  {msg.role === "assistant" && (msg.reasoning?.length > 0 || msg.isThinking) && (
-                    <div className="bg-[#0f1419] border border-[#2e3a4c] rounded-xl p-4 mb-3">
-                      <button
-                        onClick={() => toggleReasoningExpansion(msg.id)}
-                        className="flex items-center justify-between w-full text-left text-xs text-gray-400 hover:text-gray-200 transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <FontAwesomeIcon icon={faBrain} />
-                          <span>
-                            {msg.isThinking 
-                              ? "AI Reasoning (Live)" 
-                              : `AI Reasoning Steps (${msg.reasoning?.length || 0})`
-                            }
-                          </span>
-                        </div>
-                        <FontAwesomeIcon
-                          icon={
-                            expandedReasoning[msg.id]
-                              ? faChevronUp
-                              : faChevronDown
-                          }
-                          className="text-xs"
-                        />
-                      </button>
-
-                      {expandedReasoning[msg.id] && (
-                        <div className="mt-3 space-y-2 animate-fade-in">
-                          {/* Show current step during thinking */}
-                          {msg.isThinking && msg.currentStep && (
-                            <div className="border-l-2 border-yellow-400 bg-yellow-950/20 pl-3 py-2 mb-2">
-                              <ThinkingIndicator step={msg.currentStep} />
+                {/* System messages (file uploads) */}
+                {msg.role === "system" && msg.isFileUpload ? (
+                  <div className="w-full max-w-md mx-auto">
+                    <div className="bg-green-900/30 border border-green-600/50 rounded-xl p-3 text-center">
+                      <div className="flex items-center justify-center gap-2 text-green-400 text-sm">
+                        <FontAwesomeIcon icon={faFile} />
+                        <span className="font-medium">{msg.content}</span>
+                      </div>
+                      {msg.uploadedFiles && msg.uploadedFiles.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {msg.uploadedFiles.map((file, idx) => (
+                            <div
+                              key={idx}
+                              className="text-xs text-green-300 flex items-center justify-center gap-2"
+                            >
+                              <span>{file.name}</span>
+                              <span className="text-green-500">
+                                ({(file.size / 1024).toFixed(1)} KB)
+                              </span>
                             </div>
-                          )}
-                          
-                          {/* Show completed reasoning steps */}
-                          {msg.reasoning?.map((step, idx) => (
-                            <ThinkingIndicator
-                              key={step.id || idx}
-                              step={step}
-                            />
                           ))}
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* Main message content */}
+                  </div>
+                ) : (
+                  /* Regular messages (user/assistant) */
                   <div
-                    className={`rounded-2xl p-4 shadow-lg transition-all ${
-                      msg.role === "user"
-                        ? "bg-gradient-to-br from-[#28b2fb] to-[#111827] text-white ml-auto rounded-br-none"
-                        : "bg-[#1f2937] text-white border border-[#2e3a4c] rounded-bl-none"
+                    className={`space-y-3 ${
+                      msg.role === "assistant"
+                        ? "w-full md:w-5/6 lg:w-3/4 xl:w-2/3"
+                        : ""
                     }`}
                   >
-                    {/* Assistant Thinking Animation */}
-                    {msg.isThinking ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="flex space-x-1">
-                            <div className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"></div>
-                            <div
-                              className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"
-                              style={{ animationDelay: "0.2s" }}
-                            ></div>
-                            <div
-                              className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"
-                              style={{ animationDelay: "0.4s" }}
-                            ></div>
-                          </div>
-                          <span className="text-sm text-gray-400">
-                            AI is thinking...
-                          </span>
-                        </div>
+                    {/* Reasoning Box - Shows during streaming and after completion */}
+                    {msg.role === "assistant" &&
+                      (msg.reasoning?.length > 0 || msg.isThinking) && (
+                        <div className="bg-[#0f1419] border border-[#2e3a4c] rounded-xl p-4 mb-3">
+                          <button
+                            onClick={() => toggleReasoningExpansion(msg.id)}
+                            className="flex items-center justify-between w-full text-left text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <FontAwesomeIcon icon={faBrain} />
+                              <span>
+                                {msg.isThinking
+                                  ? "AI Reasoning (Live)"
+                                  : `AI Reasoning Steps (${
+                                      msg.reasoning?.length || 0
+                                    })`}
+                              </span>
+                            </div>
+                            <FontAwesomeIcon
+                              icon={
+                                expandedReasoning[msg.id]
+                                  ? faChevronUp
+                                  : faChevronDown
+                              }
+                              className="text-xs"
+                            />
+                          </button>
 
-                        {/* Show partial content if available during streaming */}
-                        {msg.content && (
-                          <div className="mt-3">
-                            <p className="whitespace-pre-wrap leading-relaxed text-sm">
-                              {msg.content}
-                            </p>
+                          {expandedReasoning[msg.id] && (
+                            <div className="mt-3 space-y-2 animate-fade-in">
+                              {/* Show current step during thinking */}
+                              {msg.isThinking && msg.currentStep && (
+                                <div className="border-l-2 border-yellow-400 bg-yellow-950/20 pl-3 py-2 mb-2">
+                                  <ThinkingIndicator step={msg.currentStep} />
+                                </div>
+                              )}
+
+                              {/* Show completed reasoning steps */}
+                              {msg.reasoning?.map((step, idx) => (
+                                <ThinkingIndicator
+                                  key={step.id || idx}
+                                  step={step}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                    {/* Main message content */}
+                    <div
+                      className={`rounded-2xl p-4 shadow-lg transition-all ${
+                        msg.role === "user"
+                          ? "bg-gradient-to-br from-[#28b2fb] to-[#111827] text-white ml-auto rounded-br-none"
+                          : "bg-[#1f2937] text-white border border-[#2e3a4c] rounded-bl-none"
+                      }`}
+                    >
+                      {/* Assistant Thinking Animation */}
+                      {msg.isThinking ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex space-x-1">
+                              <div className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"></div>
+                              <div
+                                className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"
+                                style={{ animationDelay: "0.2s" }}
+                              ></div>
+                              <div
+                                className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"
+                                style={{ animationDelay: "0.4s" }}
+                              ></div>
+                            </div>
+                            <span className="text-sm text-gray-400">
+                              AI is thinking...
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div>
-                        {/* Main response content */}
-                        <p className="whitespace-pre-wrap leading-relaxed text-sm">
-                          {msg.content}
-                        </p>
-                      </div>
-                    )}
+
+                          {/* Show partial content if available during streaming */}
+                          {msg.content && (
+                            <div className="mt-3">
+                              <p className="whitespace-pre-wrap leading-relaxed text-sm">
+                                {msg.content}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          {/* Main response content */}
+                          <p className="whitespace-pre-wrap leading-relaxed text-sm">
+                            {msg.content}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             ))}
           </div>
@@ -1064,12 +1290,14 @@ const Chatbot = (props) => {
             <button
               type="button"
               onClick={() => {
-                console.log("Upload button clicked in Chatbot", "selectedChatId:", props.selectedChatId);
-                if (props.onUploadClick) {
-                  setUploadButtonClicked(true);
-                  props.onUploadClick(props.selectedChatId);
-                  setTimeout(() => setUploadButtonClicked(false), 1000);
-                }
+                console.log(
+                  "Upload button clicked in Chatbot",
+                  "selectedChatId:",
+                  props.selectedChatId
+                );
+                setShowFileUpload(true);
+                setUploadButtonClicked(true);
+                setTimeout(() => setUploadButtonClicked(false), 1000);
               }}
               disabled={props.isUploading}
               className={`flex items-center justify-center w-12 h-12 rounded-xl transition-colors flex-shrink-0 ${
@@ -1099,21 +1327,6 @@ const Chatbot = (props) => {
                     disabled={messages.some((msg) => msg.isThinking)}
                   />
                 </div>
-
-                {/* File upload progress */}
-                {props.isUploading && props.uploadProgress !== undefined && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="flex-1 bg-gray-700 rounded-full h-1">
-                      <div
-                        className="bg-blue-600 h-1 rounded-full transition-all duration-300"
-                        style={{ width: `${props.uploadProgress}%` }}
-                      ></div>
-                    </div>
-                    <span className="text-xs text-gray-400">
-                      {props.uploadProgress}%
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1139,6 +1352,78 @@ const Chatbot = (props) => {
           </div>
         </div>
       </div>
+
+      {/* File Upload Modal */}
+      {showFileUpload && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowFileUpload(false);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setShowFileUpload(false);
+            }
+          }}
+        >
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-white">Upload Files</h2>
+              <button
+                onClick={() => setShowFileUpload(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <FileUpload
+              onFileSelect={handleFileSelect}
+              onFileRemove={handleFileRemove}
+              acceptedFileTypes=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls"
+              maxFileSize={10 * 1024 * 1024} // 10MB
+              multiple={true}
+              placeholder="Upload files to analyze with AI"
+              className="mb-4"
+            />
+
+            {selectedFiles.length > 0 && (
+              <div className="flex justify-end space-x-3 mt-4">
+                <button
+                  onClick={() => {
+                    setSelectedFiles([]);
+                    setShowFileUpload(false);
+                  }}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpload}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Upload {selectedFiles.length} file
+                  {selectedFiles.length > 1 ? "s" : ""}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

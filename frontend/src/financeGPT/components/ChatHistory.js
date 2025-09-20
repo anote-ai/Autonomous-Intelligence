@@ -13,7 +13,7 @@ function ChatHistory(props) {
   const [chatIdToRename, setChatIdToRename] = useState(null);
   const [newChatName, setNewChatName] = useState("");
   const { id } = useParams();
-  
+
   const retrieveAllChats = async () => {
     console.log("i am in retrieve chats");
     try {
@@ -204,10 +204,11 @@ function ChatHistory(props) {
           {[...chats].reverse().map((chat, index) => (
             <li
               key={index}
-              className={`group hover:bg-gray-800 rounded px-2 py-1 cursor-pointer text-sm text-white mb-1 ${
-                chat.id === Number(id) ? "bg-slate-300/20" : ""
-              } flex w-full items-center rounded-md px-2 py-1 gap-4 text-gray-800 relative`}
-      
+              className={`group hover:bg-gray-800 rounded-md px-2 py-1 cursor-pointer text-sm mb-1 flex w-full items-center gap-4 relative ${
+                chat.id === Number(id)
+                  ? "bg-slate-300/20 text-gray-800"
+                  : "text-white"
+              }`}
             >
               <span className="cursor-pointer  w-full truncate max-w-2xl">
                 <Link
@@ -236,9 +237,16 @@ function ChatHistory(props) {
                 <Dropdown.Item onClick={() => handleDeleteChat(chat.id)}>
                   Delete
                 </Dropdown.Item>
-              </Dropdown>            
+              </Dropdown>
             </li>
           ))}
+          {chats.length === 0 && (
+            <li className="flex items-center justify-center h-full">
+              <div className="text-gray-400 text-sm text-center">
+                No chat yet. Start a conversation!
+              </div>
+            </li>
+          )}
         </ul>
       </div>
     </>

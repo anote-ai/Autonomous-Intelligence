@@ -208,7 +208,12 @@ function HomeChatbot({
       {/* Main content area with proper top spacing */}
       <div className="flex-1 w-full h-full overflow-hidden flex">
         {/* Sidebar for chat history - show when menu is true and not in guest mode */}
-        {!isGuestMode && <Sidebar handleChatSelect={handleChatSelect} />}
+        {!isGuestMode && (
+          <Sidebar
+            handleToggleSidebar={handleMenu}
+            handleChatSelect={handleChatSelect}
+          />
+        )}
         {/* Chat area */}
         <div className="flex-1 h-full">
           <Chatbot

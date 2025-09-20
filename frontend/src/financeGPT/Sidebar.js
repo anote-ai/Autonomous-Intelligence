@@ -16,8 +16,8 @@ const icons = {
   ),
 };
 
-const Sidebar = ({ handleChatSelect }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+const Sidebar = ({ handleChatSelect, handleToggleSidebar }) => {
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   // Listen for sidebar collapse events
   useEffect(() => {
@@ -41,15 +41,21 @@ const Sidebar = ({ handleChatSelect }) => {
   }, [isCollapsed]);
 
   const handleToggle = () => {
-    setIsCollapsed((prev) => !prev);
+    setIsCollapsed((prev) => {
+      const newValue = !prev;
+      handleToggleSidebar(newValue);
+      return newValue;
+    });
   };
   return (
     <aside
-      className={`flex flex-col z-50 h-screen bg-slate-900/20 text-white p-2 mt-3 justify-between shadow-lg transition-all duration-300 ${
-        isCollapsed ? "w-16" : "w-72"
+      className={`md:flex flex-col z-50 h-screen bg-slate-900/20 text-white md:p-2 md:mt-3 justify-between shadow-lg ${
+        isCollapsed
+          ? "md:w-16 w-0"
+          : "md:w-72 w-full fixed md:relative transition-all duration-300"
       }`}
     >
-      <div className="pt-10 md:pt-0 md:z-50">
+      <div className="pt-6 px-2 md:pt-0 md:z-50">
         {/* Top logo and collapse icon */}
         <div className="flex items-center mb-2 justify-between px-2">
           {!isCollapsed && (
