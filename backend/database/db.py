@@ -631,29 +631,33 @@ def deduct_credits_from_user(user_email, credits_to_deduct=1):
     Args:
         user_email (str): The user's email
         credits_to_deduct (int): Number of credits to deduct (default: 1)
-    
-    Returns:
-        bool: True if credits were successfully deducted, False otherwise
     """
-    conn, cursor = get_db_connection()
     
-    # First check if user has enough credits
-    cursor.execute('SELECT id, credits FROM users WHERE email = %s', [user_email])
-    user = cursor.fetchone()
-    
-    if not user or user["credits"] < credits_to_deduct:
-        conn.close()
+    if credits_to_deduct < 0:
         return False
-    
-    # Deduct credits
-    new_credits = user["credits"] - credits_to_deduct
-    cursor.execute('UPDATE users SET credits=%s WHERE id=%s', [new_credits, user["id"]])
-    conn.commit()
-    conn.close()
-    
-    print(f"Deducted {credits_to_deduct} credits from user {user_email}. New balance: {new_credits}")
-    return True
-
+        
+    conn, cursor = get_db_connection()
+    try:
+        # Atomic update with credit check
+        cursor.execute('''
+            UPDATE users 
+            SET credits = credits - %s 
+            WHERE email = %s AND credits >= %s
+        ''', [credits_to_deduct, user_email, credits_to_deduct])
+        
+        if cursor.rowcount == 0:
+            return False
+            
+        # Get new balance for logging
+        cursor.execute('SELECT credits FROM users WHERE email = %s', [user_email])
+        result = cursor.fetchone()
+        new_credits = result["credits"] if result else 0
+        
+        conn.commit()
+        print(f"Deducted {credits_to_deduct} credits from user {user_email}. New balance: {new_credits}")
+        return True
+    finally:
+        conn.close()
 
 def generate_api_key(email, key_name=None):
     print(f"generate_api_key called with email: {email}, key_name: {key_name}")
