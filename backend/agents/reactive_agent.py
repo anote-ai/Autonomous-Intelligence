@@ -3,13 +3,11 @@ from langchain.tools import BaseTool
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
-from typing import Dict, List, Any, Optional, Generator, Union
+from typing import Dict, List, Any, Optional, Generator
 import os
 import time
-from pydantic import BaseModel, Field
+from pydantic import Field
 import json
-import requests
-from database.db import get_db_connection
 from api_endpoints.financeGPT.chatbot_endpoints import (
     get_relevant_chunks, add_message_to_db, add_sources_to_db,
     retrieve_message_from_db, retrieve_docs_from_db

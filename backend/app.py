@@ -19,7 +19,6 @@ from database.db import create_user_if_does_not_exist
 from constants.global_constants import kSessionTokenExpirationTime
 from database.db_auth import extractUserEmailFromRequest, is_api_key_valid, user_id_for_email, verifyAuthForPaymentsTrustedTesters, verifyAuthForCheckoutSession, verifyAuthForPortalSession
 from functools import wraps
-from flask_jwt_extended import verify_jwt_in_request
 from api_endpoints.payments.handler import CreateCheckoutSessionHandler, CreatePortalSessionHandler, StripeWebhookHandler
 from api_endpoints.refresh_credits.handler import RefreshCreditsHandler
 from api_endpoints.user.handler import ViewUserHandler
@@ -73,8 +72,6 @@ app.register_blueprint(korean_blueprint)
 app.register_blueprint(spanish_blueprint)
 app.register_blueprint(arabic_blueprint)
 
-#if ray.is_initialized() == False:
-   #ray.init(logging_level="INFO", log_to_driver=True)
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="http://host.docker.internal:11434/v1")
 def ensure_ray_started():
     if not ray.is_initialized():
@@ -87,8 +84,6 @@ def ensure_ray_started():
         except Exception as e:
             print(f"Ray init failed: {e}")
 
-# ensure_ray_started()
-# TODO: Replace with your URLs.
 config = {
   'ORIGINS': [
     'http://localhost:3000',  # React

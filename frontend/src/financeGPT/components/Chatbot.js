@@ -5,7 +5,6 @@ import {
   faFile,
   faDownload,
   faShareAlt,
-  faSyncAlt,
   faBrain,
   faSearch,
   faCog,
@@ -20,7 +19,11 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import fetcher from "../../http/RequestConfig";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { deductCreditsLocal } from "../../redux/UserSlice";
+import {
+  deductCreditsLocal,
+  useNumCredits,
+  createCheckoutSession,
+} from "../../redux/UserSlice";
 import { useDispatch } from "react-redux";
 import FileUpload from "../../components/FileUpload";
 
@@ -32,6 +35,7 @@ const Chatbot = (props) => {
   const { id } = useParams();
   const dispatch = useDispatch();
   const location = useLocation();
+  const numCredits = useNumCredits();
   const [chatNameGenerated, setChatNameGenerated] = useState(false);
   const [messages, setMessages] = useState([]);
   const [uploadButtonClicked, setUploadButtonClicked] = useState(false);
@@ -42,6 +46,7 @@ const Chatbot = (props) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(true);
 
   const handleFileSelect = (files) => {
     console.log("Files selected:", files);
@@ -255,7 +260,9 @@ const Chatbot = (props) => {
               id: `file-system-${doc.id}`,
               chat_id: chatId,
               role: "system",
-              content: doc.documents ? doc.documents :`📎 Uploaded 1 file(s): ${doc.document_name}`,
+              content: doc.documents
+                ? doc.documents
+                : `📎 Uploaded 1 file(s): ${doc.document_name}`,
               isFileUpload: true,
               uploadedFiles: [
                 {
@@ -379,6 +386,13 @@ const Chatbot = (props) => {
   const handleSendMessage = async (event) => {
     event.preventDefault();
     if (!message.trim()) return;
+
+    // Check if user has credits
+    if (numCredits === 0) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
     await dispatch(deductCreditsLocal(1)).unwrap();
 
     const currentMessage = message.trim();
@@ -1066,6 +1080,19 @@ const Chatbot = (props) => {
     };
   }, [id, handleLoadChat]);
 
+  // Monitor credits and show upgrade modal when credits reach 0
+  useEffect(() => {
+    if (numCredits === 0 && messages.length > 0) {
+      // Only show modal if user has been using the chat (has messages)
+      // This prevents showing modal immediately on page load for users with 0 credits
+      const timer = setTimeout(() => {
+        setShowUpgradeModal(true);
+      }, 1000); // Small delay to avoid jarring experience
+
+      return () => clearTimeout(timer);
+    }
+  }, [numCredits, messages.length]);
+
   const handleInputKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -1283,6 +1310,38 @@ const Chatbot = (props) => {
           </div>
         )}
 
+        {/* Banner above chat input */}
+        <div className="w-full max-w-4xl mx-auto mb-4 px-4">
+          {numCredits === 0 && (
+            // Out of credits banner
+            <div className="bg-gradient-to-r from-red-600/20 to-orange-600/20 border border-red-500/30 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <FontAwesomeIcon
+                    icon={faExclamationTriangle}
+                    className="text-red-400 text-lg flex-shrink-0"
+                  />
+                  <div className="text-white">
+                    <p className="text-sm font-medium text-red-200">
+                      No Credits Remaining
+                    </p>
+                    <p className="text-xs text-gray-300 mt-1">
+                      You've run out of credits. Please upgrade to continue
+                      using AI analysis.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowUpgradeModal(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex-shrink-0"
+                >
+                  Upgrade Now
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Input form */}
         <div className="flex w-full justify-center my-5  px-4">
           <div className="flex items-center gap-3 w-full max-w-4xl">
@@ -1299,7 +1358,7 @@ const Chatbot = (props) => {
                 setUploadButtonClicked(true);
                 setTimeout(() => setUploadButtonClicked(false), 1000);
               }}
-              disabled={props.isUploading}
+              disabled={props.isUploading || numCredits === 0}
               className={`flex items-center justify-center w-12 h-12 rounded-xl transition-colors flex-shrink-0 ${
                 uploadButtonClicked
                   ? "bg-blue-600 text-white"
@@ -1352,7 +1411,6 @@ const Chatbot = (props) => {
           </div>
         </div>
       </div>
-
       {/* File Upload Modal */}
       {showFileUpload && (
         <div
@@ -1373,6 +1431,7 @@ const Chatbot = (props) => {
               <h2 className="text-xl font-semibold text-white">Upload Files</h2>
               <button
                 onClick={() => setShowFileUpload(false)}
+                disabled={numCredits === 0}
                 className="text-gray-400 hover:text-white transition-colors"
               >
                 <svg
@@ -1421,6 +1480,296 @@ const Chatbot = (props) => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Upgrade Modal */}
+      {showUpgradeModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowUpgradeModal(false);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setShowUpgradeModal(false);
+            }
+          }}
+        >
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-white">
+                Upgrade Your Plan
+              </h2>
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="text-center mb-6">
+              <FontAwesomeIcon
+                icon={faExclamationTriangle}
+                className="text-red-400 text-4xl mb-3"
+              />
+              <h3 className="text-lg font-medium text-white mb-2">
+                Choose Your Plan
+              </h3>
+              <p className="text-gray-300 text-sm">
+                Upgrade to continue using our AI-powered financial analysis
+                tools with enhanced features and priority support.
+              </p>
+            </div>
+
+            {/* Pricing Options */}
+            <div className="space-y-4 mb-6">
+              {/* Basic Plan */}
+              <div className="border border-gray-600 rounded-lg p-4 hover:border-blue-400 transition-colors">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="text-white font-medium">Basic Plan</h4>
+                  <span className="text-blue-400 font-bold">$19/month</span>
+                </div>
+                <p className="text-gray-300 text-sm mb-2">
+                  200 credits per month • Perfect for individuals
+                </p>
+                <ul className="text-xs text-gray-400 mb-3 space-y-1">
+                  <li>• Advanced AI document analysis</li>
+                  <li>• PDF, DOCX, TXT file support</li>
+                  <li>• Basic chat history</li>
+                </ul>
+                <button
+                  onClick={async () => {
+                    console.log("Button clicked - attempting checkout...");
+                    try {
+                      console.log(
+                        "Dispatching createCheckoutSession with product_hash: privategpt1"
+                      );
+                      const response = await dispatch(
+                        createCheckoutSession({ product_hash: "privategpt1" })
+                      );
+                      console.log("Checkout response:", response);
+                      const checkoutUrl = response.payload;
+                      console.log("Checkout URL:", checkoutUrl);
+
+                      if (checkoutUrl) {
+                        window.open(checkoutUrl, "_blank");
+                        setShowUpgradeModal(false);
+                      } else {
+                        console.error("No checkout URL received");
+                        alert("Failed to get checkout URL. Please try again.");
+                      }
+                    } catch (error) {
+                      console.error("Error creating checkout session:", error);
+
+                      // Check if it's a user not found error
+                      if (
+                        error?.payload?.status === 404 ||
+                        error?.response?.status === 404
+                      ) {
+                        alert(
+                          "User account not found. Please ensure you're logged in and try again."
+                        );
+                      } else if (
+                        error?.payload?.status === 401 ||
+                        error?.response?.status === 401
+                      ) {
+                        alert(
+                          "Authentication failed. Please log in again and try again."
+                        );
+                      } else {
+                        alert(
+                          "Failed to initiate checkout. Please try again or contact support."
+                        );
+                      }
+                    }
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Select Basic
+                </button>
+              </div>
+
+              {/* Standard Plan */}
+              <div className="border border-blue-400 rounded-lg p-4 bg-blue-600/10">
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-white font-medium">Standard Plan</h4>
+                    <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
+                      Popular
+                    </span>
+                  </div>
+                  <span className="text-blue-400 font-bold">$39/month</span>
+                </div>
+                <p className="text-gray-300 text-sm mb-2">
+                  500 credits per month • Great for small teams
+                </p>
+                <ul className="text-xs text-gray-400 mb-3 space-y-1">
+                  <li>• Everything in Basic</li>
+                  <li>• Priority processing speed</li>
+                  <li>• Advanced export options</li>
+                  <li>• Email support</li>
+                </ul>
+                <button
+                  onClick={async () => {
+                    console.log(
+                      "Standard plan button clicked - attempting checkout..."
+                    );
+                    try {
+                      console.log(
+                        "Dispatching createCheckoutSession with product_hash: privategpt2"
+                      );
+                      const response = await dispatch(
+                        createCheckoutSession({ product_hash: "privategpt2" })
+                      );
+                      console.log("Checkout response:", response);
+                      const checkoutUrl = response.payload;
+                      console.log("Checkout URL:", checkoutUrl);
+
+                      if (checkoutUrl) {
+                        window.open(checkoutUrl, "_blank");
+                        setShowUpgradeModal(false);
+                      } else {
+                        console.error("No checkout URL received");
+                        alert("Failed to get checkout URL. Please try again.");
+                      }
+                    } catch (error) {
+                      console.error("Error creating checkout session:", error);
+
+                      // Check if it's a user not found error
+                      if (
+                        error?.payload?.status === 404 ||
+                        error?.response?.status === 404
+                      ) {
+                        alert(
+                          "User account not found. Please ensure you're logged in and try again."
+                        );
+                      } else if (
+                        error?.payload?.status === 401 ||
+                        error?.response?.status === 401
+                      ) {
+                        alert(
+                          "Authentication failed. Please log in again and try again."
+                        );
+                      } else {
+                        alert(
+                          "Failed to initiate checkout. Please try again or contact support."
+                        );
+                      }
+                    }
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Select Standard
+                </button>
+              </div>
+
+              {/* Premium Plan */}
+              <div className="border border-gray-600 rounded-lg p-4 hover:border-purple-400 transition-colors">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="text-white font-medium">Premium Plan</h4>
+                  <span className="text-purple-400 font-bold">$79/month</span>
+                </div>
+                <p className="text-gray-300 text-sm mb-2">
+                  1,500 credits per month • Best for enterprises
+                </p>
+                <ul className="text-xs text-gray-400 mb-3 space-y-1">
+                  <li>• Everything in Standard</li>
+                  <li>• Unlimited file uploads</li>
+                  <li>• Custom AI model training</li>
+                  <li>• Priority support & phone calls</li>
+                  <li>• Advanced analytics dashboard</li>
+                </ul>
+                <button
+                  onClick={async () => {
+                    console.log(
+                      "Premium plan button clicked - attempting checkout..."
+                    );
+                    try {
+                      console.log(
+                        "Dispatching createCheckoutSession with product_hash: privategpt3"
+                      );
+                      const response = await dispatch(
+                        createCheckoutSession({ product_hash: "privategpt3" })
+                      );
+                      console.log("Checkout response:", response);
+                      const checkoutUrl = response.payload;
+                      console.log("Checkout URL:", checkoutUrl);
+
+                      if (checkoutUrl) {
+                        window.open(checkoutUrl, "_blank");
+                        setShowUpgradeModal(false);
+                      } else {
+                        console.error("No checkout URL received");
+                        alert("Failed to get checkout URL. Please try again.");
+                      }
+                    } catch (error) {
+                      console.error("Error creating checkout session:", error);
+
+                      // Check if it's a user not found error
+                      if (
+                        error?.payload?.status === 404 ||
+                        error?.response?.status === 404
+                      ) {
+                        alert(
+                          "User account not found. Please ensure you're logged in and try again."
+                        );
+                      } else if (
+                        error?.payload?.status === 401 ||
+                        error?.response?.status === 401
+                      ) {
+                        alert(
+                          "Authentication failed. Please log in again and try again."
+                        );
+                      } else {
+                        alert(
+                          "Failed to initiate checkout. Please try again or contact support."
+                        );
+                      }
+                    }
+                  }}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Select Premium
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="text-center">
+                <p className="text-xs text-gray-400 mb-2">
+                  <span className="inline-flex items-center gap-1">
+                    <FontAwesomeIcon
+                      icon={faCheckCircle}
+                      className="text-green-400"
+                    />
+                    30-day money-back guarantee • Cancel anytime
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+              >
+                Maybe Later
+              </button>
+            </div>
           </div>
         </div>
       )}

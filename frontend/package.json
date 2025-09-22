@@ -55,6 +55,7 @@
     ]
   },
   "devDependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "@testing-library/jest-dom": "^6.6.3",
     "@vitejs/plugin-react": "^4.6.0",
     "@vitest/ui": "^3.2.4",

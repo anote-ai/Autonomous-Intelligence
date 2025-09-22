@@ -181,6 +181,14 @@ export const createCheckoutSession = createAsyncThunk(
       },
       body: JSON.stringify(payload),
     });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        `HTTP ${response.status}: ${errorData.error || "Unknown error"}`
+      );
+    }
+
     const response_str = await response.json();
     return response_str["url"];
   }

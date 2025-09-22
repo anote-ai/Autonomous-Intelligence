@@ -7,7 +7,6 @@ from db_enums import PaidUserStatus
 from dateutil.relativedelta import relativedelta
 from constants.global_constants import chatgptLimit
 from constants.global_constants import dbName, dbHost, dbUser, dbPassword
-import socket
 import secrets
 
 

@@ -1,4 +1,3 @@
-import sqlite3
 import os
 import mysql.connector
 from flask import request
@@ -184,7 +183,10 @@ def user_id_for_email(email):
     cursor.execute('SELECT id FROM users WHERE email=%s', [email])
     user = cursor.fetchone()
     conn.close()
-    return user["id"]
+    if user:
+        return user["id"]
+    else:
+        return None
 
 def paid_user_for_user_email_with_cursor(conn, cursor, user_email):
     cursor.execute('SELECT paid_user FROM Subscriptions gc JOIN StripeInfo c ON c.id=gc.stripe_info_id JOIN users p ON p.id=c.user_id WHERE gc.start_date < CURRENT_TIMESTAMP AND (gc.end_date IS NULL OR gc.end_date > CURRENT_TIMESTAMP) AND p.email = %s', [user_email])
