@@ -17,15 +17,19 @@ import {
   faSitemap,
   faLightbulb,
 } from "@fortawesome/free-solid-svg-icons";
-import fetcher from "../../http/RequestConfig";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   deductCreditsLocal,
   useNumCredits,
   createCheckoutSession,
+  useUser,
 } from "../../redux/UserSlice";
 import { useDispatch } from "react-redux";
 import FileUpload from "../../components/FileUpload";
+import fetcher from "../../http/RequestConfig";
+
+// Development-only debug logging helper
+const isDev = process.env.NODE_ENV === "development";
 
 const Chatbot = (props) => {
   const [message, setMessage] = useState("");
@@ -36,6 +40,7 @@ const Chatbot = (props) => {
   const dispatch = useDispatch();
   const location = useLocation();
   const numCredits = useNumCredits();
+  const user = useUser();
   const [chatNameGenerated, setChatNameGenerated] = useState(false);
   const [messages, setMessages] = useState([]);
   const [uploadButtonClicked, setUploadButtonClicked] = useState(false);
@@ -46,7 +51,7 @@ const Chatbot = (props) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(true);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const handleFileSelect = (files) => {
     console.log("Files selected:", files);
@@ -69,7 +74,13 @@ const Chatbot = (props) => {
       let chatId = id || props.selectedChatId;
 
       if (!chatId) {
-        // Create a new chat first
+        // For guests, don't create a persistent chat or navigate
+        if (!user) {
+          alert("Please log in to upload files and create persistent chats.");
+          return;
+        }
+
+        // Create a new chat first for authenticated users
         try {
           chatId = await props.createNewChat();
           // Navigate to the new chat
@@ -385,15 +396,24 @@ const Chatbot = (props) => {
 
   const handleSendMessage = async (event) => {
     event.preventDefault();
+    console.log(
+      "handleSendMessage called for user:",
+      user ? "authenticated" : "guest"
+    );
+
     if (!message.trim()) return;
 
-    // Check if user has credits
-    if (numCredits === 0) {
-      setShowUpgradeModal(true);
-      return;
+    // For authenticated users, check credits and deduct them
+    if (user) {
+      // Check if user has credits
+      if (numCredits === 0) {
+        setShowUpgradeModal(true);
+        return;
+      }
+      // Deduct credits for authenticated users
+      await dispatch(deductCreditsLocal(1)).unwrap();
     }
-
-    await dispatch(deductCreditsLocal(1)).unwrap();
+    // For guests, we skip credit checks and allow them to chat
 
     const currentMessage = message.trim();
     setMessage("");
@@ -407,11 +427,84 @@ const Chatbot = (props) => {
 
     if (isNewChat) {
       try {
-        targetChatId = await props.createNewChat();
-        navigate(`/chat/${targetChatId}`, {
-          state: { message: currentMessage },
-        });
+        // For guests, create a temporary chat experience without navigation
+        if (!user) {
+          console.log("Creating guest chat experience");
+          // Create a temporary guest chat ID
+          targetChatId = `guest-${Date.now()}`;
 
+          const userMsg = {
+            id: `user-${Date.now()}`,
+            chat_id: targetChatId,
+            role: "user",
+            relevant_chunks: [],
+            content: currentMessage,
+            timestamp: Date.now(),
+          };
+          const thinkingMsg = {
+            id: `thinking-${Date.now()}`,
+            chat_id: targetChatId,
+            role: "assistant",
+            content: "",
+            isThinking: true,
+            reasoning: [],
+            sources: [],
+            timestamp: Date.now(),
+          };
+
+          console.log("Setting guest messages:", [userMsg, thinkingMsg]);
+          setMessages([userMsg, thinkingMsg]);
+
+          // Send to API for guest chat without creating a persistent chat
+          try {
+            console.log("Sending guest chat to API");
+            await sendToAPI(userMsg, null, thinkingMsg.id);
+            // For now, let's provide a mock response for guests to avoid API issues
+            // TODO: Update backend to support guest mode properly
+            // setTimeout(() => {
+            //   setMessages((prev) =>
+            //     prev.map((msg) =>
+            //       msg.id === thinkingMsg.id
+            //         ? {
+            //             ...msg,
+            //             content:
+            //               "Hello! I'm currently in guest mode. To access full AI document analysis features, please log in or create an account. For now, I can provide basic responses, but full functionality requires authentication.",
+            //             isThinking: false,
+            //           }
+            //         : msg
+            //     )
+            //   );
+            // }, 1000);
+
+            // Uncomment this when backend supports guest mode:
+            // await sendToAPI(currentMessage, targetChatId, thinkingMsg.id);
+            console.log("Guest chat API call completed");
+          } catch (error) {
+            console.error("Guest chat API error:", error);
+            // Update thinking message to show error
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === thinkingMsg.id
+                  ? {
+                      ...msg,
+                      content:
+                        "Sorry, I'm having trouble connecting. Please try again.",
+                      isThinking: false,
+                    }
+                  : msg
+              )
+            );
+          }
+          console.log("Guest chat flow completed, returning");
+          return;
+        }
+        if (user) {
+          // For authenticated users, create a real chat and navigate
+          targetChatId = await props.createNewChat();
+          navigate(`/chat/${targetChatId}`, {
+            state: { message: currentMessage },
+          });
+        }
         localStorage.setItem(`pending-message-${targetChatId}`, currentMessage);
 
         const userMsg = {
@@ -448,7 +541,7 @@ const Chatbot = (props) => {
       }
     }
 
-    // For existing chat
+    // For existing chat (both authenticated and guest)
     const thinkingId = `thinking-${Date.now()}`;
     const now = Date.now();
     setMessages((prev) => [
@@ -472,29 +565,58 @@ const Chatbot = (props) => {
       },
     ]);
 
-    localStorage.setItem(`pending-message-${targetChatId}`, currentMessage);
+    // Only store in localStorage for authenticated user chats
+    if (user) {
+      localStorage.setItem(`pending-message-${targetChatId}`, currentMessage);
+    }
     await sendToAPI(currentMessage, targetChatId, thinkingId);
   };
 
   const sendToAPI = async (text, chatId, thinkingId) => {
     try {
+      // Check if this is a guest chat
+      const isGuestChat =
+        (typeof chatId === "string" && chatId.startsWith("guest-")) ||
+        (!user && chatId === null); // Also detect guest mode when no user and chatId is null
+
+      if (isDev) {
+        console.log("sendToAPI called with:", {
+          text,
+          chatId,
+          isGuestChat,
+          user: !!user,
+        });
+      }
+
       const res = await fetcher("process-message-pdf", {
         method: "POST",
+        isGuest: isGuestChat, // Only set isGuest for actual guest chats
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          chat_id: Number(chatId),
+          chat_id: isGuestChat ? null : Number(chatId), // Send null for guest chats
           model_type: props.isPrivate,
           model_key: props.confirmedModelKey,
+          is_guest: isGuestChat, // Flag to indicate guest chat
         }),
       });
 
+      if (isDev) {
+        console.log("API response status:", res.status);
+      }
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
       }
 
       await handleSSEStreamingResponse(res, thinkingId, text, chatId);
-      localStorage.removeItem(`pending-message-${chatId}`);
+
+      // Only remove from localStorage for authenticated user chats
+      if (!isGuestChat) {
+        localStorage.removeItem(`pending-message-${chatId}`);
+      }
+      if (isDev) {
+        console.log("sendToAPI completed successfully");
+      }
     } catch (err) {
       console.error("Message send error:", err);
       setMessages((prev) =>
@@ -573,12 +695,15 @@ const Chatbot = (props) => {
                 return [...updated]; // Force array reference change
               });
 
-              // Generate chat name when we get the final answer
+              // Generate chat name when we get the final answer (skip for guest chats)
+              const isGuestChat =
+                typeof chatId === "string" && chatId.startsWith("guest-");
               if (
                 (eventData.type === "complete" ||
                   eventData.type === "step-complete") &&
                 eventData.answer &&
-                !chatNameGenerated
+                !chatNameGenerated &&
+                !isGuestChat
               ) {
                 await inferChatName(originalText, eventData.answer, chatId);
                 setChatNameGenerated(true);
@@ -1080,10 +1205,10 @@ const Chatbot = (props) => {
     };
   }, [id, handleLoadChat]);
 
-  // Monitor credits and show upgrade modal when credits reach 0
+  // Monitor credits and show upgrade modal when credits reach 0 (only for authenticated users)
   useEffect(() => {
-    if (numCredits === 0 && messages.length > 0) {
-      // Only show modal if user has been using the chat (has messages)
+    if (user && numCredits === 0 && messages.length > 0) {
+      // Only show modal if user is authenticated and has been using the chat (has messages)
       // This prevents showing modal immediately on page load for users with 0 credits
       const timer = setTimeout(() => {
         setShowUpgradeModal(true);
@@ -1091,7 +1216,7 @@ const Chatbot = (props) => {
 
       return () => clearTimeout(timer);
     }
-  }, [numCredits, messages.length]);
+  }, [user, numCredits, messages.length]);
 
   const handleInputKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1124,28 +1249,30 @@ const Chatbot = (props) => {
                 {props.currChatName}
               </h1>
             </div>
-            {/* Right: Share/Download */}
-            <div className="flex gap-2 flex-shrink-0 ml-auto z-10">
-              <button
-                onClick={handleGenerateShareableUrl}
-                className="p-2 hover:bg-gray-700 rounded transition-colors"
-                title="Share chat"
-              >
-                <FontAwesomeIcon
-                  icon={faShareAlt}
-                  className="text-lg text-[#DFDFDF]"
-                />
-              </button>
-              <button
-                className="p-2 hover:bg-gray-700 rounded transition-colors"
-                title="Download chat"
-              >
-                <FontAwesomeIcon
-                  icon={faDownload}
-                  className="text-lg text-[#DFDFDF]"
-                />
-              </button>
-            </div>
+            {/* Right: Share/Download - Only show for authenticated users */}
+            {user && (
+              <div className="flex gap-2 flex-shrink-0 ml-auto z-10">
+                <button
+                  onClick={handleGenerateShareableUrl}
+                  className="p-2 hover:bg-gray-700 rounded transition-colors"
+                  title="Share chat"
+                >
+                  <FontAwesomeIcon
+                    icon={faShareAlt}
+                    className="text-lg text-[#DFDFDF]"
+                  />
+                </button>
+                <button
+                  className="p-2 hover:bg-gray-700 rounded transition-colors"
+                  title="Download chat"
+                >
+                  <FontAwesomeIcon
+                    icon={faDownload}
+                    className="text-lg text-[#DFDFDF]"
+                  />
+                </button>
+              </div>
+            )}
           </div>
           <div className="px-4 md:px-8 lg:px-16 xl:px-32">
             {messages.map((msg, index) => (
@@ -1312,8 +1439,38 @@ const Chatbot = (props) => {
 
         {/* Banner above chat input */}
         <div className="w-full max-w-4xl mx-auto mb-4 px-4">
-          {numCredits === 0 && (
-            // Out of credits banner
+          {!user && (
+            // Guest user info banner
+            <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg p-4 mb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <FontAwesomeIcon
+                    icon={faInfoCircle}
+                    className="text-blue-400 text-lg flex-shrink-0"
+                  />
+                  <div className="text-white">
+                    <p className="text-sm font-medium text-blue-200">
+                      Guest Mode
+                    </p>
+                    <p className="text-xs text-gray-300 mt-1">
+                      You're chatting as a guest. Log in to unlock advanced
+                      features and save your chats.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent("showLogin"))
+                  }
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex-shrink-0"
+                >
+                  Login
+                </button>
+              </div>
+            </div>
+          )}
+          {user && numCredits === 0 && (
+            // Out of credits banner (only for authenticated users)
             <div className="bg-gradient-to-r from-red-600/20 to-orange-600/20 border border-red-500/30 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1358,7 +1515,7 @@ const Chatbot = (props) => {
                 setUploadButtonClicked(true);
                 setTimeout(() => setUploadButtonClicked(false), 1000);
               }}
-              disabled={props.isUploading || numCredits === 0}
+              disabled={props.isUploading || (!user ? false : numCredits === 0)}
               className={`flex items-center justify-center w-12 h-12 rounded-xl transition-colors flex-shrink-0 ${
                 uploadButtonClicked
                   ? "bg-blue-600 text-white"
@@ -1366,7 +1523,13 @@ const Chatbot = (props) => {
                   ? "bg-gray-500 text-gray-300 cursor-not-allowed"
                   : "bg-blue-500 hover:bg-blue-600 text-white"
               }`}
-              title={!id ? "Please select or create a chat first" : "Add files"}
+              title={
+                !id
+                  ? "Please select or create a chat first"
+                  : !user
+                  ? "Add files (login for enhanced features)"
+                  : "Add files"
+              }
             >
               <FontAwesomeIcon icon={faFile} className="text-lg" />
             </button>
@@ -1378,7 +1541,11 @@ const Chatbot = (props) => {
                   <textarea
                     className="w-full border-none resize-none text-lg px-6 py-2 focus:ring-0 focus:outline-none text-white placeholder:text-gray-400 bg-transparent rounded-3xl"
                     rows={1}
-                    placeholder="Ask your document a question"
+                    placeholder={
+                      !user
+                        ? "Ask your question (guest mode)"
+                        : "Ask your document a question"
+                    }
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     ref={inputRef}
@@ -1431,7 +1598,6 @@ const Chatbot = (props) => {
               <h2 className="text-xl font-semibold text-white">Upload Files</h2>
               <button
                 onClick={() => setShowFileUpload(false)}
-                disabled={numCredits === 0}
                 className="text-gray-400 hover:text-white transition-colors"
               >
                 <svg
@@ -1484,8 +1650,8 @@ const Chatbot = (props) => {
         </div>
       )}
 
-      {/* Upgrade Modal */}
-      {showUpgradeModal && (
+      {/* Upgrade Modal - Only show for authenticated users */}
+      {user && showUpgradeModal && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={(e) => {

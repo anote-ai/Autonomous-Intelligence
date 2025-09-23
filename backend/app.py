@@ -624,8 +624,7 @@ def retrieve_messages_from_chat():
     chat_id = request.json.get('chat_id')
 
     messages = retrieve_message_from_db(user_email, chat_id, chat_type)
-    chat_name = get_chat_info(chat_id)[2]
-    print("chat_name", chat_name[2])
+    chat_name = get_chat_info(chat_id)
     return jsonify({
         "messages": messages,
         "chat_name": chat_name
@@ -826,15 +825,42 @@ class CustomJSONEncoder(json.JSONEncoder):
 
 @app.route('/process-message-pdf', methods=['POST'])
 def process_message_pdf():
+    print("=== DEBUG: process_message_pdf called ===")
     message = request.json.get('message')
     chat_id = request.json.get('chat_id')
     model_type = request.json.get('model_type', 0)
-    model_key = request.json.get('model_key')
-
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
+    model_key = request.json.get('model_key', "")
+    is_guest = request.json.get("is_guest", False)
+    
+    print(f"DEBUG: is_guest = {is_guest}")
+    print(f"DEBUG: message type = {type(message)}")
+    print(f"DEBUG: message content = {message}")
+    print(f"DEBUG: request headers: {dict(request.headers)}")
+    
+    # Handle message extraction - it might be a dict or string
+    if isinstance(message, dict):
+        # If message is a dict, extract the actual message text
+        message_text = message.get('text') or message.get('content') or str(message)
+        print(f"DEBUG: Extracted message_text from dict: {message_text}")
+    else:
+        message_text = str(message) if message is not None else ""
+        print(f"DEBUG: Using message as string: {message_text}")
+    
+    # Handle user authentication based on guest status
+    user_email = None
+    if not is_guest:
+        print("DEBUG: Not guest mode, extracting user email")
+        try:
+            user_email = extractUserEmailFromRequest(request)
+            print(f"DEBUG: Extracted user_email = {user_email}")
+        except InvalidTokenError:
+            print("DEBUG: Invalid token error")
+            return jsonify({"error": "Invalid JWT"}), 401
+        except Exception as e:
+            print(f"DEBUG: Error extracting user email: {e}")
+            return jsonify({"error": "Authentication error"}), 401
+    else:
+        print("DEBUG: Guest mode, skipping user email extraction")
 
     # Check if agents are enabled
     if AgentConfig.is_agent_enabled():
@@ -842,11 +868,16 @@ def process_message_pdf():
             # Initialize the reactive agent
             agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
 
-            # Process the query using the reactive agent
-            if not user_email or not isinstance(user_email, str):
-                return jsonify({"error": "User email is missing or invalid"}), 401
-
-            result = agent.process_query_stream(message.strip(), chat_id, user_email)
+            # Process the query using the appropriate method based on guest status
+            if is_guest:
+                # Use guest-specific streaming method
+                result = agent.process_query_stream_guest(message_text.strip())
+            else:
+                # Use regular method for authenticated users
+                if not user_email or not isinstance(user_email, str):
+                    return jsonify({"error": "User email is missing or invalid"}), 401
+                result = agent.process_query_stream(message_text.strip(), chat_id, user_email)
+                
             def generate():
                 for chunk in result:
                     try:
@@ -879,19 +910,40 @@ def process_message_pdf():
             print(f"Error in reactive agent processing: {str(e)}")
             # Fallback to original implementation if agent fails and fallback is enabled
             if AgentConfig.should_use_fallback():
-                return _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email)
+                return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
             else:
                 return jsonify({"error": "Agent processing failed due to an internal error."}), 500
     else:
         # Agents disabled, use original implementation
-        return _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email)
+        return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
 
-def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email):
+def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email, is_guest=False):
     """Fallback implementation using the original direct LLM approach without the ReActive Agent"""
-    query = message.strip()
+    
+    # Handle message extraction - it might be a dict or string
+    if isinstance(message, dict):
+        # If message is a dict, extract the actual message text
+        message_text = message.get('text') or message.get('content') or str(message)
+    else:
+        message_text = str(message) if message is not None else ""
+    
+    query = message_text.strip()
 
-    #This adds user message to db
-    add_message_to_db(query, chat_id, 1)
+    # For guest users, skip database operations
+    if not is_guest:
+        #This adds user message to db
+        add_message_to_db(query, chat_id, 1)
+
+    # For guest users, provide a simple general knowledge response
+    if is_guest:
+        # Simple guest response without document access
+        simple_response = "I'm currently in guest mode and cannot access uploaded documents. To use full AI document analysis features, please log in or create an account. I can answer general questions using my knowledge base."
+        return jsonify({
+            "answer": simple_response,
+            "message_id": None,
+            "sources": [],
+            "reasoning": []
+        })
 
     #Get most relevant section from the document
     sources = get_relevant_chunks(2, query, chat_id, user_email)
