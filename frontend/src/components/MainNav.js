@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { logout, useNumCredits } from "../redux/UserSlice";
 import { useDispatch } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   billingPath,
   apiKeyDashboardPath,
@@ -25,6 +25,8 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
     imageUrl = user["profile_pic_url"];
   }
 
+  console.log("image", imageUrl)
+
   // Listen for sidebar state changes
   useEffect(() => {
     const handleSidebarStateChange = (event) => {
@@ -47,16 +49,19 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
       setIsLoggedInParent(false);
     });
   }
+  const location = useLocation()
+
+  const chat = location.pathname === "/" || location.pathname.startsWith("/chat/")
 
   return (
     <div
-      className={`fixed ${
+      className={`fixed ${chat ?
         isLoggedIn
           ? isSidebarCollapsed
             ? "md:pl-16"
             : "md:pl-72 md:blur-none blur md:fixed"
           : ""
-      } z-50 flex items-center justify-between w-full px-2 py-4 text-white transition-all duration-300`}
+      : ""} z-50 flex items-center justify-between w-full px-2 py-4 text-white transition-all duration-300`}
     >
       {showLoginModal && (
         <LoginModal
@@ -68,14 +73,15 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
         <button className="flex" onClick={() => navigate("/")}>
           <img
             alt="pancea logo"
-            className={
+            className={chat ?
               (isLoggedIn && !isSidebarCollapsed && "hidden") ||
-              (isSidebarCollapsed && "md:block hidden")
+              (isSidebarCollapsed && "md:block hidden") : ""
             }
             width={30}
             height={30}
             src="/logonew.png"
           />
+      
           <span className="self-center whitespace-nowrap text-lg font-semibold text-white md:pl-2 pl-8">
             Panacea
           </span>
