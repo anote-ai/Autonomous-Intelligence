@@ -2,9 +2,7 @@ import React, { useState, useEffect } from "react";
 import Chatbot from "./Chatbot";
 import fetcher from "../../http/RequestConfig";
 import Sidebar from "../Sidebar";
-function HomeChatbot({
-  isGuestMode = false
-}) {
+function HomeChatbot({ isGuestMode = false }) {
   const [selectedChatId, setSelectedChatId] = useState(isGuestMode ? 0 : null);
   const [forceUpdate, setForceUpdate] = useState(0);
   const [isPrivate, setIsPrivate] = useState(0);
@@ -13,8 +11,14 @@ function HomeChatbot({
   const [activeMessageIndex, setActiveMessageIndex] = useState(null);
   const [menu, setMenu] = useState(false);
   const [chats, setChats] = useState([]);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  // Upload-related state
+  const showError = (message) => {
+    setErrorMessage(message);
+    // Auto-clear error after 5 seconds
+    setTimeout(() => setErrorMessage(""), 5000);
+  };
+
   const handleMenu = () => {
     setMenu((prev) => !prev);
   };
@@ -45,8 +49,8 @@ function HomeChatbot({
 
       // Check if the response contains an error
       if (response_data.error) {
-        // Show error to user
-        alert(response_data.error);
+        // Show error to user with proper notification
+        showError(response_data.error);
         throw new Error(response_data.error);
       }
 
@@ -108,6 +112,20 @@ function HomeChatbot({
 
   return (
     <div className="h-screen flex flex-col bg-gray-900">
+      {/* Error notification */}
+      {errorMessage && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg border border-red-500 max-w-md">
+          <div className="flex items-center justify-between">
+            <span className="text-sm">{errorMessage}</span>
+            <button
+              onClick={() => setErrorMessage("")}
+              className="ml-4 text-white hover:text-red-200 text-lg font-bold"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       {/* Main content area with proper top spacing */}
       <div className="flex-1 w-full h-full overflow-hidden flex">
         {/* Sidebar for chat history - show when menu is true and not in guest mode */}
@@ -134,7 +152,6 @@ function HomeChatbot({
             setCurrChatName={setCurrChatName}
             activeMessageIndex={activeMessageIndex}
             setActiveMessageIndex={setActiveMessageIndex}
-            // isUploading={isUploading}
             isGuestMode={isGuestMode}
           />
         </div>
