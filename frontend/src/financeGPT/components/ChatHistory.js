@@ -206,7 +206,7 @@ function ChatHistory(props) {
               key={index}
               className={`group hover:bg-gray-800 rounded-md px-2 py-1 cursor-pointer text-sm mb-1 flex w-full items-center gap-4 relative ${
                 chat.id === Number(id)
-                  ? "bg-slate-300/20 text-gray-800"
+                  ? "bg-slate-200/20 text-gray-300"
                   : "text-white"
               }`}
             >
@@ -229,13 +229,35 @@ function ChatHistory(props) {
                 inline
                 label="···"
                 placement="left"
-                className="ml-auto z-50  group-hover:inline rounded-xl text-white hover:text-gray-300"
+                className="ml-auto z-50  group-hover:inline text-white bg-gray-200 border-none p-1"
               >
                 <Dropdown.Item onClick={() => handleRenameChat(chat.id)}>
-                  Rename
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                      <path
+                        d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    Rename
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item onClick={() => handleDeleteChat(chat.id)}>
-                  Delete
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                      <path
+                        d="M3 6h18m-2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2m-6 5v6m4-6v6"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    Delete
+                  </div>
                 </Dropdown.Item>
               </Dropdown>
             </li>

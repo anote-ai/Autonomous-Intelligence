@@ -51,7 +51,11 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
   return (
     <div
       className={`fixed ${
-        isLoggedIn ? (isSidebarCollapsed ? "md:pl-16" : "md:pl-72 md:blur-none blur md:fixed") : ""
+        isLoggedIn
+          ? isSidebarCollapsed
+            ? "md:pl-16"
+            : "md:pl-72 md:blur-none blur md:fixed"
+          : ""
       } z-50 flex items-center justify-between w-full px-2 py-4 text-white transition-all duration-300`}
     >
       {showLoginModal && (
@@ -64,7 +68,10 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
         <button className="flex" onClick={() => navigate("/")}>
           <img
             alt="pancea logo"
-            className={(isLoggedIn && !isSidebarCollapsed && "hidden") || (isSidebarCollapsed && "md:block hidden")}
+            className={
+              (isLoggedIn && !isSidebarCollapsed && "hidden") ||
+              (isSidebarCollapsed && "md:block hidden")
+            }
             width={30}
             height={30}
             src="/logonew.png"
@@ -83,15 +90,6 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
         Log In
       </button>
       <div className={`${!isLoggedIn && "hidden"} flex`}>
-        <div
-          className="mr-3 my-1 py-1 bg-gradient-to-r from-[#EDDC8F] to-[#F1CA57] text-black rounded-2xl cursor-pointer"
-          onClick={() => navigate(downloadPrivateGPTPath)}
-        >
-          <span className="px-3 text-xs font-bold text-black">
-            <FontAwesomeIcon icon={faCoins} className="mr-1" />
-            Download Private Version
-          </span>
-        </div>
         <Dropdown
           theme={{
             arrowIcon: "text-white ml-2 h-4 w-4",
@@ -121,11 +119,18 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
           >
             Billing
           </Dropdown.Item>
+
           <Dropdown.Item
             onClick={() => navigate(apiKeyDashboardPath)}
             className="text-white hover:text-black"
           >
             API
+          </Dropdown.Item>
+          <Dropdown.Item
+            onClick={() => window.location.href = downloadPrivateGPTPath}
+            className="text-white hover:text-black"
+          >
+            Download Panacea
           </Dropdown.Item>
           <Dropdown.Divider />
           <Dropdown.Item

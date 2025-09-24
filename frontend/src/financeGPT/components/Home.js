@@ -1,16 +1,9 @@
-import React, { Component, useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import Chatbot from "./Chatbot";
 import fetcher from "../../http/RequestConfig";
-import { useNavigate } from "react-router-dom";
-import ChatHistory from "./ChatHistory";
 import Sidebar from "../Sidebar";
-import { useDispatch } from "react-redux";
-import { deductCreditsLocal } from "../../redux/UserSlice";
-
 function HomeChatbot({
-  isGuestMode = false,
-  onRequestLogin,
-  setIsLoggedInParent,
+  isGuestMode = false
 }) {
   const [selectedChatId, setSelectedChatId] = useState(isGuestMode ? 0 : null);
   const [forceUpdate, setForceUpdate] = useState(0);
@@ -18,19 +11,10 @@ function HomeChatbot({
   const [currChatName, setCurrChatName] = useState("");
   const [currTask, setcurrTask] = useState(0); //0 is file upload, 1 EDGAR, 2 mySQL db; have 0 be the default
   const [activeMessageIndex, setActiveMessageIndex] = useState(null);
-  const [relevantChunk, setRelevantChunk] = useState("");
   const [menu, setMenu] = useState(false);
   const [chats, setChats] = useState([]);
-  const [loading, setLoading] = useState(!isGuestMode);
 
   // Upload-related state
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [triggerUpload, setTriggerUpload] = useState(false);
-  const sidebarRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const dispatch = useDispatch();
-
   const handleMenu = () => {
     setMenu((prev) => !prev);
   };
@@ -46,13 +30,6 @@ function HomeChatbot({
   };
 
   const createNewChat = async () => {
-    if (isGuestMode) {
-      // For guest mode, just set a default chat ID
-      const guestChatId = 0;
-      handleChatSelect(guestChatId);
-      return guestChatId;
-    }
-
     try {
       // Then create the chat
       const response = await fetcher("create-new-chat", {
@@ -90,86 +67,14 @@ function HomeChatbot({
     }
   };
 
-  // Handle upload trigger from chatbot - direct approach
-  const handleUploadClick = (chatId) => {
-    console.log("handleUploadClick called with chatId:", chatId);
-    // If a chatId is provided, ensure selectedChatId is set
-    if (chatId && chatId !== selectedChatId) {
-      setSelectedChatId(chatId);
-    }
-
-    // Try direct file input first
-    if (fileInputRef.current) {
-      console.log("Triggering file input dialog");
-      fileInputRef.current.click();
-      return;
-    }
-
-    // Fallback to sidebar approach
-    if (sidebarRef.current && sidebarRef.current.openFileDialog) {
-      console.log("Using sidebar openFileDialog");
-      sidebarRef.current.openFileDialog();
-    } else {
-      console.log("Using trigger upload fallback");
-      // Fallback to trigger approach
-      setTriggerUpload(true);
-    }
-  };
-
-  // Handle file upload
-  const handleFileUpload = async (event) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    if (!selectedChatId) {
-      console.error("No chat selected for file upload");
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadProgress(0);
-
-    try {
-      const formData = new FormData();
-      for (let i = 0; i < files.length; i++) {
-        formData.append("files[]", files[i]);
-      }
-      formData.append("chat_id", selectedChatId);
-
-      console.log("Uploading files for chat:", selectedChatId);
-
-      const response = await fetcher("ingest-pdf", {
-        method: "POST",
-        body: formData,
-      });
-
-      const responseData = await response.json();
-      console.log("Upload response:", responseData);
-
-      // Force update to refresh documents list
-      handleForceUpdate();
-    } catch (error) {
-      console.error("File upload error:", error);
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-      // Clear the file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
-  };
-
   useEffect(() => {
     if (isGuestMode) {
       // For guest mode, don't retrieve chats from server
-      setLoading(false);
       return;
     }
 
     const retrieveAllChats = async () => {
       console.log("i am in retrieve chats");
-      setLoading(true);
       try {
         const response = await fetcher("retrieve-all-chats", {
           method: "POST",
@@ -196,8 +101,6 @@ function HomeChatbot({
             console.error("Non-network error:", error);
           }
         }
-      } finally {
-        setLoading(false);
       }
     };
     retrieveAllChats();
@@ -227,15 +130,11 @@ function HomeChatbot({
             handleForceUpdate={handleForceUpdate}
             forceUpdate={forceUpdate}
             isPrivate={isPrivate}
-            currChatName={currChatName}
             confirmedModelKey={confirmedModelKey}
             setCurrChatName={setCurrChatName}
             activeMessageIndex={activeMessageIndex}
             setActiveMessageIndex={setActiveMessageIndex}
-            setRelevantChunk={setRelevantChunk}
-            isUploading={isUploading}
-            uploadProgress={uploadProgress}
-            onUploadClick={handleUploadClick}
+            // isUploading={isUploading}
             isGuestMode={isGuestMode}
           />
         </div>

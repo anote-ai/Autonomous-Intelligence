@@ -5,12 +5,13 @@ import { useState, useEffect } from "react";
 // Example SVG icons (replace with your own or use a library like react-icons)
 const icons = {
   newChat: (
-    <svg width="20" height="20" fill="none">
+    <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
       <path
-        d="M4 10h12M10 4v12"
+        d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"
         stroke="#fff"
         strokeWidth="2"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   ),
@@ -49,10 +50,10 @@ const Sidebar = ({ handleChatSelect, handleToggleSidebar }) => {
   };
   return (
     <aside
-      className={`md:flex flex-col z-50 h-screen bg-slate-900/20 text-white md:p-2 md:mt-3 justify-between shadow-lg ${
+      className={`md:flex flex-col z-50 h-screen  text-white md:p-2 md:py-5 justify-between shadow-lg ${
         isCollapsed
           ? "md:w-16 w-0"
-          : "md:w-72 w-full fixed md:relative transition-all duration-300"
+          : "md:w-72 w-full bg-gray-800/20 fixed md:relative transition-all duration-300"
       }`}
     >
       <div className="pt-6 px-2 md:pt-0 md:z-50">

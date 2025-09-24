@@ -8,7 +8,6 @@ import {
   pricingRedirectPath,
   chatbotPath,
   apiKeyDashboardPath,
-  downloadPrivateGPTPath,
   homePath,
   gtmPath,
   languages, // Import connector options from RouteConstants
@@ -23,7 +22,6 @@ import { useDispatch } from "react-redux";
 import { useEffect } from "react";
 import Home from "./financeGPT/components/Home";
 import { APISKeyDashboard } from "./subcomponents/api/APISKeyDashboard";
-import DownloadPrivateGPT from "./components/DownloadPrivateGPT.js";
 import GTMChatbot from "./landing_page/landing_page_screens/Chatbots/companies/GTMChatbot";
 import Languages from "./landing_page/landing_page_screens/Chatbots/languages/Languages";
 import Companies from "./landing_page/landing_page_screens/Chatbots/companies/Companies";
@@ -112,9 +110,6 @@ function Dashboard() {
     ) : null,
     showRestrictedRouteRequiringUserSession ? (
       <Route path={chatbotPath} element={<Home />} />
-    ) : null,
-    showRestrictedRouteRequiringUserSession ? (
-      <Route path={downloadPrivateGPTPath} element={<DownloadPrivateGPT />} />
     ) : null,
     showRestrictedRouteRequiringUserSession ? (
       <Route path={apiKeyDashboardPath} element={<APISKeyDashboard />} />

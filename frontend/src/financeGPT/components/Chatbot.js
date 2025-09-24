@@ -3,8 +3,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPaperPlane,
   faFile,
-  faDownload,
-  faShareAlt,
   faBrain,
   faSearch,
   faCog,
@@ -52,6 +50,11 @@ const Chatbot = (props) => {
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  const shouldShowUpgradeModal = () => {
+    return user && numCredits === 0 && messages.length > 0 && !showUpgradeModal; // Only if not already shown
+  };
+
 
   const handleFileSelect = (files) => {
     console.log("Files selected:", files);
@@ -1140,47 +1143,6 @@ const Chatbot = (props) => {
     }));
   };
 
-  // Auto-expand reasoning for new thinking messages
-  useEffect(() => {
-    messages.forEach((msg) => {
-      if (
-        msg.role === "assistant" &&
-        msg.isThinking &&
-        expandedReasoning[msg.id] === undefined
-      ) {
-        setExpandedReasoning((prev) => ({
-          ...prev,
-          [msg.id]: true, // Auto-expand reasoning for thinking messages
-        }));
-      }
-    });
-  }, [messages, expandedReasoning]);
-
-  const handleGenerateShareableUrl = async () => {
-    if (!props.selectedChatId) {
-      alert("No chat selected");
-      return;
-    }
-    try {
-      const response = await fetcher(
-        `generate-playbook/${props.selectedChatId}`,
-        {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            Accept: "application/json",
-          },
-        }
-      );
-      const data = await response.json();
-      const shareableUrl = data.url || `/playbook/${data.share_uuid}`;
-      alert(`Your shareable URL: ${shareableUrl}`);
-    } catch (error) {
-      console.error("Error generating shareable URL:", error);
-      alert("Failed to generate shareable URL.");
-    }
-  };
-
   useEffect(() => {
     if (pollingTimeoutRef.current) {
       clearTimeout(pollingTimeoutRef.current);
@@ -1204,19 +1166,7 @@ const Chatbot = (props) => {
       }
     };
   }, [id, handleLoadChat]);
-
-  // Monitor credits and show upgrade modal when credits reach 0 (only for authenticated users)
-  useEffect(() => {
-    if (user && numCredits === 0 && messages.length > 0) {
-      // Only show modal if user is authenticated and has been using the chat (has messages)
-      // This prevents showing modal immediately on page load for users with 0 credits
-      const timer = setTimeout(() => {
-        setShowUpgradeModal(true);
-      }, 1000); // Small delay to avoid jarring experience
-
-      return () => clearTimeout(timer);
-    }
-  }, [user, numCredits, messages.length]);
+  
 
   const handleInputKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1226,6 +1176,7 @@ const Chatbot = (props) => {
       }
     }
   };
+
 
   return (
     <div
@@ -1242,38 +1193,6 @@ const Chatbot = (props) => {
         } flex justify-center`}
       >
         <div className="py-3 flex-col mt-0 px-4 flex gap-3 w-full">
-          <div className="bg-anoteblack-800 flex items-center sticky top-0 lg:top-0 z-10 w-full border-b border-gray-400/30 px-2">
-            {/* Center: Chat name */}
-            <div className="absolute left-0 right-0 flex justify-center items-center pointer-events-none h-14">
-              <h1 className="text-white truncate text-center w-2/3 pointer-events-auto">
-                {props.currChatName}
-              </h1>
-            </div>
-            {/* Right: Share/Download - Only show for authenticated users */}
-            {user && (
-              <div className="flex gap-2 flex-shrink-0 ml-auto z-10">
-                <button
-                  onClick={handleGenerateShareableUrl}
-                  className="p-2 hover:bg-gray-700 rounded transition-colors"
-                  title="Share chat"
-                >
-                  <FontAwesomeIcon
-                    icon={faShareAlt}
-                    className="text-lg text-[#DFDFDF]"
-                  />
-                </button>
-                <button
-                  className="p-2 hover:bg-gray-700 rounded transition-colors"
-                  title="Download chat"
-                >
-                  <FontAwesomeIcon
-                    icon={faDownload}
-                    className="text-lg text-[#DFDFDF]"
-                  />
-                </button>
-              </div>
-            )}
-          </div>
           <div className="px-4 md:px-8 lg:px-16 xl:px-32">
             {messages.map((msg, index) => (
               <div
@@ -1651,7 +1570,7 @@ const Chatbot = (props) => {
       )}
 
       {/* Upgrade Modal - Only show for authenticated users */}
-      {user && showUpgradeModal && (
+      {shouldShowUpgradeModal() && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={(e) => {
