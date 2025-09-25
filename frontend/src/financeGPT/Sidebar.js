@@ -56,7 +56,7 @@ const Sidebar = ({ handleChatSelect, handleToggleSidebar }) => {
           : "md:w-72 w-full bg-sidebar/20 fixed md:relative transition-all duration-300"
       }`}
     >
-      <div className="pt-6 px-2 md:pt-0 md:z-50">
+      <div className="pt-6 px-2 md:pt-0 cursor-pointer md:z-50">
         {/* Top logo and collapse icon */}
         <div className="flex items-center mb-2 justify-between px-2">
           {!isCollapsed && (
@@ -65,7 +65,7 @@ const Sidebar = ({ handleChatSelect, handleToggleSidebar }) => {
           <button
             onClick={handleToggle}
             data-slot="sidebar-trigger"
-            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 size-7 -ml-1"
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive cursor-pointer hover:text-accent-foreground dark:hover:bg-accent/50 size-7 -ml-1"
             data-sidebar="trigger"
           >
             <svg
@@ -78,7 +78,7 @@ const Sidebar = ({ handleChatSelect, handleToggleSidebar }) => {
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="lucide lucide-panel-left"
+              className="lucide lucide-panel-left cursor-pointer"
             >
               <rect width="18" height="18" x="3" y="3" rx="2"></rect>
               <path d="M9 3v18"></path>
