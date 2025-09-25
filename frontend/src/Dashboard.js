@@ -13,6 +13,9 @@ import {
   languages, // Import connector options from RouteConstants
   companies,
   createcompany,
+  organizationsPath,
+  personsPath,
+  languagesDirectoryPath,
 } from "./constants/RouteConstants";
 import PaymentsComponent from "./subcomponents/payments/PaymentsComponent";
 import PaymentsProduct from "./subcomponents/payments/PaymentsProduct";
@@ -26,9 +29,12 @@ import GTMChatbot from "./landing_page/landing_page_screens/Chatbots/companies/G
 import Languages from "./landing_page/landing_page_screens/Chatbots/languages/Languages";
 import Companies from "./landing_page/landing_page_screens/Chatbots/companies/Companies";
 import CreateCompany from "./landing_page/landing_page_screens/Chatbots/companies/CreateCompany";
+import Organizations from "./components/Organizations";
+import LanguagesDirectory from "./components/LanguagesDirectory";
+import PersonsDirectory from "./components/PersonsDirectory";
+import PersonChat from "./components/PersonChat";
 
 function Dashboard() {
-  const [darkTheme, setDarkTheme] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(true);
   const accessToken = localStorage.getItem("accessToken");
   const sessionToken = localStorage.getItem("sessionToken");
@@ -78,9 +84,7 @@ function Dashboard() {
     <Route
       key="root"
       index
-      element={
-        <CheckLogin darkTheme={darkTheme} setIsLoggedInParent={setIsLoggedIn} />
-      }
+      element={<CheckLogin setIsLoggedInParent={setIsLoggedIn} />}
     />,
     <Route path={homePath} element={<Home />} />,
     <Route path={gtmPath} element={<GTMChatbot />} />,
@@ -88,13 +92,16 @@ function Dashboard() {
     <Route path="/languages/:lang" element={<Languages />} />,
     <Route path={createcompany} element={<CreateCompany />} />,
     <Route path={companies} element={<Companies />} />,
+    <Route path={organizationsPath} element={<Organizations />} />,
+    <Route path={languagesDirectoryPath} element={<LanguagesDirectory />} />,
+    <Route path={personsPath} element={<PersonsDirectory />} />,
+    <Route path="/person/:slug" element={<PersonChat />} />,
   ];
   var privateRoutes = [
     <Route
       index
       element={
         <CheckLogin
-          darkTheme={darkTheme}
           setIsLoggedInParent={setIsLoggedIn}
           showRestrictedRouteRequiringPayments={
             showRestrictedRouteRequiringPayments
@@ -137,12 +144,12 @@ function Dashboard() {
             Your free trial ends in {daysStr}
             <Link to={accountPath} className="ml-3 text-blue-500">Upgrade</Link>
           </div>} */}
-            <MainNav
-              // darkTheme={darkTheme}
-              // setDarkTheme={setDarkTheme}
-              isLoggedIn={isLoggedIn}
-              setIsLoggedInParent={setIsLoggedIn}
-            />
+          <MainNav
+            // darkTheme={darkTheme}
+            // setDarkTheme={setDarkTheme}
+            isLoggedIn={isLoggedIn}
+            setIsLoggedInParent={setIsLoggedIn}
+          />
           <Helmet>
             <title>Panacea</title>
           </Helmet>

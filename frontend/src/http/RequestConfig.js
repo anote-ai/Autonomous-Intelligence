@@ -154,7 +154,7 @@ export function refreshAccessToken() {
 
   const { controller, timeoutId } = createRequestController();
 
-  return fetch(API_ENDPOINT + "/refresh", {
+  return fetch(`${API_ENDPOINT}/refresh`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -230,8 +230,8 @@ export function refreshAccessToken() {
 // Enhanced fetcher with improved error handling, retry logic, and debugging
 async function fetcher(url, options = {}, retryCount = 0) {
   const requestId = `req_${Date.now()}_${Math.random()
-    .toString(36)
-    .substr(2, 9)}`;
+    .toString(36)}`;
+    
   const fullUrl = `${API_ENDPOINT}/${url}`;
 
   // Check if this is a guest mode request

@@ -6,6 +6,9 @@ import {
   billingPath,
   apiKeyDashboardPath,
   downloadPrivateGPTPath,
+  organizationsPath,
+  languagesDirectoryPath,
+  personsPath,
 } from "../constants/RouteConstants";
 import { Dropdown, Avatar } from "flowbite-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -25,7 +28,7 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
     imageUrl = user["profile_pic_url"];
   }
 
-  console.log("image", imageUrl)
+  console.log("image", imageUrl);
 
   // Listen for sidebar state changes
   useEffect(() => {
@@ -40,7 +43,6 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
         handleSidebarStateChange
       );
     };
-
   }, []);
 
   function handleLogout() {
@@ -49,19 +51,22 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
       setIsLoggedInParent(false);
     });
   }
-  const location = useLocation()
+  const location = useLocation();
 
-  const chat = location.pathname === "/" || location.pathname.startsWith("/chat/")
+  const chat =
+    location.pathname === "/" || location.pathname.startsWith("/chat/");
 
   return (
     <div
-      className={`fixed ${chat ?
-        isLoggedIn
-          ? isSidebarCollapsed
-            ? "md:pl-16"
-            : "md:pl-72 md:blur-none blur md:fixed"
+      className={`fixed ${
+        chat
+          ? isLoggedIn
+            ? isSidebarCollapsed
+              ? "md:pl-16"
+              : "md:pl-72 md:blur-none blur md:fixed"
+            : ""
           : ""
-      : ""} z-50 flex items-center justify-between w-full px-2 py-4 text-white transition-all duration-300`}
+      } z-50 flex items-center justify-between w-full px-2 py-4 text-white transition-all duration-300`}
     >
       {showLoginModal && (
         <LoginModal
@@ -73,15 +78,17 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
         <button className="flex" onClick={() => navigate("/")}>
           <img
             alt="pancea logo"
-            className={chat ?
-              (isLoggedIn && !isSidebarCollapsed && "hidden") ||
-              (isSidebarCollapsed && "md:block hidden") : ""
+            className={
+              chat
+                ? (isLoggedIn && !isSidebarCollapsed && "hidden") ||
+                  (isSidebarCollapsed && "md:block hidden")
+                : ""
             }
             width={30}
             height={30}
             src="/logonew.png"
           />
-      
+
           <span className="self-center whitespace-nowrap text-lg font-semibold text-white md:pl-2 pl-8">
             Panacea
           </span>
@@ -91,7 +98,7 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
         onClick={() => setShowLoginModal(true)}
         className={`py-2 ${
           isLoggedIn && "hidden"
-        } px-4 bg-gradient-to-r from-[#EDDC8F] to-[#F1CA57] text-black rounded-lg font-medium hover:opacity-90 transition-opacity`}
+        } px-4 bg-gradient-to-r from-accent to-accent-light text-white rounded-lg font-medium hover:opacity-90 transition-opacity`}
       >
         Log In
       </button>
@@ -100,7 +107,7 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
           theme={{
             arrowIcon: "text-white ml-2 h-4 w-4",
           }}
-          className={`bg-gray-950 text-white`}
+          className={`bg-primary text-white`}
           inline
           label={
             imageUrl === "" ? (
@@ -133,7 +140,25 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
             API
           </Dropdown.Item>
           <Dropdown.Item
-            onClick={() => window.location.href = downloadPrivateGPTPath}
+            onClick={() => navigate(organizationsPath)}
+            className="text-white hover:text-black"
+          >
+            Organizations
+          </Dropdown.Item>
+          <Dropdown.Item
+            onClick={() => navigate(languagesDirectoryPath)}
+            className="text-white hover:text-black"
+          >
+            Languages
+          </Dropdown.Item>
+          <Dropdown.Item
+            onClick={() => navigate(personsPath)}
+            className="text-white hover:text-black"
+          >
+            Person
+          </Dropdown.Item>
+          <Dropdown.Item
+            onClick={() => (window.location.href = downloadPrivateGPTPath)}
             className="text-white hover:text-black"
           >
             Download Panacea

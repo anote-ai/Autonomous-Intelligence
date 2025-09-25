@@ -55,7 +55,6 @@ const Chatbot = (props) => {
     return user && numCredits === 0 && messages.length > 0 && !showUpgradeModal; // Only if not already shown
   };
 
-
   const handleFileSelect = (files) => {
     console.log("Files selected:", files);
     setSelectedFiles(Array.isArray(files) ? files : [files]);
@@ -959,81 +958,77 @@ const Chatbot = (props) => {
     const getStepIcon = (type) => {
       switch (type) {
         case "llm_reasoning":
-          return <FontAwesomeIcon icon={faBrain} className="text-blue-400" />;
+          return <FontAwesomeIcon icon={faBrain} className="text-accent" />;
         case "tool_start":
         case "tools_start":
         case "tool_end":
-          return <FontAwesomeIcon icon={faSearch} className="text-green-400" />;
+          return <FontAwesomeIcon icon={faSearch} className="text-accent" />;
         case "agent_thinking":
-          return <FontAwesomeIcon icon={faCog} className="text-purple-400" />;
+          return <FontAwesomeIcon icon={faCog} className="text-accent" />;
         case "complete":
         case "step-complete":
           return (
-            <FontAwesomeIcon icon={faCheckCircle} className="text-green-500" />
+            <FontAwesomeIcon icon={faCheckCircle} className="text-accent" />
           );
         // Multi-agent system icons
         case "agent_start":
-          return <FontAwesomeIcon icon={faCog} className="text-yellow-400" />;
+          return <FontAwesomeIcon icon={faCog} className="text-accent" />;
         case "agent_progress":
           return (
-            <FontAwesomeIcon icon={faArrowRight} className="text-orange-400" />
+            <FontAwesomeIcon icon={faArrowRight} className="text-accent" />
           );
         case "agent_reasoning":
-          return <FontAwesomeIcon icon={faBrain} className="text-cyan-400" />;
+          return <FontAwesomeIcon icon={faBrain} className="text-accent" />;
         case "agent_tool_use":
         case "agent_tool_complete":
-          return (
-            <FontAwesomeIcon icon={faSearch} className="text-emerald-400" />
-          );
+          return <FontAwesomeIcon icon={faSearch} className="text-accent" />;
         case "agent_completion":
         case "agent_error":
           return (
-            <FontAwesomeIcon icon={faInfoCircle} className="text-indigo-400" />
+            <FontAwesomeIcon icon={faInfoCircle} className="text-accent" />
           );
         case "orchestrator_decision":
         case "orchestrator_synthesis":
-          return <FontAwesomeIcon icon={faSitemap} className="text-pink-400" />;
+          return <FontAwesomeIcon icon={faSitemap} className="text-accent" />;
         case "reasoning_step":
-          return (
-            <FontAwesomeIcon icon={faLightbulb} className="text-amber-400" />
-          );
+          return <FontAwesomeIcon icon={faLightbulb} className="text-accent" />;
         default:
-          return <FontAwesomeIcon icon={faCog} className="text-gray-400" />;
+          return <FontAwesomeIcon icon={faCog} className="text-accent" />;
       }
     };
     console.log("stepsss", step);
     const getStepColor = (type) => {
       switch (type) {
         case "llm_reasoning":
-          return "border-l-blue-400 bg-blue-950/20";
+          return "border-l-accent bg-accent/10";
         case "tool_start":
         case "tools_start":
         case "tool_end":
-          return "border-l-green-400 bg-green-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_thinking":
-          return "border-l-purple-400 bg-purple-950/20";
+          return "border-l-accent bg-accent/10";
         case "complete":
         case "step-complete":
-          return "border-l-green-500 bg-green-950/30";
+          return "border-l-accent bg-accent/20";
         // Multi-agent system colors
         case "agent_start":
-          return "border-l-yellow-400 bg-yellow-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_progress":
-          return "border-l-orange-400 bg-orange-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_reasoning":
-          return "border-l-cyan-400 bg-cyan-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_tool_use":
         case "agent_tool_complete":
-          return "border-l-emerald-400 bg-emerald-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_completion":
-          return "border-l-indigo-400 bg-indigo-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_error":
           return "border-l-red-400 bg-red-950/20";
         case "orchestrator_decision":
         case "orchestrator_synthesis":
-          return "border-l-pink-400 bg-pink-950/20";
+          return "border-l-accent bg-accent/10";
         case "reasoning_step":
-          return "border-l-amber-400 bg-amber-950/20";
+          return "border-l-accent bg-accent/10";
         default:
           return "border-l-gray-400 bg-gray-800/20";
       }
@@ -1166,7 +1161,6 @@ const Chatbot = (props) => {
       }
     };
   }, [id, handleLoadChat]);
-  
 
   const handleInputKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1176,7 +1170,6 @@ const Chatbot = (props) => {
       }
     }
   };
-
 
   return (
     <div
@@ -1292,8 +1285,8 @@ const Chatbot = (props) => {
                     <div
                       className={`rounded-2xl p-4 shadow-lg transition-all ${
                         msg.role === "user"
-                          ? "bg-gradient-to-br from-[#28b2fb] to-[#111827] text-white ml-auto rounded-br-none"
-                          : "bg-[#1f2937] text-white border border-[#2e3a4c] rounded-bl-none"
+                          ? "bg-[#222d3c]  border border-[#2e3a4c] text-white ml-auto rounded-br-none"
+                          : "bg-[#181f29] text-white border border-[#2e3a4c] rounded-bl-none"
                       }`}
                     >
                       {/* Assistant Thinking Animation */}
@@ -1419,8 +1412,8 @@ const Chatbot = (props) => {
         </div>
 
         {/* Input form */}
-        <div className="flex w-full justify-center my-5  px-4">
-          <div className="flex items-center gap-3 w-full max-w-4xl">
+        <div className="flex w-full justify-center mb-4 px-4">
+          <div className="flex items-center gap-1 focus-within:ring-slate-600 focus-within:ring-2 border-gray-600 p-2 rounded-xl bg-sidebar w-full max-w-4xl">
             {/* Left side - Upload button */}
             <button
               type="button"
@@ -1435,12 +1428,12 @@ const Chatbot = (props) => {
                 setTimeout(() => setUploadButtonClicked(false), 1000);
               }}
               disabled={props.isUploading || (!user ? false : numCredits === 0)}
-              className={`flex items-center justify-center w-12 h-12 rounded-xl transition-colors flex-shrink-0 ${
+              className={`flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 ${
                 uploadButtonClicked
-                  ? "bg-blue-600 text-white"
+                  ? "bg-gray-600 text-white"
                   : props.isUploading
                   ? "bg-gray-500 text-gray-300 cursor-not-allowed"
-                  : "bg-blue-500 hover:bg-blue-600 text-white"
+                  : "bg-gray-600 hover:bg-gray-500 text-white"
               }`}
               title={
                 !id
@@ -1456,9 +1449,9 @@ const Chatbot = (props) => {
             {/* Center - Input */}
             <div className="flex-1">
               <div className="relative">
-                <div className="relative border  flex items-center bg-gray-700 rounded-3xl border-gray-600 focus-within:border-gray-500 transition-colors">
+                <div className="relative flex items-center rounded-lg focus-within:border-accent  focus-within:ring-0 transition-all duration-200">
                   <textarea
-                    className="w-full border-none resize-none text-lg px-6 py-2 focus:ring-0 focus:outline-none text-white placeholder:text-gray-400 bg-transparent rounded-3xl"
+                    className="w-full  border-none disabled:cursor-not-allowed  resize-none text-base px-4 py-3 focus:ring-0 focus:outline-none text-white placeholder:text-gray-400 bg-transparent rounded-lg"
                     rows={1}
                     placeholder={
                       !user
@@ -1484,12 +1477,12 @@ const Chatbot = (props) => {
                 message.trim() === "" ||
                 messages.some((msg) => msg.isThinking)
               }
-              className={`flex items-center justify-center w-12 h-12 rounded-xl transition-colors flex-shrink-0 ${
+              className={`flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 ${
                 !message ||
                 message.trim() === "" ||
                 messages.some((msg) => msg.isThinking)
                   ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                  : "bg-blue-500 hover:bg-blue-600 text-white"
+                  : "bg-gray-600 hover:bg-gray-500 text-white"
               }`}
             >
               <FontAwesomeIcon icon={faPaperPlane} className="text-lg" />

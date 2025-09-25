@@ -25,6 +25,7 @@ export const homePath = "/home";
 export const gtmPath = "/companies/anote";
 export const landing = "/landing";
 export const languages = "/languages";
+export const languagesDirectoryPath = "/languages-directory";
 export const companies = "/companies";
 export const LANGUAGE_ROUTES = {
   japanese: "/languages/japanese",
@@ -34,3 +35,5 @@ export const LANGUAGE_ROUTES = {
   arabic: "/languages/arabic",
 };
 export const createcompany = "/companies/create";
+export const organizationsPath = "/organizations";
+export const personsPath = "/person";

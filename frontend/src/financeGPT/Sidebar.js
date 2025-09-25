@@ -50,10 +50,10 @@ const Sidebar = ({ handleChatSelect, handleToggleSidebar }) => {
   };
   return (
     <aside
-      className={`md:flex flex-col z-50 h-screen  text-white md:p-2 md:py-5 justify-between shadow-lg ${
+      className={`md:flex flex-col z-50 h-screen text-white md:p-2 md:py-5 justify-between shadow-lg ${
         isCollapsed
           ? "md:w-16 w-0"
-          : "md:w-72 w-full bg-gray-800/20 fixed md:relative transition-all duration-300"
+          : "md:w-72 w-full bg-sidebar/20 fixed md:relative transition-all duration-300"
       }`}
     >
       <div className="pt-6 px-2 md:pt-0 md:z-50">
@@ -101,7 +101,7 @@ const Sidebar = ({ handleChatSelect, handleToggleSidebar }) => {
 
 function SidebarItem({ icon, label }) {
   return (
-    <div className="flex items-center gap-3 px-2 py-2 hover:bg-gray-800 rounded cursor-pointer">
+    <div className="flex items-center gap-3 px-2 py-2 hover:bg-sidebar rounded cursor-pointer">
       <span className="w-6 h-6 flex items-center justify-center">{icon}</span>
       <span className="font-medium text-base">{label}</span>
     </div>

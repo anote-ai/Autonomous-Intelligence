@@ -111,7 +111,7 @@ function HomeChatbot({ isGuestMode = false }) {
   }, [forceUpdate, isGuestMode]);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900">
+    <div className="h-screen flex flex-col bg-primary">
       {/* Error notification */}
       {errorMessage && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg border border-red-500 max-w-md">
