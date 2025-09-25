@@ -1349,67 +1349,6 @@ const Chatbot = (props) => {
           </div>
         )}
 
-        {/* Banner above chat input */}
-        <div className="w-full max-w-4xl mx-auto mb-4 px-4">
-          {!user && (
-            // Guest user info banner
-            <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-lg p-4 mb-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <FontAwesomeIcon
-                    icon={faInfoCircle}
-                    className="text-blue-400 text-lg flex-shrink-0"
-                  />
-                  <div className="text-white">
-                    <p className="text-sm font-medium text-blue-200">
-                      Guest Mode
-                    </p>
-                    <p className="text-xs text-gray-300 mt-1">
-                      You're chatting as a guest. Log in to unlock advanced
-                      features and save your chats.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() =>
-                    window.dispatchEvent(new CustomEvent("showLogin"))
-                  }
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex-shrink-0"
-                >
-                  Login
-                </button>
-              </div>
-            </div>
-          )}
-          {user && numCredits === 0 && (
-            // Out of credits banner (only for authenticated users)
-            <div className="bg-gradient-to-r from-red-600/20 to-orange-600/20 border border-red-500/30 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <FontAwesomeIcon
-                    icon={faExclamationTriangle}
-                    className="text-red-400 text-lg flex-shrink-0"
-                  />
-                  <div className="text-white">
-                    <p className="text-sm font-medium text-red-200">
-                      No Credits Remaining
-                    </p>
-                    <p className="text-xs text-gray-300 mt-1">
-                      You've run out of credits. Please upgrade to continue
-                      using AI analysis.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowUpgradeModal(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex-shrink-0"
-                >
-                  Upgrade Now
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* Input form */}
         <div className="flex w-full justify-center mb-4 px-4">

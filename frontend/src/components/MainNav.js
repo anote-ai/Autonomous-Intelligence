@@ -74,7 +74,7 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
           isOpen={showLoginModal}
         />
       )}
-      <div className={"flex items-center"}>
+      <div className={"flex items-center gap-2"}>
         <button className="flex" onClick={() => navigate("/")}>
           <img
             alt="pancea logo"
@@ -93,6 +93,9 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
             Panacea
           </span>
         </button>
+        {!user ? <span className="self-center whitespace-nowrap text-xs rounded-xl bg-gradient-to-r from-accent to-accent-light px-3 py-1.5 font-semibold text-white shadow-md">
+          Guest
+        </span> : ""}
       </div>
       <button
         onClick={() => setShowLoginModal(true)}
