@@ -40,7 +40,7 @@ def _close_files(files):
 class PrivateChatbot:
     def __init__(self, api_key, is_private, model_id):
         self.API_BASE_URL = 'http://localhost:5000'
-        #self.API_BASE_URL = 'https://api.privatechatbot.ai'
+        #self.API_BASE_URL = 'https://api.anote.ai'
         self.is_private = is_private
         self.model_id = model_id
         self.headers = {

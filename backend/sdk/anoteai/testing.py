@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
 
     #PUBLIC
-    # file_paths = ['sample_docs/doc1.pdf', 'sample_docs/doc2.pdf', 'https://docs.privatechatbot.ai/']
+    # file_paths = ['sample_docs/doc1.pdf', 'sample_docs/doc2.pdf', 'https://docs.anote.ai/']
     # chat_id = privatechatbot.upload(task_type="documents", model_type="gpt", file_paths=file_paths)['id']
 
     # response1 = privatechatbot.chat(chat_id, "Who wrote the paper on Improving Classification performance?")
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     # print(privatechatbot.evaluate(message_id2))
 
     #PRIVATE
-    # file_paths = ['sample_docs/doc1.pdf', 'sample_docs/doc2.pdf', 'https://docs.privatechatbot.ai/']
+    # file_paths = ['sample_docs/doc1.pdf', 'sample_docs/doc2.pdf', 'https://docs.anote.ai/']
     # chat_id = privatechatbot.upload(task_type="documents", model_type="llama", file_paths=file_paths)['id']
 
     # response1 = privatechatbot.chat(chat_id, "Who are the authors of the paper on Improving Classification performance?")

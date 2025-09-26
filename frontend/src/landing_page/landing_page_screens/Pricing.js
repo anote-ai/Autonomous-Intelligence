@@ -177,7 +177,7 @@ const Pricing = (props) => {
     //   if (product.title === "Data Labeler") {
     //     window.location = "https://dashboard.anote.ai"; }
     //   // } else if (product.title === "Private Chatbot") {
-    //   //   window.location = "https://privatechatbot.ai";
+    //   //   window.location = "https://chat.anote.ai";
     //   // }
     // } else if (
     if (

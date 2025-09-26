@@ -1,3 +1,3 @@
 export function GetPrivateGPTDashboardUrl() {
-  return `https://privatechatbot.ai`;
+  return `https://anote.ai/downloadprivategpt`;
 }

@@ -14,12 +14,12 @@ def CreateCheckoutSessionHandler(request, userEmail):
     print(f"CreateCheckoutSessionHandler called with userEmail: {userEmail}")
     user_id = user_id_for_email(userEmail)
     print(f"User ID retrieved: {user_id}")
-    
+
     # Check if user exists
     if user_id is None:
         print(f"User not found for email: {userEmail}")
         return jsonify({'error': 'User not found'}), 404
-    
+
     new_price_id = productHashMap[request.json["product_hash"]]
     print(f"Price ID: {new_price_id}")
 
@@ -52,8 +52,8 @@ def CreateCheckoutSessionHandler(request, userEmail):
                     },
                 ],
                 mode='subscription',
-                success_url="https://privatechatbot.ai/account",
-                cancel_url="https://privatechatbot.ai/account",
+                success_url="https://chat.anote.ai/account",
+                cancel_url="https://chat.anote.ai/account",
                 metadata={
                     'user_id': user_id
                 },
@@ -83,7 +83,7 @@ def CreatePortalSessionHandler(request, userEmail):
     if no_subscriptions_with_end_date_null(userEmail):
         return jsonify({'status': "Already canceled."}), 400
 
-    return_url = "https://privatechatbot.ai/account"
+    return_url = "https://chat.anote.ai/account"
     print("return_url")
     config = config_for_payment_tiers(userEmail, request.json["paymentTier"])
     print("config")
