@@ -7,7 +7,6 @@ from db_enums import PaidUserStatus
 from dateutil.relativedelta import relativedelta
 from constants.global_constants import chatgptLimit
 from constants.global_constants import dbName, dbHost, dbUser, dbPassword
-import socket
 import secrets
 
 
@@ -15,18 +14,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 import mysql.connector
 
-db_connect = None
-
 def get_db_connection():
-    global db_connect
-
-    try:
-        if db_connect is not None and db_connect.is_connected():
-            return db_connect, db_connect.cursor(dictionary=True)
-    except Exception:
-        # resets the db ---> None getting it ready for the new connection
-        db_connect = None
-
     if ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
         db_connect = mysql.connector.connect(
                 user='root',
@@ -60,7 +48,7 @@ def create_user_if_does_not_exist(email, google_id, person_name, profile_pic_url
     user_id = -1
     if count is None or count["COUNT(*)"] == 0:
         # Create new user with 20 credits by default
-        cursor.execute('INSERT INTO users (credits, email, google_id, person_name, profile_pic_url) VALUES (20, %s,%s,%s,%s)', [email, google_id, person_name, profile_pic_url])
+        cursor.execute('INSERT INTO users (credits, email, google_id, person_name, profile_pic_url) VALUES (100, %s,%s,%s,%s)', [email, google_id, person_name, profile_pic_url])
         row = cursor.fetchone()
         conn.commit()
         conn.close()
@@ -413,48 +401,56 @@ def next_anchor_time_for_user(user_id):
 
 def view_user(user_email):
     conn, cursor = get_db_connection()
-    cursor.execute('SELECT * FROM users WHERE email = %s LIMIT 1', [user_email])
-    user = cursor.fetchone()
-    if user is None:
-        return {"error": "User not found"}, 404
-    # if user["credits_updated"]:
-    #     credits_refresh_date = user["credits_updated"] + relativedelta(months=1)
-    #     credits_refresh_str = credits_refresh_date.strftime('%Y-%m-%d')
-    # else:
-    #     credits_refresh_str = None
-    cursor.execute('SELECT anchor_date FROM StripeInfo WHERE user_id = %s', [user["id"]])
-    stripeInfo = cursor.fetchone()
-    credits_refresh_str = None
-    if stripeInfo and stripeInfo["anchor_date"]:
-        credits_refresh_date = next_anchor_time_for_user_with_cursor(conn, cursor, user["id"])
-        if credits_refresh_date:
-            credits_refresh_str = credits_refresh_date.strftime('%Y-%m-%d')
+    try:
+        cursor.execute('SELECT * FROM users WHERE email = %s LIMIT 1', [user_email])
+        user = cursor.fetchone()
+        if not user:
+            return {"error": "User not found"}, 404
 
-    paidLevel = paid_user_for_user_email_with_cursor(conn, cursor, user_email)
-    cursor.execute('SELECT c.paid_user FROM Subscriptions c JOIN StripeInfo p ON p.id=c.stripe_info_id WHERE p.user_id = %s AND c.end_date IS NULL AND c.start_date > CURRENT_TIMESTAMP ORDER BY c.start_date DESC LIMIT 1', [user["id"]])
-    next_plan = None
-    nextPlanDb = cursor.fetchone()
-    if nextPlanDb:
-        next_plan = nextPlanDb["paid_user"]
+        # Stripe anchor date → next credits refresh
+        cursor.execute('SELECT anchor_date FROM StripeInfo WHERE user_id = %s', [user["id"]])
+        stripe_info = cursor.fetchone()
+        credits_refresh_str = None
+        if stripe_info and stripe_info["anchor_date"]:
+            refresh_date = next_anchor_time_for_user_with_cursor(conn, cursor, user["id"])
+            if refresh_date:
+                credits_refresh_str = refresh_date.strftime('%Y-%m-%d')
 
-    end_date = end_date_for_user_email_with_cursor(conn, cursor, user_email)
-    if end_date:
-        end_date = end_date.strftime("%Y-%m-%d")
+        paid_level = paid_user_for_user_email_with_cursor(conn, cursor, user_email)
 
-    is_free_trial = is_free_trial_for_user_email_with_cursor(conn, cursor, user_email)
+        # Future plan
+        cursor.execute('''
+            SELECT c.paid_user
+            FROM Subscriptions c
+            JOIN StripeInfo p ON p.id = c.stripe_info_id
+            WHERE p.user_id = %s
+              AND c.end_date IS NULL
+              AND c.start_date > CURRENT_TIMESTAMP
+            ORDER BY c.start_date DESC
+            LIMIT 1
+        ''', [user["id"]])
+        next_plan = (cursor.fetchone() or {}).get("paid_user")
 
-    conn.close()
-    return jsonify({
-        "id": user["id"],
-        "name": user["person_name"],
-        "email": user["email"],
-        "paid_user": paidLevel,
-        "is_free_trial": is_free_trial,
-        "next_plan": next_plan,
-        "end_date": end_date,
-        "credits_refresh": credits_refresh_str,
-        "profile_pic_url": user["profile_pic_url"]
-     })
+        # End date + free trial
+        end_date = end_date_for_user_email_with_cursor(conn, cursor, user_email)
+        end_date_str = end_date.strftime("%Y-%m-%d") if end_date else None
+        is_free_trial = is_free_trial_for_user_email_with_cursor(conn, cursor, user_email)
+
+        return jsonify({
+            "id": user["id"],
+            "name": user["person_name"],
+            "email": user["email"],
+            "paid_user": paid_level,
+            "credits": user['credits'],
+            "is_free_trial": is_free_trial,
+            "next_plan": next_plan,
+            "end_date": end_date_str,
+            "credits_refresh": credits_refresh_str,
+            "profile_pic_url": user["profile_pic_url"],
+        })
+    finally:
+        conn.close()
+
 
 def config_for_payment_tiers(userEmail, newPaymentTier):
     conn, cursor = get_db_connection()
@@ -627,25 +623,79 @@ def check_and_debit_gpt_credit(userEmail, numCredits):
     return isOk
 
 
-def generate_api_key(email):
+def deduct_credits_from_user(user_email, credits_to_deduct=1):
+    """
+    Deduct credits from a user by email.
+    
+    Args:
+        user_email (str): The user's email
+        credits_to_deduct (int): Number of credits to deduct (default: 1)
+    """
+    
+    if credits_to_deduct < 0:
+        return False
+        
+    conn, cursor = get_db_connection()
+    try:
+        # Atomic update with credit check
+        cursor.execute('''
+            UPDATE users 
+            SET credits = credits - %s 
+            WHERE email = %s AND credits >= %s
+        ''', [credits_to_deduct, user_email, credits_to_deduct])
+        
+        if cursor.rowcount == 0:
+            return False
+            
+        # Get new balance for logging
+        cursor.execute('SELECT credits FROM users WHERE email = %s', [user_email])
+        result = cursor.fetchone()
+        new_credits = result["credits"] if result else 0
+        
+        conn.commit()
+        print(f"Deducted {credits_to_deduct} credits from user {user_email}. New balance: {new_credits}")
+        return True
+    finally:
+        conn.close()
+
+def generate_api_key(email, key_name=None):
+    print(f"generate_api_key called with email: {email}, key_name: {key_name}")
     conn, cursor = get_db_connection()
     api_key = secrets.token_hex(16)
+    
+    print(f"Executing query: SELECT id from users WHERE email = '{email}'")
     cursor.execute('SELECT id from users WHERE email = %s', [email])
     userId = cursor.fetchone()
+    print(f"Query result: {userId}")
+    
+    if userId is None:
+        conn.close()
+        raise ValueError(f"User with email {email} not found")
+    
     userIdStr = userId["id"]
     time = datetime.now()
+    
+    # Use provided name or default to None
+    if key_name is None:
+        key_name = "Untitled Key"
+    
+    print(f"Inserting API key with user_id: {userIdStr}, key_name: {key_name}")
     # Insert the generated API key into the apiKeys table
-    cursor.execute('INSERT INTO apiKeys (user_id, api_key, created) VALUES (%s, %s, %s)', (userIdStr, api_key, time))
+    cursor.execute('INSERT INTO apiKeys (user_id, api_key, created, key_name) VALUES (%s, %s, %s, %s)', (userIdStr, api_key, time, key_name))
     cursor.execute('SELECT LAST_INSERT_ID()')
     keyId = cursor.fetchone()["LAST_INSERT_ID()"]
     conn.commit()
     conn.close()
-    return {
+    
+    result = {
         "id": keyId,
         "key": api_key,
         "created": time,
-        "last_used": None
+        "last_used": None,
+        "name": key_name
     }
+    print(f"Returning result: {result}")
+    return result
 
 def delete_api_key(api_key_id):
     conn, cursor = get_db_connection()
@@ -665,7 +715,7 @@ def get_api_keys(email):
     userIdStr = userId["id"]
 
     # Get the API keys associated with the user ID from the apiKeys table
-    cursor.execute('SELECT id, api_key, created, last_used FROM apiKeys WHERE user_id = %s', (userIdStr,))
+    cursor.execute('SELECT id, api_key, created, last_used, key_name FROM apiKeys WHERE user_id = %s', (userIdStr,))
     keysDb = cursor.fetchall()
     keys = []
     for keyDb in keysDb:
@@ -673,7 +723,8 @@ def get_api_keys(email):
             "id": keyDb["id"],
             "key": keyDb["api_key"],
             "created": keyDb["created"],
-            "last_used": keyDb["last_used"]
+            "last_used": keyDb["last_used"],
+            "name": keyDb["key_name"] or "Untitled Key"
         })
     conn.close()
 

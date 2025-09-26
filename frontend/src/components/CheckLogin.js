@@ -1,10 +1,7 @@
 import React from "react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import PaymentsComponent from "../subcomponents/payments/PaymentsComponent";
 import { useLocation } from "react-router-dom";
-import "../styles/Login.css";
-import { pricingRedirectPath } from "../constants/RouteConstants";
 import HomeChatbot from "../financeGPT/components/Home";
 import LoginModal from "./LoginModal";
 
@@ -34,16 +31,6 @@ function CheckLogin(props) {
     }
   }, [accessToken, sessionToken, isLoggedIn]);
 
-  if (isLoggedIn && productHash !== null && productHash !== "") {
-    setProductHash("");
-    var fullPath = pricingRedirectPath + "?product_hash=" + productHash;
-    if (freeTrialCode !== null && freeTrialCode !== "") {
-      setFreeTrialCode("");
-      fullPath += "&free_trial_code=";
-      fullPath += freeTrialCode;
-    }
-    navigate(fullPath);
-  }
 
   // Listen for the custom event to show login
   useEffect(() => {
@@ -63,9 +50,6 @@ function CheckLogin(props) {
     mainView = <HomeChatbot isGuestMode={true} onRequestLogin={() => setShowLogin(true)} setIsLoggedInParent={props.setIsLoggedInParent} />;
   } else if (!props.showRestrictedRouteRequiringPayments) {
     //mainView = <PaymentsComponent />;
-    mainView = <HomeChatbot isGuestMode={false} setIsLoggedInParent={props.setIsLoggedInParent} />;
-  } else {
-    // TODO: Replace this with your home page component.
     mainView = <HomeChatbot isGuestMode={false} setIsLoggedInParent={props.setIsLoggedInParent} />;
   }
 
@@ -103,7 +87,7 @@ function CheckLogin(props) {
   }, [location]);
 
   return (
-    <div className="App">
+    <div>
       {mainView}
       <LoginModal 
         isOpen={showLogin}

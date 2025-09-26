@@ -1,6 +1,6 @@
 
 from flask import jsonify
-from database.db import add_subscription, delete_subscription, stripe_subscription_for_user, config_for_payment_tiers, user_has_free_trial, stripe_customer_for_user, next_anchor_time_for_user
+from database.db import add_subscription, delete_subscription, stripe_subscription_for_user, config_for_payment_tiers, user_has_free_trial, stripe_customer_for_user
 import stripe
 from constants.global_constants import productHashMap
 from constants.global_constants import priceToPaymentPlan
@@ -11,8 +11,17 @@ from datetime import datetime
 
 
 def CreateCheckoutSessionHandler(request, userEmail):
+    print(f"CreateCheckoutSessionHandler called with userEmail: {userEmail}")
     user_id = user_id_for_email(userEmail)
+    print(f"User ID retrieved: {user_id}")
+    
+    # Check if user exists
+    if user_id is None:
+        print(f"User not found for email: {userEmail}")
+        return jsonify({'error': 'User not found'}), 404
+    
     new_price_id = productHashMap[request.json["product_hash"]]
+    print(f"Price ID: {new_price_id}")
 
     # Check if user has an existing active subscription
     existing_subscription_id = stripe_subscription_for_user(userEmail)  # Adjust this function to return the subscription ID, not the session ID

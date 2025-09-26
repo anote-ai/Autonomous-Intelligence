@@ -3,13 +3,11 @@ from langchain.tools import BaseTool
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
-from typing import Dict, List, Any, Optional, Generator, Union
+from typing import Dict, List, Any, Optional, Generator
 import os
 import time
-from pydantic import BaseModel, Field
+from pydantic import Field
 import json
-import requests
-from database.db import get_db_connection
 from api_endpoints.financeGPT.chatbot_endpoints import (
     get_relevant_chunks, add_message_to_db, add_sources_to_db,
     retrieve_message_from_db, retrieve_docs_from_db
@@ -114,6 +112,54 @@ class GeneralKnowledgeTool(BaseTool):
             return f"Based on general knowledge: {response.content}"
         except Exception as e:
             return f"Error accessing general knowledge: {str(e)}"
+
+
+class GuestGeneralKnowledgeTool(BaseTool):
+    name: str = "guest_general_knowledge"
+    description: str = "Use general LLM knowledge to answer questions for guest users"
+    llm: Any = Field(..., exclude=True)
+    
+    def __init__(self, llm, **kwargs):
+        super().__init__(llm=llm, **kwargs)
+    
+    def _run(self, query: str) -> str:
+        try:
+            # Use the same LLM as the agent to provide general knowledge answers
+            response = self.llm.invoke(f"Please provide a helpful and accurate answer to this question using your general knowledge: {query}")
+            return f"Based on general knowledge: {response.content}"
+        except Exception as e:
+            return f"Error accessing general knowledge: {str(e)}"
+
+
+class GuestGreetingTool(BaseTool):
+    name: str = "guest_greeting"
+    description: str = "Provide information about guest mode limitations and encourage user registration"
+    
+    def _run(self, query: str = "") -> str:
+        return ("Hello! You're currently using guest mode. While I can answer general questions using my knowledge base, "
+                "for full AI document analysis features including document upload, chat history, and personalized responses, "
+                "please consider creating an account or logging in. How can I help you today?")
+
+
+class GuestConversationTool(BaseTool):
+    name: str = "guest_conversation"
+    description: str = "Handle basic conversational queries for guest users without document access"
+    llm: Any = Field(..., exclude=True)
+    
+    def __init__(self, llm, **kwargs):
+        super().__init__(llm=llm, **kwargs)
+    
+    def _run(self, query: str) -> str:
+        try:
+            # Provide conversational responses with a note about guest limitations
+            response = self.llm.invoke(
+                f"You are an AI assistant in guest mode. The user asked: '{query}'. "
+                f"Provide a helpful response but also mention that for full features like document analysis, "
+                f"they should create an account. Keep it friendly and informative."
+            )
+            return response.content
+        except Exception as e:
+            return f"I apologize, but I'm having trouble processing your request in guest mode. Please try again or consider creating an account for full features."
 
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -517,7 +563,8 @@ class ReactiveDocumentAgent:
             agent_executor = self._create_agent(chat_id, user_email)
             
             # Add user message to database
-            add_message_to_db(query, chat_id, 1)
+            if user_email:
+                add_message_to_db(query, chat_id, 1)
             
             # Yield initial status
             yield {
@@ -706,7 +753,7 @@ class ReactiveDocumentAgent:
                 # Save to database with complete reasoning steps
                 message_id = add_message_to_db(answer, chat_id, 0, reasoning_json)
                 
-                if sources and message_id:
+                if user_email and sources and message_id:
                     try:
                         add_sources_to_db(message_id, sources)
                     except Exception as e:
@@ -741,6 +788,268 @@ class ReactiveDocumentAgent:
                 "type": "error",
                 "error": error_msg,
                 "message_id": message_id,
+                "timestamp": self._get_timestamp()
+            }
+
+    def _create_guest_agent(self) -> AgentExecutor:
+        """Create an agent specifically for guest users with limited tools"""
+        tools = [
+            GuestGeneralKnowledgeTool(self.llm),
+            GuestGreetingTool(),
+            GuestConversationTool(self.llm)
+        ]
+        
+        # Create guest-specific prompt
+        prompt_template = """
+        You are a helpful AI assistant in guest mode. You can answer general questions using your knowledge base,
+        but you cannot access uploaded documents, chat history, or user-specific data.
+        
+        You have access to the following tools to help you:
+
+        {tools}
+
+        Use the following format:
+
+        Question: the input question you must answer
+        Thought: you should always think about what to do
+        Action: the action to take, should be one of [{tool_names}]
+        Action Input: the input to the action
+        Observation: the result of the action
+        ... (this Thought/Action/Action Input/Observation can repeat N times)
+        Thought: I now know the final answer
+        Final Answer: the final answer to the original input question
+
+        IMPORTANT GUIDELINES:
+        1. You are in guest mode - you cannot access uploaded documents or user data
+        2. Use guest_general_knowledge for factual questions
+        3. Use guest_greeting to explain guest limitations when users ask about features
+        4. Use guest_conversation for general chat and information about creating accounts
+        5. Always be helpful while explaining the benefits of creating an account
+        6. Keep responses informative and encourage user registration for full features
+
+        Question: {input}
+        {agent_scratchpad}
+        """
+        
+        prompt = PromptTemplate.from_template(prompt_template)
+        
+        agent = create_react_agent(self.llm, tools, prompt, stop_sequence=["Observation:"])
+        return AgentExecutor(
+            agent=agent, 
+            tools=tools, 
+            verbose=True,
+            max_iterations=AgentConfig.AGENT_MAX_ITERATIONS,
+            handle_parsing_errors=True,
+            return_intermediate_steps=True
+        )
+
+    def process_query_stream_guest(self, query: str) -> Generator[Dict[str, Any], None, None]:
+        """
+        Streamable version of process_query specifically for guest users
+        No database operations, no user-specific data
+        """
+        try:
+            # Create guest agent 
+            agent_executor = self._create_guest_agent()
+            
+            # Yield initial status
+            yield {
+                "type": "start",
+                "message": "Processing your query in guest mode...",
+                "timestamp": self._get_timestamp()
+            }
+            
+            # Track intermediate steps and current answer
+            intermediate_steps = []
+            current_answer = ""
+            
+            # Create a list to collect streaming events
+            streaming_events = []
+            
+            # Track the final reasoning steps
+            final_reasoning_steps = []
+            
+            # Create a callback to capture and immediately yield streaming events
+            def stream_callback(event):
+                streaming_events.append(event)
+                # Yield the event immediately for real-time streaming
+                return event
+            
+            try:
+                # Process the query with callbacks
+                callback_handler = StreamingAgentCallbackHandler(stream_callback)
+                
+                response = agent_executor.invoke(
+                    {"input": query},
+                    config={"callbacks": [callback_handler]}
+                )
+                
+                # Yield any streaming events that were captured during processing
+                for event in streaming_events:
+                    yield event
+                
+                # Extract the final answer
+                answer = response.get("output", "I couldn't process your query in guest mode.")
+                
+                # Extract final thought from multiple sources (same logic as regular version)
+                final_thought = None
+                
+                # First, try to get from agent_finish events
+                for event in reversed(streaming_events):
+                    if event.get('type') == 'agent_finish' and event.get('final_thought'):
+                        final_thought = event.get('final_thought')
+                        break
+                
+                # If no agent_finish thought, try agent_thinking events
+                if not final_thought:
+                    for event in reversed(streaming_events):
+                        if event.get('type') == 'agent_thinking' and event.get('thought'):
+                            thought = event.get('thought')
+                            if thought and thought.lower() not in ['thinking...', 'thinking', '']:
+                                final_thought = thought
+                                break
+                
+                # If still no good thought, try llm_reasoning events
+                if not final_thought:
+                    for event in reversed(streaming_events):
+                        if event.get('type') == 'llm_reasoning' and event.get('thought'):
+                            thought = event.get('thought')
+                            if thought and thought.lower() not in ['thinking...', 'thinking', '']:
+                                final_thought = thought
+                                break
+                
+                # Final fallback for guest mode
+                if not final_thought:
+                    final_thought = f"Successfully processed your query in guest mode using general knowledge"
+                
+                # No sources for guest mode
+                sources = []
+                
+                # Yield the completion event that frontend expects
+                yield {
+                    "type": "complete", 
+                    "answer": answer,
+                    "sources": sources,
+                    "thought": final_thought,
+                    "is_guest": True,
+                    "timestamp": self._get_timestamp()
+                }
+                
+                # Yield thinking/processing updates from intermediate steps
+                intermediate_steps = response.get("intermediate_steps", [])
+                if intermediate_steps:
+                    for i, (action, observation) in enumerate(intermediate_steps):
+                        yield {
+                            "type": "tool_execution",
+                            "step": i + 1,
+                            "tool": getattr(action, 'tool', 'unknown_tool'),
+                            "input": str(getattr(action, 'tool_input', '')),
+                            "output": str(observation)[:200] + "..." if len(str(observation)) > 200 else str(observation),
+                            "timestamp": self._get_timestamp()
+                        }
+                
+                # Build reasoning steps using same logic as frontend
+                for event_data in streaming_events:
+                    if event_data.get('type') == 'tool_start' or event_data.get('type') == 'tools_start':
+                        # Add reasoning step for tool start
+                        tool_start_step = {
+                            'id': f'step-{int(time.time() * 1000)}',
+                            'type': event_data['type'],
+                            'tool_name': event_data.get('tool_name', ''),
+                            'message': f"Using {event_data.get('tool_name', 'tool')}...",
+                            'timestamp': int(time.time() * 1000)
+                        }
+                        final_reasoning_steps.append(tool_start_step)
+                    
+                    elif event_data.get('type') == 'tool_end':
+                        # Update the last tool step with output
+                        last_tool_index = -1
+                        for i in range(len(final_reasoning_steps) - 1, -1, -1):
+                            if final_reasoning_steps[i]['type'] in ['tool_start', 'tools_start']:
+                                last_tool_index = i
+                                break
+                        
+                        if last_tool_index != -1:
+                            final_reasoning_steps[last_tool_index].update({
+                                'tool_output': event_data.get('output', ''),
+                                'message': 'Tool execution completed'
+                            })
+                    
+                    elif event_data.get('type') == 'agent_thinking':
+                        # Add thinking step
+                        thinking_step = {
+                            'id': f'step-{int(time.time() * 1000)}',
+                            'type': event_data['type'],
+                            'agent_thought': event_data.get('thought', ''),
+                            'planned_action': event_data.get('action', ''),
+                            'message': 'Planning next step...',
+                            'timestamp': int(time.time() * 1000)
+                        }
+                        final_reasoning_steps.append(thinking_step)
+                    
+                    elif event_data.get('type') == 'agent_finish':
+                        # Add agent finish step
+                        finish_step = {
+                            'id': f'step-{int(time.time() * 1000)}',
+                            'type': event_data['type'],
+                            'final_thought': event_data.get('final_thought', ''),
+                            'final_answer': event_data.get('output', ''),
+                            'message': event_data.get('message', 'Agent formulated final answer'),
+                            'timestamp': int(time.time() * 1000)
+                        }
+                        final_reasoning_steps.append(finish_step)
+                
+                # Yield step-complete event that frontend expects
+                yield {
+                    "type": "step-complete",
+                    "answer": answer,
+                    "sources": sources,
+                    "thought": "Processing complete - guest response ready",
+                    "is_guest": True,
+                    "timestamp": self._get_timestamp()
+                }
+                
+                # Create the processing complete step for guest mode
+                processing_complete_step = {
+                    'id': f'step-{int(time.time() * 1000)}',
+                    'type': 'step-complete',
+                    'thought': 'Processing complete - guest response ready',
+                    'message': 'Guest query processing completed successfully',
+                    'completion_summary': f'Generated guest response using general knowledge',
+                    'timestamp': int(time.time() * 1000)
+                }
+                final_reasoning_steps.append(processing_complete_step)
+                
+                # No database storage for guest mode - yield final result without message_id
+                yield {
+                    "type": "response-complete",
+                    "answer": answer,
+                    "message_id": None,  # No database storage for guests
+                    "sources": sources,
+                    "message": "Guest response generated successfully",
+                    "total_steps": len(final_reasoning_steps),
+                    "agent_reasoning": response.get("intermediate_steps", []),
+                    "is_guest": True,
+                    "timestamp": self._get_timestamp()
+                }
+                
+            except Exception as e:
+                error_msg = f"Guest agent processing error: {str(e)}"
+                print(f"Guest agent error: {e}")  # Debug logging
+                yield {
+                    "type": "error",
+                    "error": error_msg,
+                    "is_guest": True,
+                    "timestamp": self._get_timestamp()
+                }
+                
+        except Exception as e:
+            error_msg = f"Guest agent initialization error: {str(e)}"
+            print(f"Guest initialization error: {e}")  # Debug logging
+            yield {
+                "type": "error",
+                "error": error_msg,
+                "is_guest": True,
                 "timestamp": self._get_timestamp()
             }
 
@@ -782,7 +1091,8 @@ class ReactiveDocumentAgent:
             agent_executor = self._create_agent(chat_id, user_email)
             
             # Add user message to database
-            add_message_to_db(query, chat_id, 1)
+            if user_email:
+                add_message_to_db(query, chat_id, 1)
             
             # Process the query with the agent
             response = agent_executor.invoke({"input": query})
@@ -791,12 +1101,12 @@ class ReactiveDocumentAgent:
             answer = response.get("output", "I couldn't process your query.")
             
             # Add bot message to database
-            message_id = add_message_to_db(answer, chat_id, 0)
+            message_id = user_email and add_message_to_db(answer, chat_id, 0)
             
             # Try to extract sources from the agent's reasoning
             sources = self._extract_sources_from_response(response, chat_id, user_email, query)
             
-            if sources and message_id:
+            if user_email and sources and message_id:
                 try:
                     add_sources_to_db(message_id, sources)
                 except Exception as e:

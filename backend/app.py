@@ -19,7 +19,6 @@ from database.db import create_user_if_does_not_exist
 from constants.global_constants import kSessionTokenExpirationTime
 from database.db_auth import extractUserEmailFromRequest, is_api_key_valid, user_id_for_email, verifyAuthForPaymentsTrustedTesters, verifyAuthForCheckoutSession, verifyAuthForPortalSession
 from functools import wraps
-from flask_jwt_extended import verify_jwt_in_request
 from api_endpoints.payments.handler import CreateCheckoutSessionHandler, CreatePortalSessionHandler, StripeWebhookHandler
 from api_endpoints.refresh_credits.handler import RefreshCreditsHandler
 from api_endpoints.user.handler import ViewUserHandler
@@ -73,8 +72,6 @@ app.register_blueprint(korean_blueprint)
 app.register_blueprint(spanish_blueprint)
 app.register_blueprint(arabic_blueprint)
 
-#if ray.is_initialized() == False:
-   #ray.init(logging_level="INFO", log_to_driver=True)
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="http://host.docker.internal:11434/v1")
 def ensure_ray_started():
     if not ray.is_initialized():
@@ -87,8 +84,6 @@ def ensure_ray_started():
         except Exception as e:
             print(f"Ray init failed: {e}")
 
-# ensure_ray_started()
-# TODO: Replace with your URLs.
 config = {
   'ORIGINS': [
     'http://localhost:3000',  # React
@@ -147,7 +142,11 @@ def valid_api_key_required(fn):
         if len(splits) > 1:
           api_key = auth_header.split(' ')[1]
           if is_api_key_valid(api_key):
-            # If api key is valid, return the decorated function
+            # Check if the user has credits before allowing API usage
+            from database.db_auth import api_key_user_has_credits
+            if not api_key_user_has_credits(api_key, min_credits=1):
+              return jsonify({"error": "Insufficient credits. Please add credits to your account to use the API."}), 403
+            # If api key is valid and user has credits, return the decorated function
             return fn(*args, **kwargs)
     # If API key is not present or valid, return an error message or handle it as needed
     return "Unauthorized", 401
@@ -288,7 +287,7 @@ def callback():
     default_referrer = os.getenv("DEFAULT_REFERRER")
     # default_referrer = "https://dashboard.privatechatbot.ai"
     if not default_referrer:
-        default_referrer = "http://dashboard.localhost:3000"
+        default_referrer = "http://localhost:3000"
     user_id = create_user_if_does_not_exist(id_info.get("email"), id_info.get("sub"), id_info.get("name"), id_info.get("picture"))
 
     access_token = create_access_token(identity=id_info.get("email"))
@@ -357,6 +356,7 @@ def resetPassword():
   return ResetPasswordHandler(request)
 
 @app.route('/refreshCredits', methods = ['POST'])
+@cross_origin(supports_credentials=True)
 @jwt_or_session_token_required
 def RefreshCredits():
   try:
@@ -365,6 +365,41 @@ def RefreshCredits():
     # If the JWT is invalid, return an error
     return jsonify({"error": "Invalid JWT"}), 401
   return jsonify(RefreshCreditsHandler(request, user_email))
+
+@app.route('/deductCredits', methods = ['POST'])
+@cross_origin(supports_credentials=True)
+@jwt_or_session_token_required
+def DeductCredits():
+  try:
+    user_email = extractUserEmailFromRequest(request)
+  except InvalidTokenError:
+    # If the JWT is invalid, return an error
+    return jsonify({"error": "Invalid JWT"}), 401
+  
+  credits_to_deduct = request.json.get('creditsToDeduct', 1)
+  
+  # Import the deduct function and db connection
+  from database.db import deduct_credits_from_user, get_db_connection
+  
+  # Try to deduct credits
+  success = deduct_credits_from_user(user_email, credits_to_deduct)
+  
+  if not success:
+    return jsonify({"error": "Insufficient credits"}), 400
+  
+  # Get updated credit balance directly from database
+  conn, cursor = get_db_connection()
+  cursor.execute('SELECT credits FROM users WHERE email = %s', [user_email])
+  user = cursor.fetchone()
+  conn.close()
+  
+  new_credits = user["credits"] if user else 0
+  
+  return jsonify({
+    "success": True,
+    "newCredits": new_credits,
+    "creditsDeducted": credits_to_deduct
+  })
 
 # Billing
 
@@ -589,8 +624,7 @@ def retrieve_messages_from_chat():
     chat_id = request.json.get('chat_id')
 
     messages = retrieve_message_from_db(user_email, chat_id, chat_type)
-    chat_name = get_chat_info(chat_id)[2]
-    print("chat_name", chat_name[2])
+    chat_name = get_chat_info(chat_id)
     return jsonify({
         "messages": messages,
         "chat_name": chat_name
@@ -791,15 +825,42 @@ class CustomJSONEncoder(json.JSONEncoder):
 
 @app.route('/process-message-pdf', methods=['POST'])
 def process_message_pdf():
+    print("=== DEBUG: process_message_pdf called ===")
     message = request.json.get('message')
     chat_id = request.json.get('chat_id')
     model_type = request.json.get('model_type', 0)
-    model_key = request.json.get('model_key')
-
-    try:
-        user_email = extractUserEmailFromRequest(request)
-    except InvalidTokenError:
-        return jsonify({"error": "Invalid JWT"}), 401
+    model_key = request.json.get('model_key', "")
+    is_guest = request.json.get("is_guest", False)
+    
+    print(f"DEBUG: is_guest = {is_guest}")
+    print(f"DEBUG: message type = {type(message)}")
+    print(f"DEBUG: message content = {message}")
+    print(f"DEBUG: request headers: {dict(request.headers)}")
+    
+    # Handle message extraction - it might be a dict or string
+    if isinstance(message, dict):
+        # If message is a dict, extract the actual message text
+        message_text = message.get('text') or message.get('content') or str(message)
+        print(f"DEBUG: Extracted message_text from dict: {message_text}")
+    else:
+        message_text = str(message) if message is not None else ""
+        print(f"DEBUG: Using message as string: {message_text}")
+    
+    # Handle user authentication based on guest status
+    user_email = None
+    if not is_guest:
+        print("DEBUG: Not guest mode, extracting user email")
+        try:
+            user_email = extractUserEmailFromRequest(request)
+            print(f"DEBUG: Extracted user_email = {user_email}")
+        except InvalidTokenError:
+            print("DEBUG: Invalid token error")
+            return jsonify({"error": "Invalid JWT"}), 401
+        except Exception as e:
+            print(f"DEBUG: Error extracting user email: {e}")
+            return jsonify({"error": "Authentication error"}), 401
+    else:
+        print("DEBUG: Guest mode, skipping user email extraction")
 
     # Check if agents are enabled
     if AgentConfig.is_agent_enabled():
@@ -807,11 +868,16 @@ def process_message_pdf():
             # Initialize the reactive agent
             agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
 
-            # Process the query using the reactive agent
-            if not user_email or not isinstance(user_email, str):
-                return jsonify({"error": "User email is missing or invalid"}), 401
-
-            result = agent.process_query_stream(message.strip(), chat_id, user_email)
+            # Process the query using the appropriate method based on guest status
+            if is_guest:
+                # Use guest-specific streaming method
+                result = agent.process_query_stream_guest(message_text.strip())
+            else:
+                # Use regular method for authenticated users
+                if not user_email or not isinstance(user_email, str):
+                    return jsonify({"error": "User email is missing or invalid"}), 401
+                result = agent.process_query_stream(message_text.strip(), chat_id, user_email)
+                
             def generate():
                 for chunk in result:
                     try:
@@ -844,19 +910,40 @@ def process_message_pdf():
             print(f"Error in reactive agent processing: {str(e)}")
             # Fallback to original implementation if agent fails and fallback is enabled
             if AgentConfig.should_use_fallback():
-                return _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email)
+                return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
             else:
                 return jsonify({"error": "Agent processing failed due to an internal error."}), 500
     else:
         # Agents disabled, use original implementation
-        return _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email)
+        return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
 
-def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email):
+def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email, is_guest=False):
     """Fallback implementation using the original direct LLM approach without the ReActive Agent"""
-    query = message.strip()
+    
+    # Handle message extraction - it might be a dict or string
+    if isinstance(message, dict):
+        # If message is a dict, extract the actual message text
+        message_text = message.get('text') or message.get('content') or str(message)
+    else:
+        message_text = str(message) if message is not None else ""
+    
+    query = message_text.strip()
 
-    #This adds user message to db
-    add_message_to_db(query, chat_id, 1)
+    # For guest users, skip database operations
+    if not is_guest:
+        #This adds user message to db
+        add_message_to_db(query, chat_id, 1)
+
+    # For guest users, provide a simple general knowledge response
+    if is_guest:
+        # Simple guest response without document access
+        simple_response = "I'm currently in guest mode and cannot access uploaded documents. To use full AI document analysis features, please log in or create an account. I can answer general questions using my knowledge base."
+        return jsonify({
+            "answer": simple_response,
+            "message_id": None,
+            "sources": [],
+            "reasoning": []
+        })
 
     #Get most relevant section from the document
     sources = get_relevant_chunks(2, query, chat_id, user_email)
@@ -1135,6 +1222,21 @@ def upload():
     print("Form data:", request.form)
     print("Files:", request.files)
 
+    # Extract API key for credit deduction
+    auth_header = request.headers.get('Authorization')
+    api_key = auth_header.split(' ')[1] if auth_header and auth_header.startswith('Bearer ') else None
+    
+    # Calculate credits needed (1 credit per file/URL)
+    files = request.files.getlist('files[]')
+    paths = request.form.getlist('html_paths')
+    total_items = len(files) + len(paths)
+    credits_needed = max(1, total_items)  # At least 1 credit, more for multiple files
+    
+    # Deduct credits before processing
+    from database.db_auth import deduct_credits_from_api_key_user
+    if not deduct_credits_from_api_key_user(api_key, credits_needed):
+        return jsonify({"error": f"Insufficient credits. You need {credits_needed} credits for this operation."}), 403
+
     #chat_type = int(request.form.getlist('task_type')[0])  # Convert to int
     #model_type = int(request.form.getlist('model_type')[0])
 
@@ -1146,8 +1248,6 @@ def upload():
     print("CHAT TYPE IS", chat_type)
     if chat_type == "documents": #question-answering
         print("question answer")
-        files = request.files.getlist('files[]')
-        paths = request.form.getlist('html_paths')
 
         print("paths is", paths)
 
@@ -1199,6 +1299,15 @@ def upload():
 def public_ingest_pdf():
     user_email = USER_EMAIL_API
     ensure_SDK_user_exists(user_email)
+
+    # Extract API key for credit deduction
+    auth_header = request.headers.get('Authorization')
+    api_key = auth_header.split(' ')[1] if auth_header and auth_header.startswith('Bearer ') else None
+    
+    # Deduct 1 credit for each chat message
+    from database.db_auth import deduct_credits_from_api_key_user
+    if not deduct_credits_from_api_key_user(api_key, 1):
+        return jsonify({"error": "Insufficient credits. You need 1 credit per chat message."}), 403
 
     message = request.json['message']
     chat_id = request.json['chat_id']

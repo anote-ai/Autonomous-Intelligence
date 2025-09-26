@@ -1,5 +1,6 @@
 export const pricingRedirectPath = "/pricingRedirect";
 export const accountPath = "/account";
+export const billingPath = "/billing";
 export const contactPath = "/contact";
 export const tosPath = "/termsofservice";
 export const privatePolicyPath = "/privacypolicy";
@@ -12,7 +13,7 @@ export const financialReportsPath = "/financialreports";
 export const governmentProposalsPath = "/governmentproposals";
 export const sampleProjectsPath = "/tutorials";
 export const researchPath = "/research";
-export const downloadPrivateGPTPath = "/downloadprivategpt";
+export const downloadPrivateGPTPath = "https://anote.ai/downloadprivategpt";
 export const caseStudiesPath = "/casestudies";
 export const paymentsPath = "/payments";
 export const financeGPTPath = "/privategpt";
@@ -23,8 +24,8 @@ export const registryPath = "/registry";
 export const homePath = "/home";
 export const gtmPath = "/companies/anote";
 export const landing = "/landing";
-export const chatbots = "/chatbots";
 export const languages = "/languages";
+export const languagesDirectoryPath = "/languages-directory";
 export const companies = "/companies";
 export const LANGUAGE_ROUTES = {
   japanese: "/languages/japanese",
@@ -34,3 +35,5 @@ export const LANGUAGE_ROUTES = {
   arabic: "/languages/arabic",
 };
 export const createcompany = "/companies/create";
+export const organizationsPath = "/organizations";
+export const personsPath = "/person";

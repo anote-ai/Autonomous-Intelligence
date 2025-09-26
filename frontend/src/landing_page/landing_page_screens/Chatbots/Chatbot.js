@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import PDFUploader from "./PdfUploader";
 import {
@@ -6,11 +6,7 @@ import {
   faPaperPlane,
   faUndoAlt,
 } from "@fortawesome/free-solid-svg-icons";
-import "../../landing_page_screens/Chatbots/LandingPageChatbot.css";
-import { Flowbite, TextInput } from "flowbite-react";
 import fetcher from "../../../http/RequestConfig";
-
-const API_ENDPOINT = process.env.REACT_APP_API_ENDPOINT;
 
 const Chatbot = (props) => {
   const [messages, setMessages] = useState([]);

@@ -3,9 +3,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPaperPlane,
   faFile,
-  faDownload,
-  faShareAlt,
-  faSyncAlt,
   faBrain,
   faSearch,
   faCog,
@@ -18,9 +15,19 @@ import {
   faSitemap,
   faLightbulb,
 } from "@fortawesome/free-solid-svg-icons";
-import "../styles/Chatbot.css";
-import fetcher from "../../http/RequestConfig";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  deductCreditsLocal,
+  useNumCredits,
+  createCheckoutSession,
+  useUser,
+} from "../../redux/UserSlice";
+import { useDispatch } from "react-redux";
+import FileUpload from "../../components/FileUpload";
+import fetcher from "../../http/RequestConfig";
+
+// Development-only debug logging helper
+const isDev = process.env.NODE_ENV === "development";
 
 const Chatbot = (props) => {
   const [message, setMessage] = useState("");
@@ -28,7 +35,10 @@ const Chatbot = (props) => {
   const navigate = useNavigate();
   const pollingStartedRef = useRef(false);
   const { id } = useParams();
+  const dispatch = useDispatch();
   const location = useLocation();
+  const numCredits = useNumCredits();
+  const user = useUser();
   const [chatNameGenerated, setChatNameGenerated] = useState(false);
   const [messages, setMessages] = useState([]);
   const [uploadButtonClicked, setUploadButtonClicked] = useState(false);
@@ -36,6 +46,120 @@ const Chatbot = (props) => {
 
   // State for tracking expanded reasoning sections
   const [expandedReasoning, setExpandedReasoning] = useState({});
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [showFileUpload, setShowFileUpload] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  const shouldShowUpgradeModal = () => {
+    return user && numCredits === 0 && messages.length > 0 && !showUpgradeModal; // Only if not already shown
+  };
+
+  const handleFileSelect = (files) => {
+    console.log("Files selected:", files);
+    setSelectedFiles(Array.isArray(files) ? files : [files]);
+  };
+
+  const handleFileRemove = (removedFile) => {
+    console.log("File removed:", removedFile);
+    setSelectedFiles((prev) => prev.filter((f) => f.id !== removedFile.id));
+  };
+
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) {
+      alert("Please select files to upload");
+      return;
+    }
+
+    try {
+      // Check if we have a chat ID, if not, create a new chat first
+      let chatId = id || props.selectedChatId;
+
+      if (!chatId) {
+        // For guests, don't create a persistent chat or navigate
+        if (!user) {
+          alert("Please log in to upload files and create persistent chats.");
+          return;
+        }
+
+        // Create a new chat first for authenticated users
+        try {
+          chatId = await props.createNewChat();
+          // Navigate to the new chat
+          navigate(`/chat/${chatId}`, { id: chatId });
+        } catch (err) {
+          console.error("Failed to create chat:", err);
+          alert("Failed to create a new chat. Please try again.");
+          return;
+        }
+      }
+
+      // Create FormData for file upload to match backend API
+      const formData = new FormData();
+
+      // Add files as 'files[]' to match backend expectation
+      selectedFiles.forEach((fileObj) => {
+        formData.append("files[]", fileObj.file);
+      });
+
+      // Add required chat_id parameter for ingest-pdf endpoint
+      formData.append("chat_id", chatId);
+
+      // Upload files using your existing fetcher to ingest-pdf endpoint
+      const response = await fetcher("ingest-pdf", {
+        method: "POST",
+        body: formData,
+        // Don't set Content-Type header for FormData, let browser set it
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("Upload successful:", result);
+
+        // Add uploaded files to the state for display
+        const uploadedFileInfo = selectedFiles.map((fileObj) => ({
+          name: fileObj.name,
+          size: fileObj.size,
+          uploadTime: new Date().toISOString(),
+        }));
+        setUploadedFiles((prev) => [...prev, ...uploadedFileInfo]);
+
+        // Add a system message to show files were uploaded
+        const systemMessage = {
+          id: `upload-${Date.now()}`,
+          chat_id: chatId,
+          role: "system",
+          content: `📎 Uploaded ${selectedFiles.length} file(s): ${selectedFiles
+            .map((f) => f.name)
+            .join(", ")}`,
+          isFileUpload: true,
+          uploadedFiles: uploadedFileInfo,
+          timestamp: Date.now(), // Add timestamp for proper sorting
+        };
+
+        setMessages((prev) => [...prev, systemMessage]);
+
+        // Close modal and reset state
+        setShowFileUpload(false);
+        setSelectedFiles([]);
+
+        // Optionally trigger a refresh or update
+        if (props.onUploadComplete) {
+          props.onUploadComplete(result);
+        }
+
+        // Don't show alert since we're showing it in chat
+        // alert(`Successfully uploaded ${selectedFiles.length} file(s) to chat`);
+      } else {
+        const errorData = await response.json();
+        console.error("Upload failed:", errorData);
+        alert(errorData.error || "Upload failed. Please try again.");
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Upload failed. Please check your connection and try again.");
+    }
+  };
 
   const inferChatName = async (text, answer, chatId) => {
     const combinedText = `${text} ${answer}`;
@@ -81,6 +205,7 @@ const Chatbot = (props) => {
             relevant_chunks: m.relevant_chunks,
             reasoning: m.reasoning || [], // Include reasoning data from database
             sources: m.sources || [], // Include sources if available
+            timestamp: new Date(m.created).getTime(), // Add timestamp from database
           }));
           setMessages(formatted);
           localStorage.removeItem(`pending-message-${chatId}`);
@@ -125,6 +250,57 @@ const Chatbot = (props) => {
     pollingTimeoutRef.current = setTimeout(poll, 2000);
   }, []);
 
+  // Function to fetch uploaded documents for a chat and create system messages
+  const fetchUploadedDocuments = useCallback(async (chatId) => {
+    try {
+      const response = await fetcher("retrieve-current-docs", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ chat_id: chatId }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("Backend doc_info response:", result.doc_info);
+        if (result.doc_info && result.doc_info.length > 0) {
+          // Create system messages for uploaded files
+          const fileSystemMessages = result.doc_info.map((doc, index) => {
+            console.log("Processing doc:", doc);
+            return {
+              id: `file-system-${doc.id}`,
+              chat_id: chatId,
+              role: "system",
+              content: doc.documents
+                ? doc.documents
+                : `📎 Uploaded 1 file(s): ${doc.document_name}`,
+              isFileUpload: true,
+              uploadedFiles: [
+                {
+                  name: doc.document_name,
+                  size: 0, // Size not available from database
+                  uploadTime: doc.created || new Date().toISOString(), // Fallback if created is undefined
+                  id: doc.id,
+                },
+              ],
+              // Use current time so uploaded files appear at current position in chat
+              timestamp: doc.created
+                ? new Date(doc.created).getTime() + index
+                : Date.now() + index,
+            };
+          });
+          console.log(fileSystemMessages);
+          return fileSystemMessages;
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching uploaded documents:", error);
+    }
+    return [];
+  }, []);
+
   const handleLoadChat = useCallback(async () => {
     if (!id) return;
 
@@ -162,6 +338,7 @@ const Chatbot = (props) => {
             chat_id: id,
             role: "user",
             content: pending,
+            timestamp: Date.now(),
           };
           const thinkingMsg = {
             id: `thinking-${Date.now()}`,
@@ -171,6 +348,7 @@ const Chatbot = (props) => {
             isThinking: true,
             reasoning: [],
             sources: [],
+            timestamp: Date.now() + 1,
           };
           setMessages([userMsg, thinkingMsg]);
           if (location.state?.message) {
@@ -196,16 +374,48 @@ const Chatbot = (props) => {
         relevant_chunks: m.relevant_chunks,
         reasoning: m.reasoning || [], // Include reasoning data from database
         sources: m.sources || [], // Include sources if available
+        timestamp: new Date(m.created).getTime(), // Add timestamp from database
       }));
-      setMessages(formatted);
+
+      // Fetch uploaded documents and create system messages for them
+      const fileSystemMessages = await fetchUploadedDocuments(id);
+
+      // Combine regular messages with file system messages and sort by timestamp
+      const allMessages = [...formatted, ...fileSystemMessages];
+
+      // Sort messages by timestamp
+      allMessages.sort((a, b) => {
+        const aTime = a.timestamp || 0;
+        const bTime = b.timestamp || 0;
+        return aTime - bTime;
+      });
+
+      setMessages(allMessages);
     } catch (err) {
       console.error("Failed to load chat:", err);
     }
-  }, [id, location.state?.message, pollForMessages]);
+  }, [id, location.state?.message, fetchUploadedDocuments]);
 
   const handleSendMessage = async (event) => {
     event.preventDefault();
+    console.log(
+      "handleSendMessage called for user:",
+      user ? "authenticated" : "guest"
+    );
+
     if (!message.trim()) return;
+
+    // For authenticated users, check credits and deduct them
+    if (user) {
+      // Check if user has credits
+      if (numCredits === 0) {
+        setShowUpgradeModal(true);
+        return;
+      }
+      // Deduct credits for authenticated users
+      await dispatch(deductCreditsLocal(1)).unwrap();
+    }
+    // For guests, we skip credit checks and allow them to chat
 
     const currentMessage = message.trim();
     setMessage("");
@@ -219,11 +429,84 @@ const Chatbot = (props) => {
 
     if (isNewChat) {
       try {
-        targetChatId = await props.createNewChat();
-        navigate(`/chat/${targetChatId}`, {
-          state: { message: currentMessage },
-        });
+        // For guests, create a temporary chat experience without navigation
+        if (!user) {
+          console.log("Creating guest chat experience");
+          // Create a temporary guest chat ID
+          targetChatId = `guest-${Date.now()}`;
 
+          const userMsg = {
+            id: `user-${Date.now()}`,
+            chat_id: targetChatId,
+            role: "user",
+            relevant_chunks: [],
+            content: currentMessage,
+            timestamp: Date.now(),
+          };
+          const thinkingMsg = {
+            id: `thinking-${Date.now()}`,
+            chat_id: targetChatId,
+            role: "assistant",
+            content: "",
+            isThinking: true,
+            reasoning: [],
+            sources: [],
+            timestamp: Date.now(),
+          };
+
+          console.log("Setting guest messages:", [userMsg, thinkingMsg]);
+          setMessages([userMsg, thinkingMsg]);
+
+          // Send to API for guest chat without creating a persistent chat
+          try {
+            console.log("Sending guest chat to API");
+            await sendToAPI(userMsg, null, thinkingMsg.id);
+            // For now, let's provide a mock response for guests to avoid API issues
+            // TODO: Update backend to support guest mode properly
+            // setTimeout(() => {
+            //   setMessages((prev) =>
+            //     prev.map((msg) =>
+            //       msg.id === thinkingMsg.id
+            //         ? {
+            //             ...msg,
+            //             content:
+            //               "Hello! I'm currently in guest mode. To access full AI document analysis features, please log in or create an account. For now, I can provide basic responses, but full functionality requires authentication.",
+            //             isThinking: false,
+            //           }
+            //         : msg
+            //     )
+            //   );
+            // }, 1000);
+
+            // Uncomment this when backend supports guest mode:
+            // await sendToAPI(currentMessage, targetChatId, thinkingMsg.id);
+            console.log("Guest chat API call completed");
+          } catch (error) {
+            console.error("Guest chat API error:", error);
+            // Update thinking message to show error
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === thinkingMsg.id
+                  ? {
+                      ...msg,
+                      content:
+                        "Sorry, I'm having trouble connecting. Please try again.",
+                      isThinking: false,
+                    }
+                  : msg
+              )
+            );
+          }
+          console.log("Guest chat flow completed, returning");
+          return;
+        }
+        if (user) {
+          // For authenticated users, create a real chat and navigate
+          targetChatId = await props.createNewChat();
+          navigate(`/chat/${targetChatId}`, {
+            state: { message: currentMessage },
+          });
+        }
         localStorage.setItem(`pending-message-${targetChatId}`, currentMessage);
 
         const userMsg = {
@@ -232,6 +515,7 @@ const Chatbot = (props) => {
           role: "user",
           relevant_chunks: [],
           content: currentMessage,
+          timestamp: Date.now(),
         };
         const thinkingMsg = {
           id: `thinking-${Date.now()}`,
@@ -241,6 +525,7 @@ const Chatbot = (props) => {
           isThinking: true,
           reasoning: [],
           sources: [],
+          timestamp: Date.now(),
         };
 
         setMessages([userMsg, thinkingMsg]);
@@ -258,15 +543,17 @@ const Chatbot = (props) => {
       }
     }
 
-    // For existing chat
+    // For existing chat (both authenticated and guest)
     const thinkingId = `thinking-${Date.now()}`;
+    const now = Date.now();
     setMessages((prev) => [
       ...prev,
       {
-        id: `user-${Date.now()}`,
+        id: `user-${now}`,
         chat_id: targetChatId,
         role: "user",
         content: currentMessage,
+        timestamp: now,
       },
       {
         id: thinkingId,
@@ -276,32 +563,62 @@ const Chatbot = (props) => {
         isThinking: true,
         reasoning: [],
         sources: [],
+        timestamp: now + 1, // Slightly later timestamp for thinking message
       },
     ]);
 
-    localStorage.setItem(`pending-message-${targetChatId}`, currentMessage);
+    // Only store in localStorage for authenticated user chats
+    if (user) {
+      localStorage.setItem(`pending-message-${targetChatId}`, currentMessage);
+    }
     await sendToAPI(currentMessage, targetChatId, thinkingId);
   };
 
   const sendToAPI = async (text, chatId, thinkingId) => {
     try {
+      // Check if this is a guest chat
+      const isGuestChat =
+        (typeof chatId === "string" && chatId.startsWith("guest-")) ||
+        (!user && chatId === null); // Also detect guest mode when no user and chatId is null
+
+      if (isDev) {
+        console.log("sendToAPI called with:", {
+          text,
+          chatId,
+          isGuestChat,
+          user: !!user,
+        });
+      }
+
       const res = await fetcher("process-message-pdf", {
         method: "POST",
+        isGuest: isGuestChat, // Only set isGuest for actual guest chats
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          chat_id: Number(chatId),
+          chat_id: isGuestChat ? null : Number(chatId), // Send null for guest chats
           model_type: props.isPrivate,
           model_key: props.confirmedModelKey,
+          is_guest: isGuestChat, // Flag to indicate guest chat
         }),
       });
 
+      if (isDev) {
+        console.log("API response status:", res.status);
+      }
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
       }
 
       await handleSSEStreamingResponse(res, thinkingId, text, chatId);
-      localStorage.removeItem(`pending-message-${chatId}`);
+
+      // Only remove from localStorage for authenticated user chats
+      if (!isGuestChat) {
+        localStorage.removeItem(`pending-message-${chatId}`);
+      }
+      if (isDev) {
+        console.log("sendToAPI completed successfully");
+      }
     } catch (err) {
       console.error("Message send error:", err);
       setMessages((prev) =>
@@ -349,12 +666,12 @@ const Chatbot = (props) => {
               // Mark streaming as complete and ensure final state
               setMessages((prev) =>
                 prev.map((msg) =>
-                  msg.id === thinkingId 
-                    ? { 
-                        ...msg, 
-                        isThinking: false, 
-                        currentStep: null 
-                      } 
+                  msg.id === thinkingId
+                    ? {
+                        ...msg,
+                        isThinking: false,
+                        currentStep: null,
+                      }
                     : msg
                 )
               );
@@ -368,7 +685,10 @@ const Chatbot = (props) => {
               setMessages((prev) => {
                 const updated = prev.map((msg) => {
                   if (msg.id === thinkingId) {
-                    const updatedMsg = updateMessageWithStreamData(msg, eventData);
+                    const updatedMsg = updateMessageWithStreamData(
+                      msg,
+                      eventData
+                    );
                     // Force re-render by ensuring object reference changes
                     return { ...updatedMsg };
                   }
@@ -377,11 +697,15 @@ const Chatbot = (props) => {
                 return [...updated]; // Force array reference change
               });
 
-              // Generate chat name when we get the final answer
+              // Generate chat name when we get the final answer (skip for guest chats)
+              const isGuestChat =
+                typeof chatId === "string" && chatId.startsWith("guest-");
               if (
-                (eventData.type === "complete" || eventData.type === "step-complete") &&
+                (eventData.type === "complete" ||
+                  eventData.type === "step-complete") &&
                 eventData.answer &&
-                !chatNameGenerated
+                !chatNameGenerated &&
+                !isGuestChat
               ) {
                 await inferChatName(originalText, eventData.answer, chatId);
                 setChatNameGenerated(true);
@@ -389,7 +713,10 @@ const Chatbot = (props) => {
               }
 
               // Force final state update for completion events
-              if (eventData.type === "complete" || eventData.type === "step-complete") {
+              if (
+                eventData.type === "complete" ||
+                eventData.type === "step-complete"
+              ) {
                 setTimeout(() => {
                   setMessages((prev) =>
                     prev.map((msg) =>
@@ -582,7 +909,9 @@ const Chatbot = (props) => {
           agent_name: eventData.agent_name,
           tool_name: eventData.tool_name,
           input: eventData.input,
-          message: eventData.message || `${eventData.agent_name} using ${eventData.tool_name}`,
+          message:
+            eventData.message ||
+            `${eventData.agent_name} using ${eventData.tool_name}`,
           timestamp: Date.now(),
         };
         updatedMessage.reasoning = [
@@ -629,73 +958,77 @@ const Chatbot = (props) => {
     const getStepIcon = (type) => {
       switch (type) {
         case "llm_reasoning":
-          return <FontAwesomeIcon icon={faBrain} className="text-blue-400" />;
+          return <FontAwesomeIcon icon={faBrain} className="text-accent" />;
         case "tool_start":
         case "tools_start":
         case "tool_end":
-          return <FontAwesomeIcon icon={faSearch} className="text-green-400" />;
+          return <FontAwesomeIcon icon={faSearch} className="text-accent" />;
         case "agent_thinking":
-          return <FontAwesomeIcon icon={faCog} className="text-purple-400" />;
+          return <FontAwesomeIcon icon={faCog} className="text-accent" />;
         case "complete":
         case "step-complete":
           return (
-            <FontAwesomeIcon icon={faCheckCircle} className="text-green-500" />
+            <FontAwesomeIcon icon={faCheckCircle} className="text-accent" />
           );
         // Multi-agent system icons
         case "agent_start":
-          return <FontAwesomeIcon icon={faCog} className="text-yellow-400" />;
+          return <FontAwesomeIcon icon={faCog} className="text-accent" />;
         case "agent_progress":
-          return <FontAwesomeIcon icon={faArrowRight} className="text-orange-400" />;
+          return (
+            <FontAwesomeIcon icon={faArrowRight} className="text-accent" />
+          );
         case "agent_reasoning":
-          return <FontAwesomeIcon icon={faBrain} className="text-cyan-400" />;
+          return <FontAwesomeIcon icon={faBrain} className="text-accent" />;
         case "agent_tool_use":
         case "agent_tool_complete":
-          return <FontAwesomeIcon icon={faSearch} className="text-emerald-400" />;
+          return <FontAwesomeIcon icon={faSearch} className="text-accent" />;
         case "agent_completion":
         case "agent_error":
-          return <FontAwesomeIcon icon={faInfoCircle} className="text-indigo-400" />;
+          return (
+            <FontAwesomeIcon icon={faInfoCircle} className="text-accent" />
+          );
         case "orchestrator_decision":
         case "orchestrator_synthesis":
-          return <FontAwesomeIcon icon={faSitemap} className="text-pink-400" />;
+          return <FontAwesomeIcon icon={faSitemap} className="text-accent" />;
         case "reasoning_step":
-          return <FontAwesomeIcon icon={faLightbulb} className="text-amber-400" />;
+          return <FontAwesomeIcon icon={faLightbulb} className="text-accent" />;
         default:
-          return <FontAwesomeIcon icon={faCog} className="text-gray-400" />;
+          return <FontAwesomeIcon icon={faCog} className="text-accent" />;
       }
     };
-    console.log("stepsss", step)
+    console.log("stepsss", step);
     const getStepColor = (type) => {
       switch (type) {
         case "llm_reasoning":
-          return "border-l-blue-400 bg-blue-950/20";
+          return "border-l-accent bg-accent/10";
         case "tool_start":
         case "tools_start":
         case "tool_end":
-          return "border-l-green-400 bg-green-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_thinking":
-          return "border-l-purple-400 bg-purple-950/20";
+          return "border-l-accent bg-accent/10";
         case "complete":
         case "step-complete":
-          return "border-l-green-500 bg-green-950/30";
+          return "border-l-accent bg-accent/20";
         // Multi-agent system colors
         case "agent_start":
-          return "border-l-yellow-400 bg-yellow-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_progress":
-          return "border-l-orange-400 bg-orange-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_reasoning":
-          return "border-l-cyan-400 bg-cyan-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_tool_use":
         case "agent_tool_complete":
-          return "border-l-emerald-400 bg-emerald-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_completion":
-          return "border-l-indigo-400 bg-indigo-950/20";
+          return "border-l-accent bg-accent/10";
         case "agent_error":
           return "border-l-red-400 bg-red-950/20";
         case "orchestrator_decision":
         case "orchestrator_synthesis":
-          return "border-l-pink-400 bg-pink-950/20";
+          return "border-l-accent bg-accent/10";
         case "reasoning_step":
-          return "border-l-amber-400 bg-amber-950/20";
+          return "border-l-accent bg-accent/10";
         default:
           return "border-l-gray-400 bg-gray-800/20";
       }
@@ -751,7 +1084,10 @@ const Chatbot = (props) => {
 
         {step.reasoning && (
           <div className="text-gray-400 text-xs mb-1">
-            <strong>Reasoning:</strong> {step.reasoning.length > 150 ? step.reasoning.substring(0, 150) + "..." : step.reasoning}
+            <strong>Reasoning:</strong>{" "}
+            {step.reasoning.length > 150
+              ? step.reasoning.substring(0, 150) + "..."
+              : step.reasoning}
           </div>
         )}
 
@@ -802,43 +1138,6 @@ const Chatbot = (props) => {
     }));
   };
 
-  // Auto-expand reasoning for new thinking messages
-  useEffect(() => {
-    messages.forEach((msg) => {
-      if (msg.role === "assistant" && msg.isThinking && expandedReasoning[msg.id] === undefined) {
-        setExpandedReasoning((prev) => ({
-          ...prev,
-          [msg.id]: true, // Auto-expand reasoning for thinking messages
-        }));
-      }
-    });
-  }, [messages, expandedReasoning]);
-
-  const handleGenerateShareableUrl = async () => {
-    if (!props.selectedChatId) {
-      alert("No chat selected");
-      return;
-    }
-    try {
-      const response = await fetcher(
-        `generate-playbook/${props.selectedChatId}`,
-        {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            Accept: "application/json",
-          },
-        }
-      );
-      const data = await response.json();
-      const shareableUrl = data.url || `/playbook/${data.share_uuid}`;
-      alert(`Your shareable URL: ${shareableUrl}`);
-    } catch (error) {
-      console.error("Error generating shareable URL:", error);
-      alert("Failed to generate shareable URL.");
-    }
-  };
-
   useEffect(() => {
     if (pollingTimeoutRef.current) {
       clearTimeout(pollingTimeoutRef.current);
@@ -852,6 +1151,7 @@ const Chatbot = (props) => {
     } else {
       setMessages([]);
       setChatNameGenerated(false);
+      setUploadedFiles([]); // Clear uploaded files when switching chats
     }
 
     return () => {
@@ -871,19 +1171,11 @@ const Chatbot = (props) => {
     }
   };
 
-  const handleRefreshChatName = async () => {
-    if (typeof handleLoadChat === "function") {
-      await handleLoadChat();
-    }
-  };
-
-  console.log(messages);
-
   return (
     <div
-      className={`h-full bg-anoteblack-800 w-full flex flex-col ${
-        props.menu ? "md:blur-none blur" : ""
-      }`}
+      className={`h-full bg-anoteblack-800 w-full ${
+        messages.length !== 0 && "pt-16"
+      } flex flex-col ${props.menu ? "md:blur-none blur" : ""}`}
     >
       <div
         ref={(ref) =>
@@ -894,159 +1186,149 @@ const Chatbot = (props) => {
         } flex justify-center`}
       >
         <div className="py-3 flex-col mt-0 px-4 flex gap-3 w-full">
-          <div className="bg-anoteblack-800 flex items-center sticky top-0 lg:top-0 z-10 w-full border-b border-gray-400/30 px-2">
-            {/* Left: Reload button */}
-            <div className="flex items-center flex-shrink-0 z-10">
-              <button
-                onClick={handleRefreshChatName}
-                className="p-2 hover:bg-gray-700 rounded transition-colors"
-                title="Refresh chat name"
-              >
-                <FontAwesomeIcon
-                  icon={faSyncAlt}
-                  className="text-lg text-[#DFDFDF]"
-                />
-              </button>
-            </div>
-            {/* Center: Chat name */}
-            <div className="absolute left-0 right-0 flex justify-center items-center pointer-events-none h-14">
-              <h1 className="text-white truncate text-center w-2/3 pointer-events-auto">
-                {props.currChatName}
-              </h1>
-            </div>
-            {/* Right: Share/Download */}
-            <div className="flex gap-2 flex-shrink-0 ml-auto z-10">
-              <button
-                onClick={handleGenerateShareableUrl}
-                className="p-2 hover:bg-gray-700 rounded transition-colors"
-                title="Share chat"
-              >
-                <FontAwesomeIcon
-                  icon={faShareAlt}
-                  className="text-lg text-[#DFDFDF]"
-                />
-              </button>
-              <button
-                className="p-2 hover:bg-gray-700 rounded transition-colors"
-                title="Download chat"
-              >
-                <FontAwesomeIcon
-                  icon={faDownload}
-                  className="text-lg text-[#DFDFDF]"
-                />
-              </button>
-            </div>
-          </div>
           <div className="px-4 md:px-8 lg:px-16 xl:px-32">
             {messages.map((msg, index) => (
               <div
                 key={`${msg.chat_id}-${msg.id || index}`}
                 className={`flex items-start gap-4 mb-4 ${
-                  msg.role === "user" ? "justify-end" : "justify-start"
+                  msg.role === "user"
+                    ? "justify-end"
+                    : msg.role === "system"
+                    ? "justify-center"
+                    : "justify-start"
                 }`}
               >
-                {/* FIXED: Responsive width for assistant messages */}
-                <div
-                  className={`space-y-3 ${
-                    msg.role === "assistant"
-                      ? "w-full md:w-5/6 lg:w-3/4 xl:w-2/3"
-                      : ""
-                  }`}
-                >
-                  {/* Reasoning Box - Shows during streaming and after completion */}
-                  {msg.role === "assistant" && (msg.reasoning?.length > 0 || msg.isThinking) && (
-                    <div className="bg-[#0f1419] border border-[#2e3a4c] rounded-xl p-4 mb-3">
-                      <button
-                        onClick={() => toggleReasoningExpansion(msg.id)}
-                        className="flex items-center justify-between w-full text-left text-xs text-gray-400 hover:text-gray-200 transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <FontAwesomeIcon icon={faBrain} />
-                          <span>
-                            {msg.isThinking 
-                              ? "AI Reasoning (Live)" 
-                              : `AI Reasoning Steps (${msg.reasoning?.length || 0})`
-                            }
-                          </span>
-                        </div>
-                        <FontAwesomeIcon
-                          icon={
-                            expandedReasoning[msg.id]
-                              ? faChevronUp
-                              : faChevronDown
-                          }
-                          className="text-xs"
-                        />
-                      </button>
-
-                      {expandedReasoning[msg.id] && (
-                        <div className="mt-3 space-y-2 animate-fade-in">
-                          {/* Show current step during thinking */}
-                          {msg.isThinking && msg.currentStep && (
-                            <div className="border-l-2 border-yellow-400 bg-yellow-950/20 pl-3 py-2 mb-2">
-                              <ThinkingIndicator step={msg.currentStep} />
+                {/* System messages (file uploads) */}
+                {msg.role === "system" && msg.isFileUpload ? (
+                  <div className="w-full max-w-md mx-auto">
+                    <div className="bg-green-900/30 border border-green-600/50 rounded-xl p-3 text-center">
+                      <div className="flex items-center justify-center gap-2 text-green-400 text-sm">
+                        <FontAwesomeIcon icon={faFile} />
+                        <span className="font-medium">{msg.content}</span>
+                      </div>
+                      {msg.uploadedFiles && msg.uploadedFiles.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {msg.uploadedFiles.map((file, idx) => (
+                            <div
+                              key={idx}
+                              className="text-xs text-green-300 flex items-center justify-center gap-2"
+                            >
+                              <span>{file.name}</span>
+                              <span className="text-green-500">
+                                ({(file.size / 1024).toFixed(1)} KB)
+                              </span>
                             </div>
-                          )}
-                          
-                          {/* Show completed reasoning steps */}
-                          {msg.reasoning?.map((step, idx) => (
-                            <ThinkingIndicator
-                              key={step.id || idx}
-                              step={step}
-                            />
                           ))}
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* Main message content */}
+                  </div>
+                ) : (
+                  /* Regular messages (user/assistant) */
                   <div
-                    className={`rounded-2xl p-4 shadow-lg transition-all ${
-                      msg.role === "user"
-                        ? "bg-gradient-to-br from-[#28b2fb] to-[#111827] text-white ml-auto rounded-br-none"
-                        : "bg-[#1f2937] text-white border border-[#2e3a4c] rounded-bl-none"
+                    className={`space-y-3 ${
+                      msg.role === "assistant"
+                        ? "w-full md:w-5/6 lg:w-3/4 xl:w-2/3"
+                        : ""
                     }`}
                   >
-                    {/* Assistant Thinking Animation */}
-                    {msg.isThinking ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="flex space-x-1">
-                            <div className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"></div>
-                            <div
-                              className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"
-                              style={{ animationDelay: "0.2s" }}
-                            ></div>
-                            <div
-                              className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"
-                              style={{ animationDelay: "0.4s" }}
-                            ></div>
-                          </div>
-                          <span className="text-sm text-gray-400">
-                            AI is thinking...
-                          </span>
-                        </div>
+                    {/* Reasoning Box - Shows during streaming and after completion */}
+                    {msg.role === "assistant" &&
+                      (msg.reasoning?.length > 0 || msg.isThinking) && (
+                        <div className="bg-[#0f1419] border border-[#2e3a4c] rounded-xl p-4 mb-3">
+                          <button
+                            onClick={() => toggleReasoningExpansion(msg.id)}
+                            className="flex items-center justify-between w-full text-left text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <FontAwesomeIcon icon={faBrain} />
+                              <span>
+                                {msg.isThinking
+                                  ? "AI Reasoning (Live)"
+                                  : `AI Reasoning Steps (${
+                                      msg.reasoning?.length || 0
+                                    })`}
+                              </span>
+                            </div>
+                            <FontAwesomeIcon
+                              icon={
+                                expandedReasoning[msg.id]
+                                  ? faChevronUp
+                                  : faChevronDown
+                              }
+                              className="text-xs"
+                            />
+                          </button>
 
-                        {/* Show partial content if available during streaming */}
-                        {msg.content && (
-                          <div className="mt-3">
-                            <p className="whitespace-pre-wrap leading-relaxed text-sm">
-                              {msg.content}
-                            </p>
+                          {expandedReasoning[msg.id] && (
+                            <div className="mt-3 space-y-2 animate-fade-in">
+                              {/* Show current step during thinking */}
+                              {msg.isThinking && msg.currentStep && (
+                                <div className="border-l-2 border-yellow-400 bg-yellow-950/20 pl-3 py-2 mb-2">
+                                  <ThinkingIndicator step={msg.currentStep} />
+                                </div>
+                              )}
+
+                              {/* Show completed reasoning steps */}
+                              {msg.reasoning?.map((step, idx) => (
+                                <ThinkingIndicator
+                                  key={step.id || idx}
+                                  step={step}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                    {/* Main message content */}
+                    <div
+                      className={`rounded-2xl p-4 shadow-lg transition-all ${
+                        msg.role === "user"
+                          ? "bg-[#222d3c]  border border-[#2e3a4c] text-white ml-auto rounded-br-none"
+                          : "bg-[#181f29] text-white border border-[#2e3a4c] rounded-bl-none"
+                      }`}
+                    >
+                      {/* Assistant Thinking Animation */}
+                      {msg.isThinking ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex space-x-1">
+                              <div className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"></div>
+                              <div
+                                className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"
+                                style={{ animationDelay: "0.2s" }}
+                              ></div>
+                              <div
+                                className="w-2 h-2 bg-[#defe47] rounded-full animate-pulse"
+                                style={{ animationDelay: "0.4s" }}
+                              ></div>
+                            </div>
+                            <span className="text-sm text-gray-400">
+                              AI is thinking...
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div>
-                        {/* Main response content */}
-                        <p className="whitespace-pre-wrap leading-relaxed text-sm">
-                          {msg.content}
-                        </p>
-                      </div>
-                    )}
+
+                          {/* Show partial content if available during streaming */}
+                          {msg.content && (
+                            <div className="mt-3">
+                              <p className="whitespace-pre-wrap leading-relaxed text-sm">
+                                {msg.content}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          {/* Main response content */}
+                          <p className="whitespace-pre-wrap leading-relaxed text-sm">
+                            {msg.content}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             ))}
           </div>
@@ -1062,34 +1344,43 @@ const Chatbot = (props) => {
       >
         {/* Welcome message */}
         {messages.length === 0 && (
-          <div className="w-full text-anoteblack-100 animate-typing overflow-hidden whitespace-nowrap flex items-center justify-center font-bold text-2xl mb-4">
+          <div className="w-full text-white animate-typing overflow-hidden whitespace-nowrap flex items-center justify-center font-bold text-2xl mb-4">
             What can I help you with?
           </div>
         )}
 
+
         {/* Input form */}
-        <div className="flex w-full justify-center my-5  px-4">
-          <div className="flex items-center gap-3 w-full max-w-4xl">
+        <div className="flex w-full justify-center mb-4 px-4">
+          <div className="flex items-center gap-1 focus-within:ring-slate-600 focus-within:ring-2 border-gray-600 p-2 rounded-xl bg-sidebar w-full max-w-4xl">
             {/* Left side - Upload button */}
             <button
               type="button"
               onClick={() => {
-                console.log("Upload button clicked in Chatbot", "selectedChatId:", props.selectedChatId);
-                if (props.onUploadClick) {
-                  setUploadButtonClicked(true);
-                  props.onUploadClick(props.selectedChatId);
-                  setTimeout(() => setUploadButtonClicked(false), 1000);
-                }
+                console.log(
+                  "Upload button clicked in Chatbot",
+                  "selectedChatId:",
+                  props.selectedChatId
+                );
+                setShowFileUpload(true);
+                setUploadButtonClicked(true);
+                setTimeout(() => setUploadButtonClicked(false), 1000);
               }}
-              disabled={props.isUploading}
-              className={`flex items-center justify-center w-12 h-12 rounded-xl transition-colors flex-shrink-0 ${
+              disabled={props.isUploading || (!user ? false : numCredits === 0)}
+              className={`flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 ${
                 uploadButtonClicked
-                  ? "bg-blue-600 text-white"
+                  ? "bg-gray-600 text-white"
                   : props.isUploading
                   ? "bg-gray-500 text-gray-300 cursor-not-allowed"
-                  : "bg-blue-500 hover:bg-blue-600 text-white"
+                  : "bg-gray-600 hover:bg-gray-500 text-white"
               }`}
-              title={!id ? "Please select or create a chat first" : "Add files"}
+              title={
+                !id
+                  ? "Please select or create a chat first"
+                  : !user
+                  ? "Add files (login for enhanced features)"
+                  : "Add files"
+              }
             >
               <FontAwesomeIcon icon={faFile} className="text-lg" />
             </button>
@@ -1097,11 +1388,15 @@ const Chatbot = (props) => {
             {/* Center - Input */}
             <div className="flex-1">
               <div className="relative">
-                <div className="relative flex items-center bg-gray-700 rounded-3xl border border-gray-600 focus-within:border-gray-500 transition-colors">
+                <div className="relative flex items-center rounded-lg focus-within:border-accent  focus-within:ring-0 transition-all duration-200">
                   <textarea
-                    className="w-full border-none resize-none text-lg px-6 py-2 focus:ring-0 focus:outline-none text-white placeholder:text-gray-400 bg-anoteblack-800 rounded-3xl"
+                    className="w-full  border-none disabled:cursor-not-allowed  resize-none text-base px-4 py-3 focus:ring-0 focus:outline-none text-white placeholder:text-gray-400 bg-transparent rounded-lg"
                     rows={1}
-                    placeholder="Ask your document a question"
+                    placeholder={
+                      !user
+                        ? "Ask your question (guest mode)"
+                        : "Ask your document a question"
+                    }
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     ref={inputRef}
@@ -1109,21 +1404,6 @@ const Chatbot = (props) => {
                     disabled={messages.some((msg) => msg.isThinking)}
                   />
                 </div>
-
-                {/* File upload progress */}
-                {props.isUploading && props.uploadProgress !== undefined && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="flex-1 bg-gray-700 rounded-full h-1">
-                      <div
-                        className="bg-blue-600 h-1 rounded-full transition-all duration-300"
-                        style={{ width: `${props.uploadProgress}%` }}
-                      ></div>
-                    </div>
-                    <span className="text-xs text-gray-400">
-                      {props.uploadProgress}%
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1136,12 +1416,12 @@ const Chatbot = (props) => {
                 message.trim() === "" ||
                 messages.some((msg) => msg.isThinking)
               }
-              className={`flex items-center justify-center w-12 h-12 rounded-xl transition-colors flex-shrink-0 ${
+              className={`flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 ${
                 !message ||
                 message.trim() === "" ||
                 messages.some((msg) => msg.isThinking)
                   ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                  : "bg-blue-500 hover:bg-blue-600 text-white"
+                  : "bg-gray-600 hover:bg-gray-500 text-white"
               }`}
             >
               <FontAwesomeIcon icon={faPaperPlane} className="text-lg" />
@@ -1149,6 +1429,367 @@ const Chatbot = (props) => {
           </div>
         </div>
       </div>
+      {/* File Upload Modal */}
+      {showFileUpload && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowFileUpload(false);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setShowFileUpload(false);
+            }
+          }}
+        >
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-white">Upload Files</h2>
+              <button
+                onClick={() => setShowFileUpload(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <FileUpload
+              onFileSelect={handleFileSelect}
+              onFileRemove={handleFileRemove}
+              acceptedFileTypes=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls"
+              maxFileSize={10 * 1024 * 1024} // 10MB
+              multiple={true}
+              placeholder="Upload files to analyze with AI"
+              className="mb-4"
+            />
+
+            {selectedFiles.length > 0 && (
+              <div className="flex justify-end space-x-3 mt-4">
+                <button
+                  onClick={() => {
+                    setSelectedFiles([]);
+                    setShowFileUpload(false);
+                  }}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpload}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Upload {selectedFiles.length} file
+                  {selectedFiles.length > 1 ? "s" : ""}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Upgrade Modal - Only show for authenticated users */}
+      {shouldShowUpgradeModal() && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowUpgradeModal(false);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setShowUpgradeModal(false);
+            }
+          }}
+        >
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-white">
+                Upgrade Your Plan
+              </h2>
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="text-center mb-6">
+              <FontAwesomeIcon
+                icon={faExclamationTriangle}
+                className="text-red-400 text-4xl mb-3"
+              />
+              <h3 className="text-lg font-medium text-white mb-2">
+                Choose Your Plan
+              </h3>
+              <p className="text-gray-300 text-sm">
+                Upgrade to continue using our AI-powered financial analysis
+                tools with enhanced features and priority support.
+              </p>
+            </div>
+
+            {/* Pricing Options */}
+            <div className="space-y-4 mb-6">
+              {/* Basic Plan */}
+              <div className="border border-gray-600 rounded-lg p-4 hover:border-blue-400 transition-colors">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="text-white font-medium">Basic Plan</h4>
+                  <span className="text-blue-400 font-bold">$19/month</span>
+                </div>
+                <p className="text-gray-300 text-sm mb-2">
+                  200 credits per month • Perfect for individuals
+                </p>
+                <ul className="text-xs text-gray-400 mb-3 space-y-1">
+                  <li>• Advanced AI document analysis</li>
+                  <li>• PDF, DOCX, TXT file support</li>
+                  <li>• Basic chat history</li>
+                </ul>
+                <button
+                  onClick={async () => {
+                    console.log("Button clicked - attempting checkout...");
+                    try {
+                      console.log(
+                        "Dispatching createCheckoutSession with product_hash: privategpt1"
+                      );
+                      const response = await dispatch(
+                        createCheckoutSession({ product_hash: "privategpt1" })
+                      );
+                      console.log("Checkout response:", response);
+                      const checkoutUrl = response.payload;
+                      console.log("Checkout URL:", checkoutUrl);
+
+                      if (checkoutUrl) {
+                        window.open(checkoutUrl, "_blank");
+                        setShowUpgradeModal(false);
+                      } else {
+                        console.error("No checkout URL received");
+                        alert("Failed to get checkout URL. Please try again.");
+                      }
+                    } catch (error) {
+                      console.error("Error creating checkout session:", error);
+
+                      // Check if it's a user not found error
+                      if (
+                        error?.payload?.status === 404 ||
+                        error?.response?.status === 404
+                      ) {
+                        alert(
+                          "User account not found. Please ensure you're logged in and try again."
+                        );
+                      } else if (
+                        error?.payload?.status === 401 ||
+                        error?.response?.status === 401
+                      ) {
+                        alert(
+                          "Authentication failed. Please log in again and try again."
+                        );
+                      } else {
+                        alert(
+                          "Failed to initiate checkout. Please try again or contact support."
+                        );
+                      }
+                    }
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Select Basic
+                </button>
+              </div>
+
+              {/* Standard Plan */}
+              <div className="border border-blue-400 rounded-lg p-4 bg-blue-600/10">
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-white font-medium">Standard Plan</h4>
+                    <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
+                      Popular
+                    </span>
+                  </div>
+                  <span className="text-blue-400 font-bold">$39/month</span>
+                </div>
+                <p className="text-gray-300 text-sm mb-2">
+                  500 credits per month • Great for small teams
+                </p>
+                <ul className="text-xs text-gray-400 mb-3 space-y-1">
+                  <li>• Everything in Basic</li>
+                  <li>• Priority processing speed</li>
+                  <li>• Advanced export options</li>
+                  <li>• Email support</li>
+                </ul>
+                <button
+                  onClick={async () => {
+                    console.log(
+                      "Standard plan button clicked - attempting checkout..."
+                    );
+                    try {
+                      console.log(
+                        "Dispatching createCheckoutSession with product_hash: privategpt2"
+                      );
+                      const response = await dispatch(
+                        createCheckoutSession({ product_hash: "privategpt2" })
+                      );
+                      console.log("Checkout response:", response);
+                      const checkoutUrl = response.payload;
+                      console.log("Checkout URL:", checkoutUrl);
+
+                      if (checkoutUrl) {
+                        window.open(checkoutUrl, "_blank");
+                        setShowUpgradeModal(false);
+                      } else {
+                        console.error("No checkout URL received");
+                        alert("Failed to get checkout URL. Please try again.");
+                      }
+                    } catch (error) {
+                      console.error("Error creating checkout session:", error);
+
+                      // Check if it's a user not found error
+                      if (
+                        error?.payload?.status === 404 ||
+                        error?.response?.status === 404
+                      ) {
+                        alert(
+                          "User account not found. Please ensure you're logged in and try again."
+                        );
+                      } else if (
+                        error?.payload?.status === 401 ||
+                        error?.response?.status === 401
+                      ) {
+                        alert(
+                          "Authentication failed. Please log in again and try again."
+                        );
+                      } else {
+                        alert(
+                          "Failed to initiate checkout. Please try again or contact support."
+                        );
+                      }
+                    }
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Select Standard
+                </button>
+              </div>
+
+              {/* Premium Plan */}
+              <div className="border border-gray-600 rounded-lg p-4 hover:border-purple-400 transition-colors">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="text-white font-medium">Premium Plan</h4>
+                  <span className="text-purple-400 font-bold">$79/month</span>
+                </div>
+                <p className="text-gray-300 text-sm mb-2">
+                  1,500 credits per month • Best for enterprises
+                </p>
+                <ul className="text-xs text-gray-400 mb-3 space-y-1">
+                  <li>• Everything in Standard</li>
+                  <li>• Unlimited file uploads</li>
+                  <li>• Custom AI model training</li>
+                  <li>• Priority support & phone calls</li>
+                  <li>• Advanced analytics dashboard</li>
+                </ul>
+                <button
+                  onClick={async () => {
+                    console.log(
+                      "Premium plan button clicked - attempting checkout..."
+                    );
+                    try {
+                      console.log(
+                        "Dispatching createCheckoutSession with product_hash: privategpt3"
+                      );
+                      const response = await dispatch(
+                        createCheckoutSession({ product_hash: "privategpt3" })
+                      );
+                      console.log("Checkout response:", response);
+                      const checkoutUrl = response.payload;
+                      console.log("Checkout URL:", checkoutUrl);
+
+                      if (checkoutUrl) {
+                        window.open(checkoutUrl, "_blank");
+                        setShowUpgradeModal(false);
+                      } else {
+                        console.error("No checkout URL received");
+                        alert("Failed to get checkout URL. Please try again.");
+                      }
+                    } catch (error) {
+                      console.error("Error creating checkout session:", error);
+
+                      // Check if it's a user not found error
+                      if (
+                        error?.payload?.status === 404 ||
+                        error?.response?.status === 404
+                      ) {
+                        alert(
+                          "User account not found. Please ensure you're logged in and try again."
+                        );
+                      } else if (
+                        error?.payload?.status === 401 ||
+                        error?.response?.status === 401
+                      ) {
+                        alert(
+                          "Authentication failed. Please log in again and try again."
+                        );
+                      } else {
+                        alert(
+                          "Failed to initiate checkout. Please try again or contact support."
+                        );
+                      }
+                    }
+                  }}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Select Premium
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="text-center">
+                <p className="text-xs text-gray-400 mb-2">
+                  <span className="inline-flex items-center gap-1">
+                    <FontAwesomeIcon
+                      icon={faCheckCircle}
+                      className="text-green-400"
+                    />
+                    30-day money-back guarantee • Cancel anytime
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+              >
+                Maybe Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -3,8 +3,6 @@ import { createPortal } from "react-dom";
 import fetcher from "../../http/RequestConfig";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { Dropdown } from "flowbite-react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus } from "@fortawesome/free-solid-svg-icons";
 
 function ChatHistory(props) {
   const [chats, setChats] = useState([]);
@@ -15,7 +13,7 @@ function ChatHistory(props) {
   const [chatIdToRename, setChatIdToRename] = useState(null);
   const [newChatName, setNewChatName] = useState("");
   const { id } = useParams();
-  const navigate = useNavigate();
+
   const retrieveAllChats = async () => {
     console.log("i am in retrieve chats");
     try {
@@ -192,32 +190,27 @@ function ChatHistory(props) {
           document.body
         )}
 
-      <div className="px-3 mt-16">
-        <div className="flex justify-between items-center mb-2">
+      <div className="h-full py-2">
+        <div className="flex justify-between items-center ">
           <h2
-            className={`text-xl text-anoteblack-100 ${
+            className={`text-gray-400 text-sm ${
               chats.length === 0 ? "hidden" : ""
             } font-bold`}
           >
             Chat History
           </h2>
-          <button
-            onClick={() => navigate("/")}
-            className="bg-anoteblack-700  cursor-pointer hover:bg-anoteblack-600 text-white rounded-lg transition-colors"
-            title="Create new chat"
-          >
-            <FontAwesomeIcon icon={faPlus} className="text-base font-bold" />
-          </button>
         </div>
-        <ul className="flex-col py-2 justify-around w-full h-full flex overflow-y-auto">
+        <ul className="flex-col  w-full h-full py-2 flex">
           {[...chats].reverse().map((chat, index) => (
             <li
               key={index}
-              className={`group hover:bg-softBlue/80  mb-1 ${
-                chat.id === Number(id) ? "bg-softBlue/30" : ""
-              } flex w-full items-center rounded-md px-2 py-1 text-gray-800`}
+              className={`group hover:bg-gray-800 rounded-md px-2 py-1 cursor-pointer text-sm mb-1 flex w-full items-center gap-4 relative ${
+                chat.id === Number(id)
+                  ? "bg-slate-200/20 text-gray-300"
+                  : "text-white"
+              }`}
             >
-              <span className="cursor-pointer w-5/6 truncate max-w-2xl">
+              <span className="cursor-pointer  w-full truncate max-w-2xl">
                 <Link
                   onClick={async () => {
                     props.handleChatSelect(chat.id);
@@ -236,17 +229,46 @@ function ChatHistory(props) {
                 inline
                 label="···"
                 placement="left"
-                className="ml-auto z-50  group-hover:inline rounded-xl text-white hover:text-gray-300"
+                className="ml-auto z-50  group-hover:inline text-white bg-gray-200 border-none p-1"
               >
                 <Dropdown.Item onClick={() => handleRenameChat(chat.id)}>
-                  Rename
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                      <path
+                        d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    Rename
+                  </div>
                 </Dropdown.Item>
                 <Dropdown.Item onClick={() => handleDeleteChat(chat.id)}>
-                  Delete
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+                      <path
+                        d="M3 6h18m-2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2m-6 5v6m4-6v6"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    Delete
+                  </div>
                 </Dropdown.Item>
               </Dropdown>
             </li>
           ))}
+          {chats.length === 0 && (
+            <li className="flex items-center justify-center h-full">
+              <div className="text-gray-400 text-sm text-center">
+                No chat yet. Start a conversation!
+              </div>
+            </li>
+          )}
         </ul>
       </div>
     </>
