@@ -6,7 +6,7 @@ import { createcompany, companies} from "../../../../constants/RouteConstants";
 const Companies = () => {
   const [companies, setCompanies] = useState([]);
   const urlObject = new URL(window.location.origin);
-  
+
   //check log in status
   const [isLoggedIn, setIsLoggedIn] = useState(true);
   const accessToken = localStorage.getItem("accessToken");
@@ -26,7 +26,7 @@ const Companies = () => {
   if (hostname.startsWith("www.")) {
     hostname = hostname.substring(4);
   }
-  urlObject.hostname = `dashboard.${hostname}`;
+  urlObject.hostname = `chat.${hostname}`;
 
   //getting user's made chatbots
   const [userChatbots, setUserChatbots] = useState([]);
@@ -37,7 +37,7 @@ const Companies = () => {
     axios.get("/api/companies", { withCredentials: true })
       .then(res => setCompanies(res.data))
       .catch(err => console.error("Error fetching companies:", err));
-  
+
     if (isLoggedIn && accessToken) {
       axios.get("/api/user/companies", {
         withCredentials: true,
@@ -53,7 +53,7 @@ const Companies = () => {
     }
   }, [isLoggedIn, accessToken]);
 
-  
+
 
 
   return (
@@ -87,7 +87,7 @@ const Companies = () => {
             Create an intelligent chatbot for your company, no coding necessary.
           </p>
 
-          {showRestrictedRouteRequiringUserSession && ( 
+          {showRestrictedRouteRequiringUserSession && (
           <div className="w-full max-w-md border border-gray-600 rounded-md mb-6 p-4">
             <h3 className="text-lg font-semibold mb-2 text-left">Your Existing Chatbots</h3>
             <table className="w-full text-sm text-left text-gray-300">
@@ -112,7 +112,7 @@ const Companies = () => {
             </table>
           </div>
         )}
-        
+
         {showRestrictedRouteRequiringUserSession ? (
           <a
             href={companies}

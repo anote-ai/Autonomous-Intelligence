@@ -286,7 +286,7 @@ def callback():
 
     # TODO: COMMENT OUT WHEN DEPLOY TO PROD
     default_referrer = os.getenv("DEFAULT_REFERRER")
-    # default_referrer = "https://dashboard.privatechatbot.ai"
+    default_referrer = "https://chat.anote.ai"
     if not default_referrer:
         default_referrer = "http://localhost:3000"
     user_id = create_user_if_does_not_exist(id_info.get("email"), id_info.get("sub"), id_info.get("name"), id_info.get("picture"))
@@ -376,26 +376,26 @@ def DeductCredits():
   except InvalidTokenError:
     # If the JWT is invalid, return an error
     return jsonify({"error": "Invalid JWT"}), 401
-  
+
   credits_to_deduct = request.json.get('creditsToDeduct', 1)
-  
+
   # Import the deduct function and db connection
   from database.db import deduct_credits_from_user, get_db_connection
-  
+
   # Try to deduct credits
   success = deduct_credits_from_user(user_email, credits_to_deduct)
-  
+
   if not success:
     return jsonify({"error": "Insufficient credits"}), 400
-  
+
   # Get updated credit balance directly from database
   conn, cursor = get_db_connection()
   cursor.execute('SELECT credits FROM users WHERE email = %s', [user_email])
   user = cursor.fetchone()
   conn.close()
-  
+
   new_credits = user["credits"] if user else 0
-  
+
   return jsonify({
     "success": True,
     "newCredits": new_credits,
@@ -832,12 +832,12 @@ def process_message_pdf():
     model_type = request.json.get('model_type', 0)
     model_key = request.json.get('model_key', "")
     is_guest = request.json.get("is_guest", False)
-    
+
     print(f"DEBUG: is_guest = {is_guest}")
     print(f"DEBUG: message type = {type(message)}")
     print(f"DEBUG: message content = {message}")
     print(f"DEBUG: request headers: {dict(request.headers)}")
-    
+
     # Handle message extraction - it might be a dict or string
     if isinstance(message, dict):
         # If message is a dict, extract the actual message text
@@ -846,7 +846,7 @@ def process_message_pdf():
     else:
         message_text = str(message) if message is not None else ""
         print(f"DEBUG: Using message as string: {message_text}")
-    
+
     # Handle user authentication based on guest status
     user_email = None
     if not is_guest:
@@ -878,7 +878,7 @@ def process_message_pdf():
                 if not user_email or not isinstance(user_email, str):
                     return jsonify({"error": "User email is missing or invalid"}), 401
                 result = agent.process_query_stream(message_text.strip(), chat_id, user_email)
-                
+
             def generate():
                 for chunk in result:
                     try:
@@ -920,14 +920,14 @@ def process_message_pdf():
 
 def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email, is_guest=False):
     """Fallback implementation using the original direct LLM approach without the ReActive Agent"""
-    
+
     # Handle message extraction - it might be a dict or string
     if isinstance(message, dict):
         # If message is a dict, extract the actual message text
         message_text = message.get('text') or message.get('content') or str(message)
     else:
         message_text = str(message) if message is not None else ""
-    
+
     query = message_text.strip()
 
     # For guest users, skip database operations
@@ -1226,13 +1226,13 @@ def upload():
     # Extract API key for credit deduction
     auth_header = request.headers.get('Authorization')
     api_key = auth_header.split(' ')[1] if auth_header and auth_header.startswith('Bearer ') else None
-    
+
     # Calculate credits needed (1 credit per file/URL)
     files = request.files.getlist('files[]')
     paths = request.form.getlist('html_paths')
     total_items = len(files) + len(paths)
     credits_needed = max(1, total_items)  # At least 1 credit, more for multiple files
-    
+
     # Deduct credits before processing
     from database.db_auth import deduct_credits_from_api_key_user
     if not deduct_credits_from_api_key_user(api_key, credits_needed):
@@ -1304,7 +1304,7 @@ def public_ingest_pdf():
     # Extract API key for credit deduction
     auth_header = request.headers.get('Authorization')
     api_key = auth_header.split(' ')[1] if auth_header and auth_header.startswith('Bearer ') else None
-    
+
     # Deduct 1 credit for each chat message
     from database.db_auth import deduct_credits_from_api_key_user
     if not deduct_credits_from_api_key_user(api_key, 1):
