@@ -7,6 +7,10 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_core.callbacks import BaseCallbackHandler
 import os
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
 
 from api_endpoints.financeGPT.chatbot_endpoints import (
     get_relevant_chunks, add_message_to_db, add_sources_to_db,
@@ -108,6 +112,15 @@ class BaseSpecializedAgent:
         self.model_type = model_type
         self.model_key = model_key
         self.llm = self._initialize_llm()
+        # Use OpenAI Responses API (tools / MCP) when explicitly requested (model_key == 'gpt-5'
+        # or via env USE_RESPONSES_API=true). This enables passing `tools` to the responses
+        # call so the model can interact with MCP connectors.
+        self.use_responses_api = (
+            (self.model_type == 0 and (self.model_key == "gpt-5")) or
+            (os.getenv("USE_RESPONSES_API", "false").lower() == "true")
+        )
+        # store a default model name for non-langchain calls
+        self._responses_model_name = self.model_key if self.model_key else "gpt-5"
     
     def _initialize_llm(self):
         if self.model_type == 0:  # OpenAI/GPT
@@ -129,6 +142,71 @@ class BaseSpecializedAgent:
     def process(self, state: AgentState) -> Dict[str, Any]:
         """Override this method in specialized agents"""
         raise NotImplementedError("Each agent must implement the process method")
+
+    def invoke(self, messages: List[Any], callback_handler: Optional[MultiAgentCallbackHandler] = None, tools: Optional[List[Dict[str, Any]]] = None) -> Any:
+        """Unified invoke method that either calls the underlying langchain LLM or
+        the OpenAI Responses API (for gpt-5 + tools/MCP). `messages` is expected
+        to be a list of SystemMessage/HumanMessage objects as used in the file.
+        Returns an object with a `content` attribute (to match existing code).
+        """
+        # If configured to use the Responses API, use the OpenAI client directly
+        if self.use_responses_api and OpenAI is not None:
+            try:
+                client = OpenAI()
+                # Flatten messages into a single input string
+                parts = []
+                for m in messages:
+                    try:
+                        role = getattr(m, "type", None) or m.__class__.__name__
+                        content = getattr(m, "content", str(m))
+                    except Exception:
+                        content = str(m)
+                    parts.append(content)
+
+                input_text = "\n\n".join(parts)
+
+                # If tools are not provided, try to construct a default MCP tool from env
+                if tools is None:
+                    mcp_label = os.getenv("MCP_SERVER_LABEL")
+                    mcp_token = os.getenv("MCP_OAUTH_TOKEN")
+                    mcp_url = AgentConfig.MCP_SERVER_URL if AgentConfig.MCP_SERVER_URL else os.getenv("MCP_SERVER_URL")
+                    if mcp_label and mcp_url:
+                        tools = [{
+                            "type": "mcp",
+                            "server_label": mcp_label,
+                            "server_url": mcp_url,
+                            "authorization": mcp_token or ""
+                        }]
+
+                # Make the responses.create call
+                resp = client.responses.create(
+                    model=self._responses_model_name,
+                    input=input_text,
+                    tools=tools
+                )
+
+                # Wrap to match previous `.content` usage
+                class _Resp:
+                    def __init__(self, text):
+                        self.content = text
+
+                # The official client exposes `output_text` in many versions
+                out_text = getattr(resp, "output_text", None) or getattr(resp, "text", None) or str(resp)
+                return _Resp(out_text)
+            except Exception as e:
+                # fall back to langchain llm if available
+                print(f"Responses API call failed, falling back to langchain LLM: {e}")
+
+        # Default: use existing langchain LLM invoke (maintain streaming callbacks)
+        if hasattr(self.llm, "invoke"):
+            config = {"callbacks": [callback_handler]} if callback_handler else {}
+            return self.llm.invoke(messages, config=config)
+        else:
+            # If llm does not have invoke, try to call it as a callable
+            try:
+                return self.llm(messages)
+            except Exception as e:
+                raise
 
 
 class DocumentRetrievalAgent(BaseSpecializedAgent):
@@ -178,10 +256,10 @@ class DocumentRetrievalAgent(BaseSpecializedAgent):
                 Please format your response as JSON with keys: relevance_score, key_info, sources, confidence
                 """
                 
-                response = self.llm.invoke(
-                    [SystemMessage(content="You are a document analysis specialist."), 
+                response = self.invoke(
+                    [SystemMessage(content="You are a document analysis specialist."),
                      HumanMessage(content=analysis_prompt)],
-                    config={"callbacks": [callback_handler]}
+                    callback_handler=callback_handler
                 )
                 
                 try:
@@ -294,10 +372,10 @@ class ChatHistoryAgent(BaseSpecializedAgent):
                 Identify what the user is referring to and provide context. Format as JSON with keys: context_found, referent, explanation
                 """
                 
-                response = self.llm.invoke(
-                    [SystemMessage(content="You are a conversation context analysis specialist."), 
+                response = self.invoke(
+                    [SystemMessage(content="You are a conversation context analysis specialist."),
                      HumanMessage(content=context_prompt)],
-                    config={"callbacks": [callback_handler]}
+                    callback_handler=callback_handler
                 )
                 
                 try:
@@ -496,10 +574,10 @@ class GeneralKnowledgeAgent(BaseSpecializedAgent):
             Provide a concise but comprehensive answer.
             """
             
-            response = self.llm.invoke(
-                [SystemMessage(content="You are a helpful general knowledge assistant."), 
+            response = self.invoke(
+                [SystemMessage(content="You are a helpful general knowledge assistant."),
                  HumanMessage(content=knowledge_prompt)],
-                config={"callbacks": [callback_handler]}
+                callback_handler=callback_handler
             )
             
             general_answer = f"Based on general knowledge: {response.content}"
@@ -617,10 +695,10 @@ class OrchestratorAgent(BaseSpecializedAgent):
             Be clear about your sources and confidence level.
             """
             
-            response = self.llm.invoke(
-                [SystemMessage(content="You are an orchestrator agent responsible for providing final, comprehensive answers."), 
+            response = self.invoke(
+                [SystemMessage(content="You are an orchestrator agent responsible for providing final, comprehensive answers."),
                  HumanMessage(content=synthesis_prompt)],
-                config={"callbacks": [callback_handler]}
+                callback_handler=callback_handler
             )
             
             final_answer = response.content

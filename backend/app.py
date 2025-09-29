@@ -839,7 +839,7 @@ def process_message_pdf():
     print(f"DEBUG: message content = {message}")
     print(f"DEBUG: request headers: {dict(request.headers)}")
 
-    # Handle message extraction - it might be a dict or string
+    # # Handle message extraction - it might be a dict or string
     if isinstance(message, dict):
         # If message is a dict, extract the actual message text
         message_text = message.get('text') or message.get('content') or str(message)
@@ -848,7 +848,7 @@ def process_message_pdf():
         message_text = str(message) if message is not None else ""
         print(f"DEBUG: Using message as string: {message_text}")
 
-    # Handle user authentication based on guest status
+    # # Handle user authentication based on guest status
     user_email = None
     if not is_guest:
         print("DEBUG: Not guest mode, extracting user email")
@@ -864,60 +864,60 @@ def process_message_pdf():
     else:
         print("DEBUG: Guest mode, skipping user email extraction")
 
-    # Check if agents are enabled
-    if AgentConfig.is_agent_enabled():
-        try:
-            # Initialize the reactive agent
-            agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
+    # # Check if agents are enabled
+    # if AgentConfig.is_agent_enabled():
+    #     try:
+    #         # Initialize the reactive agent
+    #         agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
 
-            # Process the query using the appropriate method based on guest status
-            if is_guest:
-                # Use guest-specific streaming method
-                result = agent.process_query_stream_guest(message_text.strip())
-            else:
-                # Use regular method for authenticated users
-                if not user_email or not isinstance(user_email, str):
-                    return jsonify({"error": "User email is missing or invalid"}), 401
-                result = agent.process_query_stream(message_text.strip(), chat_id, user_email)
+    #         # Process the query using the appropriate method based on guest status
+    #         if is_guest:
+    #             # Use guest-specific streaming method
+    #             result = agent.process_query_stream_guest(message_text.strip())
+    #         else:
+    #             # Use regular method for authenticated users
+    #             if not user_email or not isinstance(user_email, str):
+    #                 return jsonify({"error": "User email is missing or invalid"}), 401
+    #             result = agent.process_query_stream(message_text.strip(), chat_id, user_email)
 
-            def generate():
-                for chunk in result:
-                    try:
-                        if isinstance(chunk, dict):
-                            chunk_data = chunk
-                        elif hasattr(chunk, 'dict') and callable(getattr(chunk, 'dict', None)):
-                            chunk_data = chunk.dict()
-                        elif hasattr(chunk, '__dict__'):
-                            chunk_data = chunk.__dict__
-                        else:
-                            chunk_data = chunk
+    #         def generate():
+    #             for chunk in result:
+    #                 try:
+    #                     if isinstance(chunk, dict):
+    #                         chunk_data = chunk
+    #                     elif hasattr(chunk, 'dict') and callable(getattr(chunk, 'dict', None)):
+    #                         chunk_data = chunk.dict()
+    #                     elif hasattr(chunk, '__dict__'):
+    #                         chunk_data = chunk.__dict__
+    #                     else:
+    #                         chunk_data = chunk
 
-                        json_data = json.dumps(chunk_data, cls=CustomJSONEncoder)
-                        yield f"data: {json_data}\n\n"
-                        print(f"Streamed chunk: {chunk}")
-                    except (TypeError, ValueError) as e:
-                        print(f"Error serializing chunk {chunk}: {e}")
+    #                     json_data = json.dumps(chunk_data, cls=CustomJSONEncoder)
+    #                     yield f"data: {json_data}\n\n"
+    #                     print(f"Streamed chunk: {chunk}")
+    #                 except (TypeError, ValueError) as e:
+    #                     print(f"Error serializing chunk {chunk}: {e}")
 
-            return Response(generate(), status=200)
+    #         return Response(generate(), status=200)
 
 
-            # return jsonify({
-            #     "answer": 1, # result["answer"],
-            #     "message_id": 1,# result.get("message_id"),
-            #     "sources": 1, # result.get("sources", []),
-            #     "reasoning": 1 # result.get("agent_reasoning", []) if AgentConfig.LOG_AGENT_REASONING else []
-            # })
+    #         # return jsonify({
+    #         #     "answer": 1, # result["answer"],
+    #         #     "message_id": 1,# result.get("message_id"),
+    #         #     "sources": 1, # result.get("sources", []),
+    #         #     "reasoning": 1 # result.get("agent_reasoning", []) if AgentConfig.LOG_AGENT_REASONING else []
+    #         # })
 
-        except Exception as e:
-            print(f"Error in reactive agent processing: {str(e)}")
-            # Fallback to original implementation if agent fails and fallback is enabled
-            if AgentConfig.should_use_fallback():
-                return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
-            else:
-                return jsonify({"error": "Agent processing failed due to an internal error."}), 500
-    else:
-        # Agents disabled, use original implementation
-        return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
+    #     except Exception as e:
+    #         print(f"Error in reactive agent processing: {str(e)}")
+    #         # Fallback to original implementation if agent fails and fallback is enabled
+    #         if AgentConfig.should_use_fallback():
+    #             return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
+    #         else:
+    #             return jsonify({"error": "Agent processing failed due to an internal error."}), 500
+    # else:
+    #     # Agents disabled, use original implementation
+    return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
 
 def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email, is_guest=False):
     """Fallback implementation using the original direct LLM approach without the ReActive Agent"""
@@ -951,53 +951,78 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
     sources = get_relevant_chunks(2, query, chat_id, user_email)
     sources_str = " ".join([", ".join(str(elem) for elem in source) for source in sources])
 
-    if (model_type == 0):
-        if model_key:
-           model_use = model_key
-        else:
-           model_use = "llama2:latest"
+    # if (model_type == 0):
+    #     if model_key:
+    #        model_use = model_key
+    #     else:
+    #        model_use = "llama2:latest"
 
-        print("using OpenAI and model is", model_use)
-        try:
-            completion = client.chat.completions.create(
-                model=model_use,
-                messages=[
-                    {"role": "user",
-                     "content": f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources_str} And this is the question:{query}."}
-                ]
-            )
-            print("using fine tuned model")
-            answer = str(completion.choices[0].message.content)
-        except openai.NotFoundError:
-            print(f"The model `{model_use}` does not exist. Falling back to 'gpt-4'.")
-            completion = client.chat.completions.create(
-                model="llama2:latest",
-                messages=[
-                    {"role": "user",
-                     "content": f"First, tell the user that their given model key does not exist, and that you have resorted to using GPT-4 before answering their question, then add a line break and answer their question. You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources[0]}{sources[1]} And this is the question:{query}."}
-                ]
-            )
-            answer = str(completion.choices[0].message.content)
-    else:
-        print("using Claude")
+    #     print("using OpenAI and model is", model_use)
+    #     try:
+    #         completion = client.chat.completions.create(
+    #             model=model_use,
+    #             messages=[
+    #                 {"role": "user",
+    #                  "content": f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources_str} And this is the question:{query}."}
+    #             ]
+    #         )
+    #         print("using fine tuned model")
+    #         answer = str(completion.choices[0].message.content)
+    #     except openai.NotFoundError:
+    #         print(f"The model `{model_use}` does not exist. Falling back to 'gpt-4'.")
+    #         completion = client.chat.completions.create(
+    #             model="llama2:latest",
+    #             messages=[
+    #                 {"role": "user",
+    #                  "content": f"First, tell the user that their given model key does not exist, and that you have resorted to using GPT-4 before answering their question, then add a line break and answer their question. You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources[0]}{sources[1]} And this is the question:{query}."}
+    #             ]
+    #         )
+    #         answer = str(completion.choices[0].message.content)
+    # else:
+    #     print("using Claude")
 
-        anthropic = Anthropic(
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
+    #     anthropic = Anthropic(
+    #         api_key=os.getenv("ANTHROPIC_API_KEY")
+    #     )
 
-        completion = anthropic.completions.create(
-            model="claude-2",
-            max_tokens_to_sample=700,
-            prompt = (
-              f"{HUMAN_PROMPT} "
-              f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. "
-              f"please address the question: {query}. "
-              f"Consider the provided text as evidence: {sources_str}. "
-              f"{AI_PROMPT}")
-        )
-        answer = completion.completion
+    #     completion = anthropic.completions.create(
+    #         model="claude-2",
+    #         max_tokens_to_sample=700,
+    #         prompt = (
+    #           f"{HUMAN_PROMPT} "
+    #           f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. "
+    #           f"please address the question: {query}. "
+    #           f"Consider the provided text as evidence: {sources_str}. "
+    #           f"{AI_PROMPT}")
+    #     )
+    #     answer = completion.completion
 
     #This adds bot message
+    # completion = client.chat.completions.create(
+    #     model="gpt-5",
+    #     messages=[
+    #         {"role": "user",
+    #             "content": f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources_str} And this is the question:{query}."}
+    #     ]
+    # )
+    # print("using gpt-5 model")
+    # answer = str(completion.choices[0].message.content)
+    from openai import OpenAI
+
+    client_new = openai.OpenAI(api_key="")
+    resp = client_new.responses.create(
+        model="gpt-5",
+        tools=[
+            {
+                "type": "mcp",
+                "server_label": "demoserver",
+                "server_url": "https://app.mintmcp.com/s/g_7BQRRY3ygjGAOF5yNnhqB6/mcp",
+                "authorization": "-M1mg0Dx6bPPdgvbLr5cC-t8dix4vSfH-gIN35eVHFk",
+            }
+        ],
+        input=query,
+    )
+    answer = resp.output_text
     message_id = add_message_to_db(answer, chat_id, 0)
 
     try:
