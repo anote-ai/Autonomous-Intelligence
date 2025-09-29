@@ -286,7 +286,8 @@ def callback():
 
     # TODO: COMMENT OUT WHEN DEPLOY TO PROD
     default_referrer = os.getenv("DEFAULT_REFERRER")
-    default_referrer = "https://chat.anote.ai"
+    # default_referrer = "https://chat.anote.ai"
+    default_referrer = "http://localhost:3000"
     if not default_referrer:
         default_referrer = "http://localhost:3000"
     user_id = create_user_if_does_not_exist(id_info.get("email"), id_info.get("sub"), id_info.get("name"), id_info.get("picture"))
@@ -371,34 +372,34 @@ def RefreshCredits():
 @cross_origin(supports_credentials=True)
 @jwt_or_session_token_required
 def DeductCredits():
-  try:
-    user_email = extractUserEmailFromRequest(request)
-  except InvalidTokenError:
-    # If the JWT is invalid, return an error
-    return jsonify({"error": "Invalid JWT"}), 401
+#   try:
+#     user_email = extractUserEmailFromRequest(request)
+#   except InvalidTokenError:
+#     # If the JWT is invalid, return an error
+#     return jsonify({"error": "Invalid JWT"}), 401
 
   credits_to_deduct = request.json.get('creditsToDeduct', 1)
 
-  # Import the deduct function and db connection
-  from database.db import deduct_credits_from_user, get_db_connection
+#   # Import the deduct function and db connection
+#   from database.db import deduct_credits_from_user, get_db_connection
 
-  # Try to deduct credits
-  success = deduct_credits_from_user(user_email, credits_to_deduct)
+#   # Try to deduct credits
+#   success = deduct_credits_from_user(user_email, credits_to_deduct)
 
-  if not success:
-    return jsonify({"error": "Insufficient credits"}), 400
+#   if not success:
+#     return jsonify({"error": "Insufficient credits"}), 400
 
-  # Get updated credit balance directly from database
-  conn, cursor = get_db_connection()
-  cursor.execute('SELECT credits FROM users WHERE email = %s', [user_email])
-  user = cursor.fetchone()
-  conn.close()
+#   # Get updated credit balance directly from database
+#   conn, cursor = get_db_connection()
+#   cursor.execute('SELECT credits FROM users WHERE email = %s', [user_email])
+#   user = cursor.fetchone()
+#   conn.close()
 
-  new_credits = user["credits"] if user else 0
+#   new_credits = user["credits"] if user else 0
 
   return jsonify({
     "success": True,
-    "newCredits": new_credits,
+    "newCredits": 50,
     "creditsDeducted": credits_to_deduct
   })
 
