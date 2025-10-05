@@ -63,8 +63,13 @@ schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
 
 with open(schema_path, encoding='utf8') as f:
     sql_script = f.read()
-    for result in cur.execute(sql_script, multi=True):
-        pass  # Optionally log result
+    statements = [stmt.strip() for stmt in sql_script.split(';') if stmt.strip()]
+    for statement in statements:
+        try:
+            cur.execute(statement)
+        except mysql.connector.Error as err:
+            print(f"Error executing statement: {err}")
+            print(f"Statement: {statement[:100]}...")  # Optionally log result
 
 cur.execute("SELECT * FROM users WHERE id = 1")
 result = cur.fetchone()

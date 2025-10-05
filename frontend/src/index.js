@@ -19,3 +19,13 @@ appRoot.render(
 // to log results (for example: reportWebVitals(console.log))
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();
+
+// OPTIONAL: PWA Cleanup
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(reg => reg.unregister());
+  });
+  caches.keys().then(names => {
+    names.forEach(name => caches.delete(name));
+  });
+}

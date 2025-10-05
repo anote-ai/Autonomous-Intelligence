@@ -7,6 +7,8 @@ from db_enums import PaidUserStatus
 from dateutil.relativedelta import relativedelta
 from constants.global_constants import chatgptLimit
 from constants.global_constants import dbName, dbHost, dbUser, dbPassword
+import socket
+import platform
 import secrets
 
 
@@ -16,12 +18,33 @@ import mysql.connector
 
 def get_db_connection():
     if ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
-        db_connect = mysql.connector.connect(
-                user='root',
-                unix_socket='/tmp/mysql.sock',
-                database="agents",
-        )
+        current_platform = platform.system().lower()
+        
+        if current_platform in ['linux', 'darwin']:
+            # Try Unix socket first on Unix-like systems
+            try:
+                db_connect = mysql.connector.connect(
+                        user='root',
+                        unix_socket='/tmp/mysql.sock',
+                        database="agents",
+                )
+            except mysql.connector.Error:
+                # Fallback to TCP if socket fails
+                db_connect = mysql.connector.connect(
+                    host='localhost',
+                    user=dbUser,
+                    password=dbPassword,
+                    database=dbName,
+                )
+        else:
+            db_connect = mysql.connector.connect(
+                host=dbHost,
+                user=dbUser,
+                password=dbPassword,
+                database=dbName,
+            )
     else:
+        # Production environment
         db_connect = mysql.connector.connect(
             host=dbHost,
             user=dbUser,

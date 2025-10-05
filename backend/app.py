@@ -54,6 +54,7 @@ from agents.config import AgentConfig
 
 from datetime import datetime
 
+from api_endpoints.languages.rag_routes import rag_blueprint
 from api_endpoints.languages.gtm import gpt4_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
 from api_endpoints.languages.japanese import japanese_blueprint
@@ -65,6 +66,7 @@ from datetime import datetime
 load_dotenv(override=True)
 
 app = Flask(__name__)
+app.register_blueprint(rag_blueprint)
 app.register_blueprint(gpt4_blueprint)
 app.register_blueprint(chinese_blueprint)
 app.register_blueprint(japanese_blueprint)
