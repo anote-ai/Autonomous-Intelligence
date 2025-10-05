@@ -51,6 +51,18 @@ const Chatbot = (props) => {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
+  // Streaming mode state - 'agent' or 'non-agent'
+  const [streamingMode, setStreamingMode] = useState(() => {
+    const saved = localStorage.getItem("chatbot-streaming-mode");
+    return saved || "non-agent";
+  });
+
+  // Handle streaming mode change
+  const handleStreamingModeChange = (mode) => {
+    setStreamingMode(mode);
+    localStorage.setItem("chatbot-streaming-mode", mode);
+  };
+
   const shouldShowUpgradeModal = () => {
     return user && numCredits === 0 && messages.length > 0 && !showUpgradeModal; // Only if not already shown
   };
@@ -526,6 +538,14 @@ const Chatbot = (props) => {
           reasoning: [],
           sources: [],
           timestamp: Date.now(),
+          currentStep: {
+            type: "streaming",
+            message:
+              streamingMode === "agent"
+                ? "AI is thinking..."
+                : "Generating response...",
+            streaming_mode: streamingMode,
+          },
         };
 
         setMessages([userMsg, thinkingMsg]);
@@ -564,6 +584,14 @@ const Chatbot = (props) => {
         reasoning: [],
         sources: [],
         timestamp: now + 1, // Slightly later timestamp for thinking message
+        currentStep: {
+          type: "streaming",
+          message:
+            streamingMode === "agent"
+              ? "AI is thinking..."
+              : "Generating response...",
+          streaming_mode: streamingMode,
+        },
       },
     ]);
 
@@ -600,6 +628,7 @@ const Chatbot = (props) => {
           model_type: props.isPrivate,
           model_key: props.confirmedModelKey,
           is_guest: isGuestChat, // Flag to indicate guest chat
+          streaming_mode: streamingMode, // Add streaming mode parameter
         }),
       });
 
@@ -834,6 +863,29 @@ const Chatbot = (props) => {
           ...(updatedMessage.reasoning || []),
           completeStep,
         ];
+        break;
+
+      case "content":
+        // Handle non-agent streaming content
+        if (eventData.streaming_mode === "non-agent") {
+          // For non-agent mode, append content directly
+          updatedMessage.content =
+            (updatedMessage.content || "") + (eventData.content || "");
+          updatedMessage.isThinking = true; // Keep thinking until done
+          updatedMessage.currentStep = {
+            type: "streaming",
+            message: "Generating response...",
+            streaming_mode: "non-agent",
+          };
+        }
+        break;
+
+      case "done":
+        // Handle completion for both agent and non-agent modes
+        if (eventData.streaming_mode === "non-agent") {
+          updatedMessage.isThinking = false;
+          updatedMessage.currentStep = null;
+        }
         break;
       case "step-complete":
         // Set final answer and sources
@@ -1289,6 +1341,47 @@ const Chatbot = (props) => {
                           : "bg-[#181f29] text-white border border-[#2e3a4c] rounded-bl-none"
                       }`}
                     >
+                      {/* Assistant Message Header with streaming mode indicator */}
+                      {msg.role === "assistant" && (
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-700">
+                          <div className="flex items-center gap-2">
+                            <FontAwesomeIcon
+                              icon={faBrain}
+                              className="text-blue-400 text-sm"
+                            />
+                            <span className="text-xs text-gray-400 font-medium">
+                              Assistant Response
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {/* Streaming mode indicator */}
+                            {msg.currentStep?.streaming_mode === "non-agent" ||
+                            (msg.isThinking &&
+                              streamingMode === "non-agent") ? (
+                              <div className="flex items-center gap-1 px-2 py-1 bg-green-600/20 rounded-md">
+                                <FontAwesomeIcon
+                                  icon={faLightbulb}
+                                  className="text-green-400 text-xs"
+                                />
+                                <span className="text-xs text-green-400 font-medium">
+                                  Direct
+                                </span>
+                              </div>
+                            ) : msg.reasoning?.length > 0 || msg.isThinking ? (
+                              <div className="flex items-center gap-1 px-2 py-1 bg-blue-600/20 rounded-md">
+                                <FontAwesomeIcon
+                                  icon={faSitemap}
+                                  className="text-blue-400 text-xs"
+                                />
+                                <span className="text-xs text-blue-400 font-medium">
+                                  Agent
+                                </span>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Assistant Thinking Animation */}
                       {msg.isThinking ? (
                         <div className="space-y-3">
@@ -1305,7 +1398,9 @@ const Chatbot = (props) => {
                               ></div>
                             </div>
                             <span className="text-sm text-gray-400">
-                              AI is thinking...
+                              {msg.currentStep?.streaming_mode === "non-agent"
+                                ? "Generating response..."
+                                : "AI is thinking..."}
                             </span>
                           </div>
 
@@ -1349,6 +1444,42 @@ const Chatbot = (props) => {
           </div>
         )}
 
+        {/* Streaming Mode Toggle */}
+        <div className="flex justify-center mb-3 px-4">
+          <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-2">
+            <FontAwesomeIcon icon={faBrain} className="text-gray-400 text-sm" />
+            <span className="text-gray-300 text-sm font-medium">
+              Response Mode:
+            </span>
+            <div className="flex bg-gray-700 rounded-md overflow-hidden">
+              <button
+                disabled={true}
+                onClick={() => handleStreamingModeChange("agent")}
+                className={`px-3 py-1 text-sm font-medium transition-colors ${
+                  streamingMode === "agent"
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-300 hover:text-white hover:bg-gray-600"
+                }`}
+                title="AI Agent with reasoning - shows thought process and tool usage"
+              >
+                <FontAwesomeIcon icon={faSitemap} className="mr-1" />
+                Agent
+              </button>
+              <button
+                onClick={() => handleStreamingModeChange("non-agent")}
+                className={`px-3 py-1 text-sm font-medium transition-colors ${
+                  streamingMode === "non-agent"
+                    ? "bg-green-600 text-white"
+                    : "text-gray-300 hover:text-white hover:bg-gray-600"
+                }`}
+                title="Direct LLM response - faster but without reasoning steps"
+              >
+                <FontAwesomeIcon icon={faLightbulb} className="mr-1" />
+                Direct
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Input form */}
         <div className="flex w-full justify-center mb-4 px-4">
