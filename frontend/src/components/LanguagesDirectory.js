@@ -77,6 +77,15 @@ const LANGUAGES_DATA = [
     speakers: "250M+ speakers",
     comingSoon: true,
   },
+  {
+  id: 9,
+  name: "Anote",
+  nativeName: "Anote AI Assistant",
+  description: "Chat with Anote's AI assistant",
+  flag: "A",
+  chatPath: "/languages/anote",
+  speakers: "AI-Powered Assistant",
+  },
 ];
 
 const LanguagesDirectory = () => {

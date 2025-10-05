@@ -7,6 +7,7 @@ const LANGUAGE_MODELS = {
   japanese: "GPT-4.1",
   arabic: "GPT-4.1",
   chinese: "GPT-4.1",
+  anote: "Ollama + RAG"
 };
 
 const API_BASE = process.env.REACT_APP_BACK_END_HOST || "";
@@ -16,6 +17,7 @@ const LANGUAGE_API_ENDPOINTS = {
   japanese: `${API_BASE}/api/chat/japanese`,
   arabic: `${API_BASE}/api/chat/arabic`,
   chinese: `${API_BASE}/api/chat/chinese`,
+  anote: `${API_BASE}/api/chat/anote`,
 };
 
 const validLanguages = Object.keys(LANGUAGE_MODELS);
@@ -27,7 +29,12 @@ const Languages = () => {
 
     // Hooks must be called always, so move this above the early return
     const [messages, setMessages] = useState([
-      { message: "Hello! Choose a language and start chatting.", direction: "incoming" },
+      {
+        message: selectedLanguage === "anote" 
+          ? "Hello! Ask me anything about Anote."  // Specialized for Anote Chatbot
+          : "Hello! Choose a language and start chatting.", 
+        direction: "incoming" 
+      },
     ]);
     const inputRef = useRef(null);
     const scrollRef = useRef(null);
@@ -46,8 +53,12 @@ const Languages = () => {
     useEffect(() => {
         if (lang && validLanguages.includes(lang)) {
           setSelectedLanguage(lang);
+          const welcomeMessage = lang === "anote"
+            ? "Hello! Ask me anything about Anote."
+            : "Hello! Choose a language and start chatting.";
+          
           setMessages([
-            { message: "Hello! Choose a language and start chatting.", direction: "incoming" },
+            { message: welcomeMessage, direction: "incoming" }
           ]);
           setFile(null);
           if (fileInputRef.current) fileInputRef.current.value = "";
