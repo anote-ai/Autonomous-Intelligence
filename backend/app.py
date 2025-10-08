@@ -72,7 +72,7 @@ app.register_blueprint(korean_blueprint)
 app.register_blueprint(spanish_blueprint)
 app.register_blueprint(arabic_blueprint)
 
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="http://host.docker.internal:11434/v1")
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 def ensure_ray_started():
     if not ray.is_initialized():
         try:
@@ -286,7 +286,6 @@ def callback():
 
     # TODO: COMMENT OUT WHEN DEPLOY TO PROD
     default_referrer = os.getenv("DEFAULT_REFERRER")
-    # default_referrer = "https://chat.anote.ai"
     default_referrer = "http://localhost:3000"
     if not default_referrer:
         default_referrer = "http://localhost:3000"
@@ -671,7 +670,7 @@ def infer_chat_name():
 
 
     completion = client.chat.completions.create(
-        model="llama2:latest",
+        model="gpt-3.5-turbo",
         messages=[
             {"role": "user",
              "content": f"Based off these 2 messages between me and my chatbot, please infer a name for the chat. Keep it to a maximum of 4 words, 5 if you must. Do not use the word chat in it. Some good examples are, AI research paper, Apple financial report, Questions about earnings calls. Return only the chatname and nothing else. Here are the messages: {chat_messages}"}
@@ -833,8 +832,10 @@ def process_message_pdf():
     model_type = request.json.get('model_type', 0)
     model_key = request.json.get('model_key', "")
     is_guest = request.json.get("is_guest", False)
+    streaming_mode = request.json.get("streaming_mode", "agent")  # Default to agent mode
 
     print(f"DEBUG: is_guest = {is_guest}")
+    print(f"DEBUG: streaming_mode = {streaming_mode}")
     print(f"DEBUG: message type = {type(message)}")
     print(f"DEBUG: message content = {message}")
     print(f"DEBUG: request headers: {dict(request.headers)}")
@@ -864,62 +865,56 @@ def process_message_pdf():
     else:
         print("DEBUG: Guest mode, skipping user email extraction")
 
-    # # Check if agents are enabled
-    # if AgentConfig.is_agent_enabled():
-    #     try:
-    #         # Initialize the reactive agent
-    #         agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
+    # Check if agents are enabled and streaming mode is 'agent'
+    if AgentConfig.is_agent_enabled() and streaming_mode == 'agent':
+        try:
+            # Initialize the reactive agent
+            agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
 
-    #         # Process the query using the appropriate method based on guest status
-    #         if is_guest:
-    #             # Use guest-specific streaming method
-    #             result = agent.process_query_stream_guest(message_text.strip())
-    #         else:
-    #             # Use regular method for authenticated users
-    #             if not user_email or not isinstance(user_email, str):
-    #                 return jsonify({"error": "User email is missing or invalid"}), 401
-    #             result = agent.process_query_stream(message_text.strip(), chat_id, user_email)
+            # Process the query using the appropriate method based on guest status
+            if is_guest:
+                # Use guest-specific streaming method
+                result = agent.process_query_stream_guest(message_text.strip())
+            else:
+                # Use regular method for authenticated users
+                if not user_email or not isinstance(user_email, str):
+                    return jsonify({"error": "User email is missing or invalid"}), 401
+                result = agent.process_query_stream(message_text.strip(), chat_id, user_email)
 
-    #         def generate():
-    #             for chunk in result:
-    #                 try:
-    #                     if isinstance(chunk, dict):
-    #                         chunk_data = chunk
-    #                     elif hasattr(chunk, 'dict') and callable(getattr(chunk, 'dict', None)):
-    #                         chunk_data = chunk.dict()
-    #                     elif hasattr(chunk, '__dict__'):
-    #                         chunk_data = chunk.__dict__
-    #                     else:
-    #                         chunk_data = chunk
+            def generate():
+                for chunk in result:
+                    try:
+                        if isinstance(chunk, dict):
+                            chunk_data = chunk
+                        elif hasattr(chunk, 'dict') and callable(getattr(chunk, 'dict', None)):
+                            chunk_data = chunk.dict()
+                        elif hasattr(chunk, '__dict__'):
+                            chunk_data = chunk.__dict__
+                        else:
+                            chunk_data = chunk
 
-    #                     json_data = json.dumps(chunk_data, cls=CustomJSONEncoder)
-    #                     yield f"data: {json_data}\n\n"
-    #                     print(f"Streamed chunk: {chunk}")
-    #                 except (TypeError, ValueError) as e:
-    #                     print(f"Error serializing chunk {chunk}: {e}")
+                        # Add streaming mode indicator to each chunk
+                        chunk_data['streaming_mode'] = 'agent'
+                        json_data = json.dumps(chunk_data, cls=CustomJSONEncoder)
+                        yield f"data: {json_data}\n\n"
+                        print(f"Streamed agent chunk: {chunk}")
+                    except (TypeError, ValueError) as e:
+                        print(f"Error serializing chunk {chunk}: {e}")
 
-    #         return Response(generate(), status=200)
+            return Response(generate(), status=200)
 
+        except Exception as e:
+            print(f"Error in reactive agent processing: {str(e)}")
+            # Fallback to original implementation if agent fails and fallback is enabled
+            if AgentConfig.should_use_fallback():
+                return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest, streaming_mode)
+            else:
+                return jsonify({"error": "Agent processing failed due to an internal error."}), 500
+    else:
+        # Agents disabled or non-agent mode selected, use original implementation
+        return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest, streaming_mode)
 
-    #         # return jsonify({
-    #         #     "answer": 1, # result["answer"],
-    #         #     "message_id": 1,# result.get("message_id"),
-    #         #     "sources": 1, # result.get("sources", []),
-    #         #     "reasoning": 1 # result.get("agent_reasoning", []) if AgentConfig.LOG_AGENT_REASONING else []
-    #         # })
-
-    #     except Exception as e:
-    #         print(f"Error in reactive agent processing: {str(e)}")
-    #         # Fallback to original implementation if agent fails and fallback is enabled
-    #         if AgentConfig.should_use_fallback():
-    #             return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
-    #         else:
-    #             return jsonify({"error": "Agent processing failed due to an internal error."}), 500
-    # else:
-    #     # Agents disabled, use original implementation
-    return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
-
-def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email, is_guest=False):
+def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email, is_guest=False, streaming_mode='non-agent'):
     """Fallback implementation using the original direct LLM approach without the ReActive Agent"""
 
     # Handle message extraction - it might be a dict or string
@@ -951,86 +946,142 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
     sources = get_relevant_chunks(2, query, chat_id, user_email)
     sources_str = " ".join([", ".join(str(elem) for elem in source) for source in sources])
 
-    # if (model_type == 0):
-    #     if model_key:
-    #        model_use = model_key
-    #     else:
-    #        model_use = "llama2:latest"
+    if (model_type == 0):
+        if model_key:
+           model_use = model_key
+        else:
+           model_use = "chatgpt-4o-latest"
 
-    #     print("using OpenAI and model is", model_use)
-    #     try:
-    #         completion = client.chat.completions.create(
-    #             model=model_use,
-    #             messages=[
-    #                 {"role": "user",
-    #                  "content": f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources_str} And this is the question:{query}."}
-    #             ]
-    #         )
-    #         print("using fine tuned model")
-    #         answer = str(completion.choices[0].message.content)
-    #     except openai.NotFoundError:
-    #         print(f"The model `{model_use}` does not exist. Falling back to 'gpt-4'.")
-    #         completion = client.chat.completions.create(
-    #             model="llama2:latest",
-    #             messages=[
-    #                 {"role": "user",
-    #                  "content": f"First, tell the user that their given model key does not exist, and that you have resorted to using GPT-4 before answering their question, then add a line break and answer their question. You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources[0]}{sources[1]} And this is the question:{query}."}
-    #             ]
-    #         )
-    #         answer = str(completion.choices[0].message.content)
-    # else:
-    #     print("using Claude")
+        print("using OpenAI and model is", model_use)
+        prompt = """
+        You are a helpful, friendly, and intelligent AI assistant that can engage in natural conversations with users.
+        You have access to uploaded documents and should use them as your primary source for document-related questions.
+        You may elaborate, explain, or summarize the document’s content in your own words to help the user understand it better.
+        If a question cannot be answered from the document, you may use general world knowledge to provide helpful, accurate context — but clearly distinguish between what comes from the document and what is general information.
+        If the user specifically asks for an answer only from the text, restrict your response to the document content.
+        Be conversational, clear, and concise.
 
-    #     anthropic = Anthropic(
-    #         api_key=os.getenv("ANTHROPIC_API_KEY")
-    #     )
+        Here is the sources below
+        {sources_str}
+        """
+        try:
+            completion = client.chat.completions.create(
+                model=model_use,
+                stream=True,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": query
+                    }
+                ]
+            )
+            print("using fine tuned model")
+            def generate():
+                full_response = ""
+                for chunk in completion:
+                    if chunk.choices[0].delta.content is not None:
+                        content = chunk.choices[0].delta.content
+                        full_response += content
+                        # Create a simple response format for streaming
+                        chunk_data = {
+                            "content": content,
+                            "type": "content",
+                            "streaming_mode": streaming_mode
+                        }
+                        json_data = json.dumps(chunk_data)
+                        yield f"data: {json_data}\n\n"
+                        print(f"Streamed non-agent chunk: {content}")
 
-    #     completion = anthropic.completions.create(
-    #         model="claude-2",
-    #         max_tokens_to_sample=700,
-    #         prompt = (
-    #           f"{HUMAN_PROMPT} "
-    #           f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. "
-    #           f"please address the question: {query}. "
-    #           f"Consider the provided text as evidence: {sources_str}. "
-    #           f"{AI_PROMPT}")
-    #     )
-    #     answer = completion.completion
+                # Add the complete response to database
+                if not is_guest:
+                    message_id = add_message_to_db(full_response, chat_id, 0)
+                    # try:
+                    #     add_sources_to_db(message_id, sources)
+                    # except:
+                    #     print("no sources")
 
-    #This adds bot message
-    # completion = client.chat.completions.create(
-    #     model="gpt-5",
-    #     messages=[
-    #         {"role": "user",
-    #             "content": f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources_str} And this is the question:{query}."}
-    #     ]
-    # )
-    # print("using gpt-5 model")
-    # answer = str(completion.choices[0].message.content)
-    from openai import OpenAI
+                # Send a final completion message
+                final_data = {
+                    "content": "",
+                    "type": "done",
+                    "streaming_mode": streaming_mode
+                }
+                yield f"data: {json.dumps(final_data)}\n\n"
+                print("done for non-agent streaming")
 
-    client_new = openai.OpenAI(api_key="")
-    resp = client_new.responses.create(
-        model="gpt-5",
-        tools=[
-            {
-                "type": "mcp",
-                "server_label": "demoserver",
-                "server_url": "https://app.mintmcp.com/s/g_7BQRRY3ygjGAOF5yNnhqB6/mcp",
-                "authorization": "-M1mg0Dx6bPPdgvbLr5cC-t8dix4vSfH-gIN35eVHFk",
-            }
-        ],
-        input=query,
-    )
-    answer = resp.output_text
-    message_id = add_message_to_db(answer, chat_id, 0)
+            return Response(generate(), mimetype='text/plain', status=200)
+        except openai.NotFoundError:
+            print(f"The model `{model_use}` does not exist. Falling back to 'gpt-3.5-turbo'.")
+            completion = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                stream=True,
+                messages=[
+                    {"role": "user",
+                     "content": f"First, tell the user that their given model key does not exist, and that you have resorted to using GPT-3.5-turbo before answering their question, then add a line break and answer their question. You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources[0]}{sources[1]} And this is the question:{query}."}
+                ]
+            )
+            def generate():
+                full_response = ""
+                for chunk in completion:
+                    if chunk.choices[0].delta.content is not None:
+                        content = chunk.choices[0].delta.content
+                        full_response += content
+                        chunk_data = {
+                            "content": content,
+                            "type": "complete",
+                            "streaming_mode": streaming_mode
+                        }
+                        json_data = json.dumps(chunk_data)
+                        yield f"data: {json_data}\n\n"
 
-    try:
-        add_sources_to_db(message_id, sources)
-    except:
-        print("no sources")
+                # Add the complete response to database
+                if not is_guest:
+                    message_id = add_message_to_db(full_response, chat_id, 0)
+                    try:
+                        add_sources_to_db(message_id, sources)
+                    except:
+                        print("no sources")
 
-    return jsonify(answer=answer)
+                final_data = {
+                    "content": "[DONE]",
+                    "type": "complete",
+                    "streaming_mode": streaming_mode
+                }
+                yield f"data: {json.dumps(final_data)}\n\n"
+
+            return Response(generate(), status=200)
+    else:
+        print("using Claude")
+
+        anthropic = Anthropic(
+            api_key=os.getenv("ANTHROPIC_API_KEY")
+        )
+
+        completion = anthropic.completions.create(
+            model="claude-2",
+            max_tokens_to_sample=700,
+            prompt = (
+              f"{HUMAN_PROMPT} "
+              f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. "
+              f"please address the question: {query}. "
+              f"Consider the provided text as evidence: {sources_str}. "
+              f"{AI_PROMPT}")
+        )
+        answer = completion.completion
+
+        # Add message to database for Claude (non-streaming)
+        if not is_guest:
+            message_id = add_message_to_db(answer, chat_id, 0)
+            try:
+                add_sources_to_db(message_id, sources)
+            except:
+                print("no sources")
+
+        return jsonify(answer=answer)
 
 # Only for demo purposes
 chat_to_document_mapping = {}
@@ -1058,7 +1109,7 @@ def process_message_pdf_demo():
 
 
     completion = client.chat.completions.create(
-        model="llama2:latest",
+        model="gpt-3.5-turbo",
         messages=[
             {"role": "user",
              "content": f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources_str} And this is the question:{query}."}
@@ -1385,7 +1436,7 @@ def _public_chat_fallback(message, chat_id, model_type, model_key, user_email):
         if model_key:
            model_use = model_key
         else:
-           model_use = "llama2:latest"
+           model_use = "gpt-3.5-turbo"
 
         try:
             completion = client.chat.completions.create(
@@ -1398,10 +1449,10 @@ def _public_chat_fallback(message, chat_id, model_type, model_key, user_email):
             answer = str(completion.choices[0].message.content)
         except openai.NotFoundError:
             completion = client.chat.completions.create(
-                model="llama2:latest",
+                model="gpt-3.5-turbo",
                 messages=[
                     {"role": "user",
-                     "content": f"First, tell the user that their given model key does not exist, and that you have resorted to using GPT-4 before answering their question, then add a line break and answer their question. You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources[0]}{sources[1]} And this is the question:{query}."}
+                     "content": f"First, tell the user that their given model key does not exist, and that you have resorted to using GPT-3.5-turbo before answering their question, then add a line break and answer their question. You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources[0]}{sources[1]} And this is the question:{query}."}
                 ]
             )
             answer = str(completion.choices[0].message.content)

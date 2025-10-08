@@ -24,8 +24,8 @@ embeddings = OpenAIEmbeddings(api_key=API_KEY)
 sec_api_key = os.getenv('SEC_API_KEY')
 
 # Embedding Configuration
-EMBEDDING_MODEL = 'sentence-transformers/all-mpnet-base-v2'
-EMBEDDING_DIMENSIONS = 768
+EMBEDDING_MODEL = 'text-embedding-3-small'  # OpenAI embedding model
+EMBEDDING_DIMENSIONS = 1536  # Dimensions for text-embedding-3-small
 MAX_CHUNK_SIZE = 1500
 CHUNK_OVERLAP = 200
 
@@ -779,9 +779,8 @@ def get_embedding(question):
     try:
         model = _get_model()
 
-        # Add prefix for better performance as recommended by the model
-        prefixed_question = f"query: {question}"
-        embedding = model.encode(prefixed_question,  show_progress_bar=True, normalize_embeddings=True).tolist()
+        # The model is a function, call it directly with the question
+        embedding = model([question])[0]  # Get first (and only) embedding from the list
 
         # Validate dimensions using constant
         if len(embedding) != EMBEDDING_DIMENSIONS:
@@ -817,19 +816,12 @@ def get_embeddings_batch(texts, batch_size=32):
         # Process texts in batches
         for i in range(0, len(texts), batch_size):
             batch_texts = texts[i:i + batch_size]
-            # Add prefix for better performance as recommended by the model
-            prefixed_texts = [f"passage: {text}" for text in batch_texts]
-
-            # Get batch embeddings with optimized settings
-            batch_embeddings = model.encode(
-                prefixed_texts,
-                normalize_embeddings=True,
-                batch_size=batch_size,
-                show_progress_bar=False,  # Reduce overhead
-                convert_to_tensor=False   # Direct to list for efficiency
-            )
-
-            embeddings.extend(batch_embeddings.tolist())
+            
+            # The model is a function returned by _get_model(), not an object with encode method
+            # Call it directly to get embeddings
+            batch_embeddings = model(batch_texts)
+            
+            embeddings.extend(batch_embeddings)
             print(f"Processed batch {i//batch_size + 1}/{(len(texts) + batch_size - 1)//batch_size}")
 
         return embeddings
