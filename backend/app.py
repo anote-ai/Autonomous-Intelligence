@@ -38,15 +38,14 @@ from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
 import re
 from bs4 import BeautifulSoup
 from flask_mysql_connector import MySQL
-from api_endpoints.financeGPT.chatbot_endpoints import \
-    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
-    retrieve_chats_from_db, create_chat_shareable_url, access_sharable_chat, _get_model, \
-    delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, change_chat_mode_db, update_chat_name_db, \
-    reset_uploaded_docs, add_model_key_to_db, \
-    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
-    retrieve_chats_from_db, delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, \
-    change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, \
+from api_endpoints.financeGPT.chatbot_endpoints import (
+    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks,
+    retrieve_chats_from_db, create_chat_shareable_url, access_sharable_chat, _get_model,
+    delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db,
+    delete_doc_from_db, reset_chat_db, change_chat_mode_db, update_chat_name_db,
+    reset_uploaded_docs, add_model_key_to_db, find_most_recent_chat_from_db,
     ensure_SDK_user_exists, get_chat_info, get_message_info, get_text_from_url
+)
 
 _get_model()
 from agents.reactive_agent import ReactiveDocumentAgent
@@ -60,7 +59,6 @@ from api_endpoints.languages.japanese import japanese_blueprint
 from api_endpoints.languages.korean import korean_blueprint
 from api_endpoints.languages.spanish import spanish_blueprint
 from api_endpoints.languages.arabic import arabic_blueprint
-from datetime import datetime
 
 load_dotenv(override=True)
 
@@ -479,31 +477,59 @@ def ViewUser():
 
 # Helper function to scrape sub-URLs from the main website
 def get_links(initial_url: str):
+    """
+    Fetch all sub-links from a website and their text content.
+    Uses concurrent fetching for improved performance.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
     # Send a GET request to the website's URL
     response = requests.get(initial_url)
 
     # Parse the HTML code with BeautifulSoup
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    # Find all <a> tags and extract the href attribute (the hyperlink)
+    # Collect all relative URLs first
+    urls_to_fetch = []
+    for link in soup.find_all('a'):
+        href = link.get('href')
+        if isinstance(href, str) and href.startswith("/"):
+            web_url = initial_url.rstrip("/") + href
+            urls_to_fetch.append(web_url)
+    
+    # Remove duplicates while preserving order
+    urls_to_fetch = list(dict.fromkeys(urls_to_fetch))
+    
+    # Fetch all URLs concurrently
     links = []
     links_text = []
-    for link in soup.find_all('a'):
-        if type(link.get('href')) == str:
-            if link.get('href')[0] == "/":
-                web_url = initial_url.rstrip("/") + link.get('href')  # Full URL
-                web_text = get_text_from_url(web_url)
-                if len(web_text) > 0:
-                    links.append(web_url)
-                    links_text.append(web_text)
+    
+    # Use ThreadPoolExecutor for parallel HTTP requests
+    max_workers = min(10, len(urls_to_fetch)) if urls_to_fetch else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_url = {executor.submit(get_text_from_url, url): url for url in urls_to_fetch}
+        for future in as_completed(future_to_url):
+            url = future_to_url[future]
+            try:
+                text = future.result()
+                if text and len(text) > 0:
+                    links.append(url)
+                    links_text.append(text)
+            except Exception as e:
+                print(f"Error fetching {url}: {e}")
+    
     return links, links_text
 
 # Helper function to extract text from a URL
 def get_text_from_url(web_url):
-    response = requests.get(web_url)
-    result = p.from_buffer(response.content)
-    text = result.get("content", "").strip()
-    return text.replace("\n", "").replace("\t", "")
+    try:
+        response = requests.get(web_url, timeout=10)
+        result = p.from_buffer(response.content)
+        text = result.get("content", "").strip()
+        return text.replace("\n", "").replace("\t", "")
+    except Exception as e:
+        print(f"Error extracting text from {web_url}: {e}")
+        return ""
 
 ## CHATBOT SECTION
 output_document_path = 'output_document'

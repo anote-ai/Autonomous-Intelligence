@@ -793,9 +793,9 @@ def get_embedding(question):
         print(f"[ERROR] Failed to get embedding: {e}")
         raise RuntimeError(f"Embedding generation failed: {str(e)}")
 
-@ray.remote
-def chunk_document(text, maxChunkSize, document_id):
-    return chunk_document_optimized.remote(text, maxChunkSize, document_id)
+# Alias chunk_document to the optimized version to avoid extra Ray overhead
+# Note: chunk_document_optimized is the actual implementation defined later
+chunk_document = None  # Will be set after chunk_document_optimized is defined
 
 
 def get_embeddings_batch(texts, batch_size=32):
@@ -1030,17 +1030,21 @@ def chunk_document_optimized(text, maxChunkSize, document_id):
     finally:
         conn.close()
 
+# Set chunk_document to reference the optimized version directly
+chunk_document = chunk_document_optimized
 
-def knn(x, y):
+
+def knn(x, y, k=None):
     """
     Calculate k-nearest neighbors using cosine similarity.
 
     Args:
         x (np.array): Query vector (1D)
         y (np.array): Document vectors (2D: N x dimensions)
+        k (int, optional): Number of results to return. If None, returns all.
 
     Returns:
-        list: Results sorted by similarity (best first)
+        list: Results sorted by similarity (best first), limited to k results
     """
     # Ensure x is 2D: (1, dimensions)
     if x.ndim == 1:
@@ -1072,25 +1076,36 @@ def knn(x, y):
     # Convert similarities to distances (lower is better)
     distances = 1 - similarities
 
-    # Sort by similarity (best first)
-    nearest_neighbors = np.argsort(distances)
+    # Determine how many results to return
+    num_results = len(distances) if k is None else min(k, len(distances))
+    
+    # Use argpartition for efficiency when k is small relative to total size
+    if num_results < len(distances) // 2:
+        # Partial sort - more efficient for small k
+        top_indices = np.argpartition(distances, num_results)[:num_results]
+        # Sort only the top-k indices
+        top_indices = top_indices[np.argsort(distances[top_indices])]
+    else:
+        # Full sort for larger k
+        top_indices = np.argsort(distances)[:num_results]
 
-    results = []
-    for i in range(len(nearest_neighbors)):
-        item = {
-            "index": nearest_neighbors[i],
-            "similarity_score": distances[nearest_neighbors[i]]
-        }
-        results.append(item)
+    # Build results using list comprehension for efficiency
+    results = [
+        {"index": idx, "similarity_score": distances[idx]}
+        for idx in top_indices
+    ]
 
     return results
 
 def get_relevant_chunks(k: int, question: str, chat_id: int, user_email: str):
     conn, cursor = get_db_connection()
 
-    #Fetch all document chunks with their embeddings for the given user and chat
+    # Fetch document chunks with embeddings and extract only the needed text portion
+    # Using SUBSTRING to avoid loading entire document text into memory
     query = """
-    SELECT c.start_index, c.end_index, c.embedding_vector, c.document_id, d.document_name, d.document_text
+    SELECT c.start_index, c.end_index, c.embedding_vector, c.document_id, 
+           d.document_name,
+           SUBSTRING(d.document_text, c.start_index + 1, c.end_index - c.start_index) AS chunk_text
     FROM chunks c
     JOIN documents d ON c.document_id = d.id
     JOIN chats ch ON d.chat_id = ch.id
@@ -1099,8 +1114,11 @@ def get_relevant_chunks(k: int, question: str, chat_id: int, user_email: str):
     """
     cursor.execute(query, (user_email, chat_id))
     rows = cursor.fetchall()
+    
+    cursor.close()
+    conn.close()
 
-    #Prepare chunk embeddings and metadata
+    # Prepare chunk embeddings and metadata
     chunk_embeddings = []
     chunk_metadata = []
     for row in rows:
@@ -1113,18 +1131,15 @@ def get_relevant_chunks(k: int, question: str, chat_id: int, user_email: str):
 
         chunk_embeddings.append(embedding)
         chunk_metadata.append({
-            "start": row["start_index"],
-            "end": row["end_index"],
-            "document_id": row["document_id"],
-            "document_name": row["document_name"],
-            "document_text": row["document_text"]
+            "chunk_text": row["chunk_text"],
+            "document_name": row["document_name"]
         })
 
-    #Return early if no valid embeddings found
+    # Return early if no valid embeddings found
     if not chunk_embeddings:
         return []
 
-    #Get embedding for the query
+    # Get embedding for the query
     try:
         query_embedding = np.array(get_embedding(question))
         if len(query_embedding) != EMBEDDING_DIMENSIONS:
@@ -1133,18 +1148,18 @@ def get_relevant_chunks(k: int, question: str, chat_id: int, user_email: str):
         print(f"[ERROR] Failed to generate query embedding: {e}")
         return []
 
-    #Compute similarity and get top-k indices
-    results = knn(query_embedding, np.array(chunk_embeddings))
-    top_k = min(k, len(results))
+    # Use np.stack for efficient array stacking instead of np.array on list
+    chunk_array = np.stack(chunk_embeddings) if chunk_embeddings else np.array([])
+    
+    # Compute similarity and get top-k indices (pass k for efficiency)
+    results = knn(query_embedding, chunk_array, k=k)
 
-    #Prepare result chunks
-    source_chunks = []
-    for i in range(top_k):
-        idx = results[i]['index']
-        meta = chunk_metadata[idx]
-        chunk_text = meta["document_text"][meta["start"]:meta["end"]]
-        document_name = meta["document_name"]
-        source_chunks.append((chunk_text, document_name))
+    # Prepare result chunks - directly use pre-extracted chunk text
+    source_chunks = [
+        (chunk_metadata[result['index']]["chunk_text"], 
+         chunk_metadata[result['index']]["document_name"])
+        for result in results
+    ]
 
     return source_chunks
 

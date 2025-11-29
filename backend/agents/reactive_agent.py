@@ -605,35 +605,37 @@ class ReactiveDocumentAgent:
                 # Extract the final answer
                 answer = response.get("output", "I couldn't process your query.")
                 
-                # Extract final thought from multiple sources
+                # Single-pass extraction of final thought from streaming events
+                # Priority: agent_finish > agent_thinking > llm_reasoning
                 final_thought = None
+                agent_thought = None
+                llm_thought = None
+                invalid_thoughts = {'thinking...', 'thinking', ''}
                 
-                # First, try to get from agent_finish events
                 for event in reversed(streaming_events):
-                    if event.get('type') == 'agent_finish' and event.get('final_thought'):
-                        final_thought = event.get('final_thought')
+                    event_type = event.get('type')
+                    
+                    if event_type == 'agent_finish' and not final_thought:
+                        if event.get('final_thought'):
+                            final_thought = event.get('final_thought')
+                    elif event_type == 'agent_thinking' and not agent_thought:
+                        thought = event.get('thought')
+                        if thought and thought.lower() not in invalid_thoughts:
+                            agent_thought = thought
+                    elif event_type == 'llm_reasoning' and not llm_thought:
+                        thought = event.get('thought')
+                        if thought and thought.lower() not in invalid_thoughts:
+                            llm_thought = thought
+                    
+                    # Early exit if we found the highest priority thought
+                    if final_thought:
                         break
                 
-                # If no agent_finish thought, try agent_thinking events
-                if not final_thought:
-                    for event in reversed(streaming_events):
-                        if event.get('type') == 'agent_thinking' and event.get('thought'):
-                            thought = event.get('thought')
-                            if thought and thought.lower() not in ['thinking...', 'thinking', '']:
-                                final_thought = thought
-                                break
-                
-                # If still no good thought, try llm_reasoning events
-                if not final_thought:
-                    for event in reversed(streaming_events):
-                        if event.get('type') == 'llm_reasoning' and event.get('thought'):
-                            thought = event.get('thought')
-                            if thought and thought.lower() not in ['thinking...', 'thinking', '']:
-                                final_thought = thought
-                                break
+                # Use the best available thought in priority order
+                result_thought = final_thought or agent_thought or llm_thought
                 
                 # If still no thought, try to extract from the agent's intermediate steps
-                if not final_thought:
+                if not result_thought:
                     intermediate_steps = response.get("intermediate_steps", [])
                     if intermediate_steps:
                         # Get the last action and try to extract reasoning
@@ -642,12 +644,14 @@ class ReactiveDocumentAgent:
                             thought_match = re.search(r'Thought:\s*(.*?)(?=\nAction:|$)', last_action.log, re.DOTALL)
                             if thought_match:
                                 potential_thought = thought_match.group(1).strip()
-                                if potential_thought and potential_thought.lower() not in ['thinking...', 'thinking', '']:
-                                    final_thought = potential_thought
+                                if potential_thought and potential_thought.lower() not in invalid_thoughts:
+                                    result_thought = potential_thought
                 
                 # Final fallback
-                if not final_thought:
-                    final_thought = f"Successfully processed your query and retrieved relevant information from the documents"
+                if not result_thought:
+                    result_thought = "Successfully processed your query and retrieved relevant information from the documents"
+                
+                final_thought = result_thought
                 
                 # Try to extract sources from the agent's reasoning early
                 sources = self._extract_sources_from_response(response, chat_id, user_email, query)
@@ -891,36 +895,40 @@ class ReactiveDocumentAgent:
                 # Extract the final answer
                 answer = response.get("output", "I couldn't process your query in guest mode.")
                 
-                # Extract final thought from multiple sources (same logic as regular version)
+                # Single-pass extraction of final thought from streaming events
+                # Priority: agent_finish > agent_thinking > llm_reasoning
                 final_thought = None
+                agent_thought = None
+                llm_thought = None
+                invalid_thoughts = {'thinking...', 'thinking', ''}
                 
-                # First, try to get from agent_finish events
                 for event in reversed(streaming_events):
-                    if event.get('type') == 'agent_finish' and event.get('final_thought'):
-                        final_thought = event.get('final_thought')
+                    event_type = event.get('type')
+                    
+                    if event_type == 'agent_finish' and not final_thought:
+                        if event.get('final_thought'):
+                            final_thought = event.get('final_thought')
+                    elif event_type == 'agent_thinking' and not agent_thought:
+                        thought = event.get('thought')
+                        if thought and thought.lower() not in invalid_thoughts:
+                            agent_thought = thought
+                    elif event_type == 'llm_reasoning' and not llm_thought:
+                        thought = event.get('thought')
+                        if thought and thought.lower() not in invalid_thoughts:
+                            llm_thought = thought
+                    
+                    # Early exit if we found the highest priority thought
+                    if final_thought:
                         break
                 
-                # If no agent_finish thought, try agent_thinking events
-                if not final_thought:
-                    for event in reversed(streaming_events):
-                        if event.get('type') == 'agent_thinking' and event.get('thought'):
-                            thought = event.get('thought')
-                            if thought and thought.lower() not in ['thinking...', 'thinking', '']:
-                                final_thought = thought
-                                break
-                
-                # If still no good thought, try llm_reasoning events
-                if not final_thought:
-                    for event in reversed(streaming_events):
-                        if event.get('type') == 'llm_reasoning' and event.get('thought'):
-                            thought = event.get('thought')
-                            if thought and thought.lower() not in ['thinking...', 'thinking', '']:
-                                final_thought = thought
-                                break
+                # Use the best available thought in priority order
+                result_thought = final_thought or agent_thought or llm_thought
                 
                 # Final fallback for guest mode
-                if not final_thought:
-                    final_thought = f"Successfully processed your query in guest mode using general knowledge"
+                if not result_thought:
+                    result_thought = "Successfully processed your query in guest mode using general knowledge"
+                
+                final_thought = result_thought
                 
                 # No sources for guest mode
                 sources = []
