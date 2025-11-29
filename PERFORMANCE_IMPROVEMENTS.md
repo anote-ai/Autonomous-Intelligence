@@ -450,6 +450,31 @@ def timed(func):
 
 ---
 
+## Security Considerations
+
+During this analysis, a pre-existing Server-Side Request Forgery (SSRF) vulnerability was identified:
+
+### Pre-Existing SSRF Vulnerability
+
+**Location:** `backend/app.py`, `/public/upload` endpoint
+
+**Issue:** User-provided URLs from the `html_paths` parameter are directly passed to `get_text_from_url()`, which fetches arbitrary URLs without validation.
+
+**Risk:** An attacker could potentially:
+- Access internal network resources
+- Bypass firewall restrictions
+- Scan internal ports and services
+
+**Recommended Mitigation:**
+1. Implement URL validation and allowlist for permitted domains
+2. Block private IP ranges (10.x.x.x, 172.16.x.x, 192.168.x.x, 127.x.x.x)
+3. Add rate limiting for URL fetching operations
+4. Consider using a dedicated fetching service with restricted network access
+
+**Note:** This issue exists in the original codebase and is outside the scope of the performance improvements made in this PR.
+
+---
+
 ## Conclusion
 
 Implementing the high-priority optimizations (database pooling and memory-efficient document loading) will provide the most significant performance improvements with minimal risk. These changes are backward compatible and can be deployed incrementally.
