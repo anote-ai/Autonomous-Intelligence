@@ -475,16 +475,24 @@ def ViewUser():
 #     print(f"Exception in background_task: {e}")
 # app.start_background_task(background_task)
 
+# Configuration for URL scraping
+URL_SCRAPER_MAX_WORKERS = int(os.getenv("URL_SCRAPER_MAX_WORKERS", "10"))
+URL_SCRAPER_TIMEOUT = int(os.getenv("URL_SCRAPER_TIMEOUT", "10"))
+
 # Helper function to scrape sub-URLs from the main website
 def get_links(initial_url: str):
     """
     Fetch all sub-links from a website and their text content.
     Uses concurrent fetching for improved performance.
+    
+    Config via environment variables:
+    - URL_SCRAPER_MAX_WORKERS: Maximum concurrent workers (default: 10)
+    - URL_SCRAPER_TIMEOUT: Request timeout in seconds (default: 10)
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
     
     # Send a GET request to the website's URL
-    response = requests.get(initial_url)
+    response = requests.get(initial_url, timeout=URL_SCRAPER_TIMEOUT)
 
     # Parse the HTML code with BeautifulSoup
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -505,7 +513,7 @@ def get_links(initial_url: str):
     links_text = []
     
     # Use ThreadPoolExecutor for parallel HTTP requests
-    max_workers = min(10, len(urls_to_fetch)) if urls_to_fetch else 1
+    max_workers = min(URL_SCRAPER_MAX_WORKERS, len(urls_to_fetch)) if urls_to_fetch else 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_url = {executor.submit(get_text_from_url, url): url for url in urls_to_fetch}
         for future in as_completed(future_to_url):
@@ -523,7 +531,7 @@ def get_links(initial_url: str):
 # Helper function to extract text from a URL
 def get_text_from_url(web_url):
     try:
-        response = requests.get(web_url, timeout=10)
+        response = requests.get(web_url, timeout=URL_SCRAPER_TIMEOUT)
         result = p.from_buffer(response.content)
         text = result.get("content", "").strip()
         return text.replace("\n", "").replace("\t", "")

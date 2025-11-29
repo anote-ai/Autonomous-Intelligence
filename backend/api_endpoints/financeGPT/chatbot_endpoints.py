@@ -793,9 +793,8 @@ def get_embedding(question):
         print(f"[ERROR] Failed to get embedding: {e}")
         raise RuntimeError(f"Embedding generation failed: {str(e)}")
 
-# Alias chunk_document to the optimized version to avoid extra Ray overhead
-# Note: chunk_document_optimized is the actual implementation defined later
-chunk_document = None  # Will be set after chunk_document_optimized is defined
+# Note: chunk_document is defined after chunk_document_optimized is available
+# This forward declaration is resolved at the end of the module
 
 
 def get_embeddings_batch(texts, batch_size=32):
@@ -1100,23 +1099,24 @@ def knn(x, y, k=None):
 def get_relevant_chunks(k: int, question: str, chat_id: int, user_email: str):
     conn, cursor = get_db_connection()
 
-    # Fetch document chunks with embeddings and extract only the needed text portion
-    # Using SUBSTRING to avoid loading entire document text into memory
-    query = """
-    SELECT c.start_index, c.end_index, c.embedding_vector, c.document_id, 
-           d.document_name,
-           SUBSTRING(d.document_text, c.start_index + 1, c.end_index - c.start_index) AS chunk_text
-    FROM chunks c
-    JOIN documents d ON c.document_id = d.id
-    JOIN chats ch ON d.chat_id = ch.id
-    JOIN users u ON ch.user_id = u.id
-    WHERE u.email = %s AND ch.id = %s
-    """
-    cursor.execute(query, (user_email, chat_id))
-    rows = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
+    try:
+        # Fetch document chunks with embeddings and extract only the needed text portion
+        # Using SUBSTRING to avoid loading entire document text into memory
+        query = """
+        SELECT c.start_index, c.end_index, c.embedding_vector, c.document_id, 
+               d.document_name,
+               SUBSTRING(d.document_text, c.start_index + 1, c.end_index - c.start_index) AS chunk_text
+        FROM chunks c
+        JOIN documents d ON c.document_id = d.id
+        JOIN chats ch ON d.chat_id = ch.id
+        JOIN users u ON ch.user_id = u.id
+        WHERE u.email = %s AND ch.id = %s
+        """
+        cursor.execute(query, (user_email, chat_id))
+        rows = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     # Prepare chunk embeddings and metadata
     chunk_embeddings = []
