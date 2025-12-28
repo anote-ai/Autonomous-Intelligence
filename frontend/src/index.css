@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+html {
+  background-color: white;
+}
+
+html.dark {
+  background-color: #111827;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background-color: inherit;
+}
+
+#root {
+  background-color: inherit;
+}
