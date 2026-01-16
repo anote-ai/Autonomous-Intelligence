@@ -1,9 +1,20 @@
 import { useState } from "react";
 import { useTheme } from "../../hooks/useTheme";
+import { useAuth } from "../../hooks/useAuth";
 
-function AuthModal({ isOpen, onClose, onLogin }) {
+function AuthModal() {
   const { theme } = useTheme();
+  const {
+    login,
+    signup,
+    clearError,
+    error: authError,
+    closeAuthModal,
+    isAuthModalOpen,
+  } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -11,18 +22,55 @@ function AuthModal({ isOpen, onClose, onLogin }) {
     name: "",
   });
 
-  if (!isOpen) return null;
+  if (!isAuthModalOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Handle authentication logic here
-    console.log("Form submitted:", formData);
-    onLogin({
-      name: formData.name || formData.email.split("@")[0],
-      email: formData.email,
-    });
-    onClose();
+    setError("");
+    clearError();
+    setLoading(true);
+
+    try {
+      if (isSignUp) {
+        if (formData.password !== formData.confirmPassword) {
+          setError("Passwords do not match");
+          setLoading(false);
+          return;
+        }
+
+        const result = await signup(
+          formData.name || formData.email.split("@")[0],
+          formData.email,
+          formData.password,
+        );
+
+        if (!result.success) {
+          setError(result.error || "Failed to create account");
+          setLoading(false);
+        }
+        // Modal stays open on error, closes on success (handled by context)
+      } else {
+        const result = await login(formData.email, formData.password);
+
+        if (!result.success) {
+          setError(result.error || "Invalid email or password");
+          setLoading(false);
+        }
+        // Modal stays open on error, closes on success (handled by context)
+      }
+    } catch {
+      setError("An unexpected error occurred. Please try again.");
+      setLoading(false);
+    }
   };
+
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   const result = await login(formData.email, formData.password);
+  //   if (!result.success) {
+  //     onClose(true)
+  //   }
+  // }
 
   const handleChange = (e) => {
     setFormData({
@@ -33,6 +81,8 @@ function AuthModal({ isOpen, onClose, onLogin }) {
 
   const toggleMode = () => {
     setIsSignUp(!isSignUp);
+    setError("");
+    clearError();
     setFormData({
       email: "",
       password: "",
@@ -44,20 +94,19 @@ function AuthModal({ isOpen, onClose, onLogin }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div
-        className="absolute z inset-0  bg-opacity-50 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      <div className="absolute z inset-0  bg-opacity-50 backdrop-blur-sm" />
 
       {/* Modal */}
       <div
         className={`relative w-full max-w-md mx-4 p-8 rounded-lg shadow-xl ${
-          theme === "dark" ? "bg-gray-800 text-white" : "bg-white text-gray-900"
+          theme === "dark"
+            ? "bg-gray-800 text-white"
+            : "bg-gray-50 text-gray-900"
         }`}
       >
         {/* Close button */}
         <button
-          onClick={onClose}
+          onClick={closeAuthModal}
           className={`absolute top-4 right-4 p-1.5 rounded-full transition-colors ${
             theme === "dark"
               ? "hover:bg-gray-700 text-gray-400 hover:text-gray-200"
@@ -85,7 +134,7 @@ function AuthModal({ isOpen, onClose, onLogin }) {
         </h2>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="auth-form" onSubmit={handleSubmit} className="space-y-4">
           {isSignUp && (
             <div>
               <label
@@ -106,7 +155,7 @@ function AuthModal({ isOpen, onClose, onLogin }) {
                 className={`w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:outline-none ${
                   theme === "dark"
                     ? "bg-gray-700 border-gray-600 text-white"
-                    : "bg-white border-gray-300 text-gray-900"
+                    : "bg-gray-50 border-gray-300 text-gray-900"
                 }`}
                 placeholder="John Doe"
               />
@@ -132,7 +181,7 @@ function AuthModal({ isOpen, onClose, onLogin }) {
               className={`w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:outline-none ${
                 theme === "dark"
                   ? "bg-gray-700 border-gray-600 text-white"
-                  : "bg-white border-gray-300 text-gray-900"
+                  : "bg-gray-50 border-gray-300 text-gray-900"
               }`}
               placeholder="you@example.com"
             />
@@ -157,7 +206,7 @@ function AuthModal({ isOpen, onClose, onLogin }) {
               className={`w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:outline-none ${
                 theme === "dark"
                   ? "bg-gray-700 border-gray-600 text-white"
-                  : "bg-white border-gray-300 text-gray-900"
+                  : "bg-gray-50 border-gray-300 text-gray-900"
               }`}
               placeholder="••••••••"
             />
@@ -183,19 +232,33 @@ function AuthModal({ isOpen, onClose, onLogin }) {
                 className={`w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 focus:outline-none ${
                   theme === "dark"
                     ? "bg-gray-700 border-gray-600 text-white"
-                    : "bg-white border-gray-300 text-gray-900"
+                    : "bg-gray-50 border-gray-300 text-gray-900"
                 }`}
                 placeholder="••••••••"
               />
             </div>
           )}
 
+          {/* Error Message */}
+          {(error || authError) && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/50">
+              <p className="text-sm text-red-500">{error || authError}</p>
+            </div>
+          )}
           {/* Submit Button */}
           <button
             type="submit"
+            form="auth-form"
             className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+            disabled={loading}
           >
-            {isSignUp ? "Sign Up" : "Sign In"}
+            {loading
+              ? isSignUp
+                ? "Signing Up..."
+                : "Signing In..."
+              : isSignUp
+                ? "Sign Up"
+                : "Sign In"}
           </button>
         </form>
 
@@ -230,7 +293,7 @@ function AuthModal({ isOpen, onClose, onLogin }) {
               className={`px-2 ${
                 theme === "dark"
                   ? "bg-gray-800 text-gray-400"
-                  : "bg-white text-gray-500"
+                  : "bg-gray-50 text-gray-500"
               }`}
             >
               Or continue with

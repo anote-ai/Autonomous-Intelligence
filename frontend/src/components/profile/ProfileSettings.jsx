@@ -1,10 +1,25 @@
 import { useState } from "react";
 import { useTheme } from "../../hooks/useTheme";
+import { authAPI } from "../../utils/api";
 
 function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
   const [activeMenu, setActiveMenu] = useState("profile");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { theme, toggleTheme } = useTheme();
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      await authAPI.deleteAccount();
+      setShowDeleteConfirm(false);
+      onLogout(); // This will redirect to home and clear auth state
+    } catch (error) {
+      alert(error.message || "Failed to delete account. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -97,7 +112,7 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
                   }`}
                 >
                   <div
-                    className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-md transition-transform ${
+                    className={`absolute top-1 w-4 h-4 bg-gray-50 rounded-full shadow-md transition-transform ${
                       theme === "dark" ? "translate-x-7" : "translate-x-1"
                     }`}
                   />
@@ -160,7 +175,7 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
                   className={`p-6 rounded-lg border-2 transition-all ${
                     theme === "dark"
                       ? "bg-gray-700/30 border-blue-600 hover:border-blue-500"
-                      : "bg-white border-blue-500 hover:border-blue-600"
+                      : "bg-gray-50 border-blue-500 hover:border-blue-600"
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-3">
@@ -273,7 +288,7 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
                   className={`p-6 rounded-lg border transition-all ${
                     theme === "dark"
                       ? "bg-gray-700/30 border-gray-600 hover:border-purple-500"
-                      : "bg-white border-gray-300 hover:border-purple-500"
+                      : "bg-gray-50 border-gray-300 hover:border-purple-500"
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-3">
@@ -533,8 +548,8 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
           className={`lg:rounded-lg shadow-2xl w-full lg:max-w-4xl h-full lg:h-4/5 flex overflow-hidden ${
             theme === "dark"
               ? "text-white bg-gray-800 border-gray-700"
-              : "text-gray-900 bg-white border-gray-200"
-          } border`}
+              : "text-gray-900 bg-gray-50 border-gray-200"
+          } lg:border`}
         >
           {/* Left Sidebar */}
           <div
@@ -554,8 +569,8 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
                       ? "bg-gray-800 text-white"
                       : "bg-gray-200 text-gray-900"
                     : theme === "dark"
-                    ? "hover:bg-gray-800"
-                    : "hover:bg-gray-100"
+                      ? "hover:bg-gray-800"
+                      : "hover:bg-gray-100"
                 }`}
               >
                 <div
@@ -608,8 +623,8 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
                       ? "bg-gray-800 text-white"
                       : "bg-gray-200 text-gray-900"
                     : theme === "dark"
-                    ? "text-gray-300 hover:bg-gray-800"
-                    : "text-gray-700 hover:bg-gray-100"
+                      ? "text-gray-300 hover:bg-gray-800"
+                      : "text-gray-700 hover:bg-gray-100"
                 }`}
               >
                 <span>🔐</span> My Account
@@ -622,8 +637,8 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
                       ? "bg-gray-800 text-white"
                       : "bg-gray-200 text-gray-900"
                     : theme === "dark"
-                    ? "text-gray-300 hover:bg-gray-800"
-                    : "text-gray-700 hover:bg-gray-100"
+                      ? "text-gray-300 hover:bg-gray-800"
+                      : "text-gray-700 hover:bg-gray-100"
                 }`}
               >
                 <span>💳</span> Subscription
@@ -636,8 +651,8 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
                       ? "bg-gray-800 text-white"
                       : "bg-gray-200 text-gray-900"
                     : theme === "dark"
-                    ? "text-gray-300 hover:bg-gray-800"
-                    : "text-gray-700 hover:bg-gray-100"
+                      ? "text-gray-300 hover:bg-gray-800"
+                      : "text-gray-700 hover:bg-gray-100"
                 }`}
               >
                 <span>⚙️</span> Settings
@@ -666,7 +681,7 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
           {/* Right Content Area */}
           <div
             className={`flex-1 p-8 overflow-y-auto relative ${
-              theme === "dark" ? "bg-gray-800" : "bg-white"
+              theme === "dark" ? "bg-gray-800" : "bg-gray-50"
             }`}
           >
             {/* Close Button */}
@@ -709,7 +724,7 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
             className={`relative w-full max-w-md mx-4 p-6 rounded-lg shadow-2xl ${
               theme === "dark"
                 ? "bg-gray-800 text-white"
-                : "bg-white text-gray-900"
+                : "bg-gray-50 text-gray-900"
             }`}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -757,15 +772,11 @@ function ProfileSettings({ isOpen, onClose, onLogout, userData }) {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  // Handle account deletion
-                  console.log("Account deleted");
-                  setShowDeleteConfirm(false);
-                  onLogout();
-                }}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                onClick={handleDeleteAccount}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Delete Account
+                {isDeleting ? "Deleting..." : "Delete Account"}
               </button>
             </div>
           </div>
