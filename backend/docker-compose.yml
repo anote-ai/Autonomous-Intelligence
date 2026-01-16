@@ -1,0 +1,60 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: anote-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000" # Map container's 5000 to host's 8000
+    volumes:
+      - ./:/app
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - anote-network
+    command: >
+      python -m flask run --host=0.0.0.0 --port=5000
+
+  db:
+    image: mysql:8.0
+    container_name: anote-db
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      - MYSQL_ALLOW_EMPTY_PASSWORD=true
+      - MYSQL_DATABASE=agents
+      - MYSQL_ROOT_PASSWORD=
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=caching_sha2_password
+    networks:
+      - anote-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "db", "-u", "root"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7.2
+    container_name: anote-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - anote-network
+
+networks:
+  anote-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
