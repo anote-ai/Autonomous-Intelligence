@@ -15,18 +15,14 @@ const ThemeProvider = ({ children }) => {
   useEffect(() => {
     const root = window.document.documentElement;
 
-    console.log("useEffect running - theme is:", theme);
-
     if (theme === "dark") {
       root.classList.add("dark");
-      console.log("Added 'dark' class to html element");
     } else {
       root.classList.remove("dark");
       console.log("Removed 'dark' class from html element");
     }
 
     localStorage.setItem("theme", theme);
-    console.log("Saved to localStorage:", theme);
   }, [theme]);
 
   const toggleTheme = () => {
