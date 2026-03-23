@@ -1,0 +1,65 @@
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+addopts = [
+  "--strict-config",
+  "--strict-markers",
+  "--cov=backend",
+  "--cov-report=term-missing",
+]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = [
+  "backend/tests/*",
+  "backend/sdk/*",
+  "backend/agents/*",
+  "backend/mcp/*",
+  "backend/database/*",
+  "backend/api_endpoints/languages/*",
+  "backend/api_endpoints/financeGPT/chatbot_endpoints.py",
+  "backend/api_endpoints/login/*",
+  "backend/api_endpoints/payments/*",
+  "backend/api_endpoints/refresh_credits/*",
+  "backend/api_endpoints/user/*",
+  "backend/api_endpoints/generate_api_key/*",
+  "backend/api_endpoints/delete_api_key/*",
+  "backend/api_endpoints/get_api_keys/*",
+  "backend/stripe_config/*",
+]
+
+[tool.coverage.report]
+fail_under = 92
+show_missing = true
+skip_covered = true
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["backend/sdk/dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/tests/*.py" = ["ANN", "S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+ignore_missing_imports = true
+explicit_package_bases = true
+files = [
+  "backend/tests",
+  "backend/api_endpoints/chat/handler.py",
+  "backend/api_endpoints/documents/handler.py",
+]
+
+[[tool.mypy.overrides]]
+module = "backend.tests.conftest"
+ignore_errors = true

@@ -1,0 +1,25 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.2
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+        args: [--check]
+
+  - repo: local
+    hooks:
+      - id: mypy-backend
+        name: mypy-backend
+        entry: mypy
+        language: system
+        pass_filenames: false
+        args: ["backend/tests", "backend/api_endpoints/chat/handler.py", "backend/api_endpoints/documents/handler.py"]
+        stages: [pre-commit]
+
+      - id: pytest-backend-cov
+        name: pytest-backend-cov
+        entry: pytest
+        language: system
+        pass_filenames: false
+        args: ["backend/tests"]
+        stages: [pre-push]

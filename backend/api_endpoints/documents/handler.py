@@ -1,5 +1,6 @@
 from datetime import datetime
-from flask import jsonify
+from typing import Any, cast
+
 from database.db import (
     add_document,
     change_chat_mode,
@@ -8,9 +9,16 @@ from database.db import (
     reset_uploaded_docs,
     retrieve_docs,
 )
+from flask import Request, jsonify
+from flask.typing import ResponseReturnValue
 
 
-def IngestDocumentsHandler(request, user_email, parser_module, chunk_document_fn):
+def IngestDocumentsHandler(
+    request: Request,
+    user_email: str,
+    parser_module: Any,
+    chunk_document_fn: Any,
+) -> ResponseReturnValue:
     start_time = datetime.now()
     print("start time is", start_time)
 
@@ -30,18 +38,21 @@ def IngestDocumentsHandler(request, user_email, parser_module, chunk_document_fn
     return jsonify({"Success": "Document Uploaded"}), 200
 
 
-def RetrieveCurrentDocsHandler(request, user_email):
-    return jsonify(doc_info=retrieve_docs(request.json.get("chat_id"), user_email))
+def RetrieveCurrentDocsHandler(request: Request, user_email: str) -> ResponseReturnValue:
+    payload = cast(dict[str, Any], request.get_json(force=True))
+    return jsonify(doc_info=retrieve_docs(payload.get("chat_id"), user_email))
 
 
-def DeleteDocHandler(request, user_email):
-    delete_doc(request.json.get("doc_id"), user_email)
+def DeleteDocHandler(request: Request, user_email: str) -> ResponseReturnValue:
+    payload = cast(dict[str, Any], request.get_json(force=True))
+    delete_doc(payload.get("doc_id"), user_email)
     return "success"
 
 
-def ChangeChatModeHandler(request, user_email):
-    chat_id = request.json.get("chat_id")
-    chat_mode = request.json.get("model_type")
+def ChangeChatModeHandler(request: Request, user_email: str) -> ResponseReturnValue:
+    payload = cast(dict[str, Any], request.get_json(force=True))
+    chat_id = payload.get("chat_id")
+    chat_mode = payload.get("model_type")
     try:
         reset_chat(chat_id, user_email)
         change_chat_mode(chat_mode, chat_id, user_email)
@@ -50,9 +61,10 @@ def ChangeChatModeHandler(request, user_email):
         return "Error"
 
 
-def ResetChatHandler(request, user_email):
-    chat_id = request.json.get("chat_id")
-    if request.json.get("delete_docs"):
+def ResetChatHandler(request: Request, user_email: str) -> ResponseReturnValue:
+    payload = cast(dict[str, Any], request.get_json(force=True))
+    chat_id = payload.get("chat_id")
+    if payload.get("delete_docs"):
         reset_uploaded_docs(chat_id, user_email)
     reset_chat(chat_id, user_email)
     return jsonify({"Success": "Success"}), 200
