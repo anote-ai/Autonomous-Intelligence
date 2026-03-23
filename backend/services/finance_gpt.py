@@ -1,7 +1,8 @@
 import ipaddress
+import os
 import socket
 import threading
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import numpy as np
 import PyPDF2
@@ -26,10 +27,22 @@ _client = OpenAI()
 _model_lock = threading.Lock()
 _splitter_lock = threading.RLock()
 _text_splitters = {}
+ALLOWED_FETCH_HOSTS = tuple(
+    host.strip().lower()
+    for host in os.getenv("ALLOWED_FETCH_HOSTS", "").split(",")
+    if host.strip()
+)
 
 
 class UnsafeUrlError(ValueError):
     pass
+
+
+def _is_allowed_fetch_host(hostname: str) -> bool:
+    return any(
+        hostname == allowed_host or hostname.endswith(f".{allowed_host}")
+        for allowed_host in ALLOWED_FETCH_HOSTS
+    )
 
 
 def validate_external_url(web_url: str) -> None:
@@ -38,6 +51,8 @@ def validate_external_url(web_url: str) -> None:
         raise UnsafeUrlError("Only http and https URLs are allowed")
     if not parsed.hostname or parsed.username or parsed.password:
         raise UnsafeUrlError("Invalid URL")
+    if not _is_allowed_fetch_host(parsed.hostname.lower()):
+        raise UnsafeUrlError("Host is not in the external fetch allowlist")
 
     try:
         address_info = socket.getaddrinfo(parsed.hostname, None)
@@ -57,9 +72,20 @@ def validate_external_url(web_url: str) -> None:
             raise UnsafeUrlError("URL resolves to a non-public address")
 
 
-def fetch_external_url(web_url: str) -> requests.Response:
+def build_validated_public_url(web_url: str) -> str:
     validate_external_url(web_url)
-    return requests.get(web_url, timeout=10, allow_redirects=False)
+    parsed = urlparse(web_url)
+    hostname = parsed.hostname.lower()
+    netloc = hostname
+    if parsed.port:
+        netloc = f"{hostname}:{parsed.port}"
+    path = parsed.path or "/"
+    return urlunparse((parsed.scheme, netloc, path, "", parsed.query, ""))
+
+
+def fetch_external_url(web_url: str) -> requests.Response:
+    safe_url = build_validated_public_url(web_url)
+    return requests.get(safe_url, timeout=10, allow_redirects=False)
 
 
 def _get_model():

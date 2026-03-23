@@ -80,21 +80,24 @@ function calculateRetryDelay(retryCount) {
 function log(level, message, data = null) {
   if (!FetcherConfig.enableLogging) return;
 
-  const timestamp = new Date().toISOString();
-  const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+  const logContext = {
+    timestamp: new Date().toISOString(),
+    level: String(level).toUpperCase(),
+    message,
+  };
 
   switch (level) {
     case "error":
-      console.error(logMessage, data);
+      console.error("[request-config]", logContext, data);
       break;
     case "warn":
-      console.warn(logMessage, data);
+      console.warn("[request-config]", logContext, data);
       break;
     case "info":
-      console.info(logMessage, data);
+      console.info("[request-config]", logContext, data);
       break;
     default:
-      console.log(logMessage, data);
+      console.log("[request-config]", logContext, data);
   }
 }
 

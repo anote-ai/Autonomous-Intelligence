@@ -12,7 +12,7 @@ redis
 Werkzeug==2.2.2
 
 # ML/AI
-numpy==1.24.3
+numpy==1.26.4
 pydantic>=2.6,<3
 pydantic-settings>=2.2,<3
 transformers==4.40.1

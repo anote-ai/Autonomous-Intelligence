@@ -162,15 +162,23 @@ def test_pdf_and_url_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_validate_external_url_allows_public_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(finance_gpt, "ALLOWED_FETCH_HOSTS", ("example.com",))
     monkeypatch.setattr(
         finance_gpt.socket,
         "getaddrinfo",
         lambda host, port: [(None, None, None, None, ("93.184.216.34", 0))],
     )
     finance_gpt.validate_external_url("https://example.com")
+    assert (
+        finance_gpt.build_validated_public_url(
+            "https://example.com/path?q=1#fragment"
+        )
+        == "https://example.com/path?q=1"
+    )
 
 
 def test_validate_external_url_blocks_private_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(finance_gpt, "ALLOWED_FETCH_HOSTS", ("localhost",))
     monkeypatch.setattr(
         finance_gpt.socket,
         "getaddrinfo",
@@ -178,3 +186,11 @@ def test_validate_external_url_blocks_private_hosts(monkeypatch: pytest.MonkeyPa
     )
     with pytest.raises(finance_gpt.UnsafeUrlError):
         finance_gpt.validate_external_url("http://localhost")
+
+
+def test_validate_external_url_blocks_non_allowlisted_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(finance_gpt, "ALLOWED_FETCH_HOSTS", ("example.com",))
+    with pytest.raises(finance_gpt.UnsafeUrlError):
+        finance_gpt.validate_external_url("https://evil.com")
