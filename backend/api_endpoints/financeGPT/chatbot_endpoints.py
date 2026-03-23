@@ -1,32 +1,43 @@
-from langchain_community.llms import OpenAI
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
-from dotenv import load_dotenv
-import ray
-import time
-import numpy as np
-import PyPDF2
-import uuid
-import requests
-from flask import jsonify
 import json
 import os
-import uuid
-from flask import jsonify
+import time
+
+import numpy as np
+import PyPDF2
+import ray
 import requests
+from dotenv import load_dotenv
+from flask import jsonify
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.llms import OpenAI
+from langchain_openai import OpenAIEmbeddings
 from database.db import (
     add_chat,
+    add_chunks,
+    add_chunks_with_page_numbers,
     add_document,
     add_message,
     add_model_key,
+    add_prompt,
+    add_prompt_answer,
+    add_sources_to_message,
+    add_sources_to_prompt,
+    access_shareable_chat,
     change_chat_mode,
+    create_chat_shareable_url as create_shareable_url,
     delete_chat,
     delete_doc,
+    ensure_demo_user_exists as ensure_demo_user,
+    ensure_sdk_user_exists as ensure_sdk_user,
     find_most_recent_chat,
     get_chat_info as fetch_chat_info,
+    get_chat_chunks,
+    get_document_content,
     get_db_connection,
+    get_message_info as fetch_message_info,
     reset_chat,
     reset_uploaded_docs as clear_uploaded_docs,
+    retrieve_messages_from_share_uuid as fetch_messages_from_share_uuid,
     retrieve_chats,
     retrieve_docs,
     retrieve_messages,
@@ -63,133 +74,12 @@ def add_chat_to_db(user_email, chat_type, model_type): #intake the current userI
     return add_chat(user_email, chat_type, model_type)
 
 def create_chat_shareable_url(chat_id):
-    conn, cursor = get_db_connection()
-    # Generate shareable UUID
-    share_uuid = str(uuid.uuid4())
-    # Insert into chat_shares
-    cursor.execute(
-        "INSERT INTO chat_shares (chat_id, share_uuid) VALUES (%s, %s)",
-        (chat_id, share_uuid)
-    )
-    chat_share_id = cursor.lastrowid
-    # Copy messages
-    cursor.execute("""
-        SELECT sent_from_user, message_text, created
-        FROM messages
-        WHERE chat_id = %s
-        ORDER BY created ASC
-    """, (chat_id,))
-    messages = cursor.fetchall()
-    for msg in messages:
-        role = 'user' if msg['sent_from_user'] else 'chatbot'
-        cursor.execute("""
-            INSERT INTO chat_share_messages (chat_share_id, role, message_text, created)
-            VALUES (%s, %s, %s, %s)
-        """, (chat_share_id, role, msg['message_text'], msg['created']))
-    # Copy documents
-    cursor.execute("""
-        SELECT id, document_name, document_text, storage_key, created
-        FROM documents
-        WHERE chat_id = %s
-    """, (chat_id,))
-    docs = cursor.fetchall()
-    for doc in docs:
-        cursor.execute("""
-            INSERT INTO chat_share_documents (
-                chat_share_id, document_name, document_text, storage_key, created
-            ) VALUES (%s, %s, %s, %s, %s)
-        """, (
-            chat_share_id,
-            doc["document_name"],
-            doc["document_text"],
-            doc["storage_key"],
-            doc["created"]
-        ))
-        chat_share_doc_id = cursor.lastrowid
-        # Copy chunks associated with the original document
-        cursor.execute("""
-            SELECT start_index, end_index, embedding_vector, page_number
-            FROM chunks
-            WHERE document_id = %s
-        """, (doc["id"],))
-        chunks = cursor.fetchall()
-        for chunk in chunks:
-            cursor.execute("""
-                INSERT INTO chat_share_chunks (
-                    chat_share_document_id, start_index, end_index, embedding_vector, page_number
-                ) VALUES (%s, %s, %s, %s, %s)
-            """, (
-                chat_share_doc_id,
-                chunk["start_index"],
-                chunk["end_index"],
-                chunk["embedding_vector"],
-                chunk["page_number"]
-            ))
-    conn.commit()
-    conn.close()
-    return f"/playbook/{share_uuid}"
+    return create_shareable_url(chat_id)
 
 def access_sharable_chat(share_uuid, user_id=1):
-    conn, cursor = get_db_connection()
-    cursor.execute("SELECT * FROM chat_shares WHERE share_uuid = %s", (share_uuid,))
-    share = cursor.fetchone()
-    if not share:
+    new_chat_id = access_shareable_chat(share_uuid, user_id)
+    if new_chat_id is None:
         return jsonify({"error": "Snapshot not found"}), 404
-    # Create new chat
-    cursor.execute("""
-        INSERT INTO chats (user_id, model_type, chat_name, associated_task)
-        VALUES (%s, %s, %s, %s)
-    """, (user_id, 0, "Imported from share", 0))
-    new_chat_id = cursor.lastrowid
-    # Copy messages
-    cursor.execute("""
-        SELECT role, message_text
-        FROM chat_share_messages
-        WHERE chat_share_id = %s
-        ORDER BY created ASC
-    """, (share['id'],))
-    messages = cursor.fetchall()
-    for msg in messages:
-        sent_from_user = 1 if msg['role'] == 'user' else 0
-        cursor.execute("""
-            INSERT INTO messages (chat_id, message_text, sent_from_user)
-            VALUES (%s, %s, %s)
-        """, (new_chat_id, msg['message_text'], sent_from_user))
-    # Copy documents + chunks
-    cursor.execute("""
-        SELECT id, document_name, document_text, storage_key
-        FROM chat_share_documents
-        WHERE chat_share_id = %s
-    """, (share['id'],))
-    docs = cursor.fetchall()
-    for doc in docs:
-        # Insert document
-        cursor.execute("""
-            INSERT INTO documents (chat_id, document_name, document_text, storage_key)
-            VALUES (%s, NULL, %s, %s, %s)
-        """, (new_chat_id, doc['document_name'], doc['document_text'], doc['storage_key']))
-        new_doc_id = cursor.lastrowid
-        # Retrieve and copy chunks from snapshot
-        cursor.execute("""
-            SELECT start_index, end_index, embedding_vector, page_number
-            FROM chat_share_chunks
-            WHERE chat_share_document_id = %s
-        """, (doc['id'],))
-        chunks = cursor.fetchall()
-        for chunk in chunks:
-            cursor.execute("""
-                INSERT INTO chunks (
-                    document_id, start_index, end_index, embedding_vector, page_number
-                ) VALUES (%s, %s, %s, %s, %s)
-            """, (
-                new_doc_id,
-                chunk['start_index'],
-                chunk['end_index'],
-                chunk['embedding_vector'],
-                chunk['page_number']
-            ))
-    conn.commit()
-    conn.close()
     return jsonify({"new_chat_id": new_chat_id})
 
 ## General for all chatbots
@@ -212,47 +102,10 @@ def delete_chat_from_db(chat_id, user_email):
     return delete_chat(chat_id, user_email)
 
 def retrieve_messages_from_share_uuid(share_uuid):
-    conn, cursor = get_db_connection()
-
-    cursor.execute("""
-        SELECT csm.role, csm.message_text, csm.created
-        FROM chat_shares cs
-        JOIN chat_share_messages csm ON cs.id = csm.chat_share_id
-        WHERE cs.share_uuid = %s
-        ORDER BY csm.created ASC
-    """, (share_uuid,))
-
-    messages = cursor.fetchall()
-
-    conn.close()
-    return messages
+    return fetch_messages_from_share_uuid(share_uuid)
 
 def get_document_content_from_db(id, email):
-    conn, cursor = get_db_connection()
-
-    # Query to get document content with user verification through chat ownership
-    query = """
-    SELECT d.document_text, d.document_name, d.id
-    FROM documents d
-    JOIN chats c ON d.chat_id = c.id
-    JOIN users u ON c.user_id = u.id
-    WHERE d.id = %s AND u.email = %s
-    """
-
-    cursor.execute(query, (id, email))
-    document = cursor.fetchone()
-
-    conn.close()
-    cursor.close()
-
-    if document:
-        return {
-            'id': document['id'],
-            'document_name': document['document_name'],
-            'document_text': document['document_text']
-        }
-    else:
-        return None
+    return get_document_content(id, email)
 
 def reset_chat_db(chat_id, user_email):
     return reset_chat(chat_id, user_email)
@@ -334,7 +187,7 @@ def chunk_document_by_page_optimized(text_pages, maxChunkSize, document_id):
 
         # Insert the chunks into database
         chunk_data = []
-        for i, (metadata, embedding) in enumerate(zip(chunk_metadata, embeddings)):
+        for metadata, embedding in zip(chunk_metadata, embeddings, strict=False):
             embedding_array = np.array(embedding)
             blob = embedding_array.tobytes()
 
@@ -346,14 +199,9 @@ def chunk_document_by_page_optimized(text_pages, maxChunkSize, document_id):
                 metadata["page_number"]
             ))
 
-        # Batch insert into database
-        cursor.executemany(
-            'INSERT INTO chunks (start_index, end_index, document_id, embedding_vector, page_number) VALUES (%s,%s,%s,%s,%s)',
-            chunk_data
-        )
+        add_chunks_with_page_numbers(chunk_data)
 
         print(f"Successfully processed {len(chunk_data)} semantic page chunks with batch embeddings")
-        conn.commit()
 
     except Exception as e:
         import traceback
@@ -645,11 +493,9 @@ def fast_pdf_ingestion(text_pages, maxChunkSize, document_id):
         if len(embedding) != EMBEDDING_DIMENSIONS:
             raise RuntimeError(f"Chunk {i} embedding dimension mismatch: expected {EMBEDDING_DIMENSIONS}, got {len(embedding)}")
 
-    # Batch insert to database
-    conn, cursor = get_db_connection()
     try:
         chunk_data = []
-        for metadata, embedding in zip(chunk_metadata, embeddings):
+        for metadata, embedding in zip(chunk_metadata, embeddings, strict=False):
             embedding_array = np.array(embedding)
             blob = embedding_array.tobytes()
 
@@ -661,12 +507,7 @@ def fast_pdf_ingestion(text_pages, maxChunkSize, document_id):
                 metadata["page_number"]
             ))
 
-        # Single batch insert for maximum speed
-        cursor.executemany(
-            'INSERT INTO chunks (start_index, end_index, document_id, embedding_vector, page_number) VALUES (%s,%s,%s,%s,%s)',
-            chunk_data
-        )
-        conn.commit()
+        add_chunks_with_page_numbers(chunk_data)
 
         print(f"Fast semantic PDF ingestion completed: {len(chunk_data)} chunks processed")
         return len(chunk_data)
@@ -674,18 +515,12 @@ def fast_pdf_ingestion(text_pages, maxChunkSize, document_id):
     except Exception as e:
         print(f"[ERROR] Fast semantic PDF ingestion failed: {e}")
         raise RuntimeError(f"Fast semantic PDF ingestion failed: {str(e)}")
-    finally:
-        conn.close()
-
 
 @ray.remote
 def chunk_document_optimized(text, maxChunkSize, document_id):
     """
     Chunk documents into smaller pieces with RecursiveCharacterTextSplitter and use optimized batch embedding creation.
     """
-
-    conn, cursor = get_db_connection()
-
     chunk_texts = []
     chunk_metadata = []
 
@@ -727,7 +562,7 @@ def chunk_document_optimized(text, maxChunkSize, document_id):
 
         # Insert all of the chunks into database
         chunk_data = []
-        for i, (metadata, embedding) in enumerate(zip(chunk_metadata, embeddings)):
+        for metadata, embedding in zip(chunk_metadata, embeddings, strict=False):
             embedding_array = np.array(embedding)
             blob = embedding_array.tobytes()
 
@@ -738,22 +573,15 @@ def chunk_document_optimized(text, maxChunkSize, document_id):
                 blob
             ))
 
-        # Batch insert into database
-        cursor.executemany(
-            'INSERT INTO chunks (start_index, end_index, document_id, embedding_vector) VALUES (%s,%s,%s,%s)',
-            chunk_data
-        )
+        add_chunks(chunk_data)
 
         print(f"Successfully processed {len(chunk_data)} semantic chunks with batch embeddings")
-        conn.commit()
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         print(f"[FATAL ERROR] Exception during optimized semantic chunking: {e}")
         raise RuntimeError("Optimized semantic chunking failed due to internal error")
-    finally:
-        conn.close()
 
 
 def knn(x, y):
@@ -811,19 +639,7 @@ def knn(x, y):
     return results
 
 def get_relevant_chunks(k: int, question: str, chat_id: int, user_email: str):
-    conn, cursor = get_db_connection()
-
-    #Fetch all document chunks with their embeddings for the given user and chat
-    query = """
-    SELECT c.start_index, c.end_index, c.embedding_vector, c.document_id, d.document_name, d.document_text
-    FROM chunks c
-    JOIN documents d ON c.document_id = d.id
-    JOIN chats ch ON d.chat_id = ch.id
-    JOIN users u ON ch.user_id = u.id
-    WHERE u.email = %s AND ch.id = %s
-    """
-    cursor.execute(query, (user_email, chat_id))
-    rows = cursor.fetchall()
+    rows = get_chat_chunks(user_email, chat_id)
 
     #Prepare chunk embeddings and metadata
     chunk_embeddings = []
@@ -875,82 +691,21 @@ def get_relevant_chunks(k: int, question: str, chat_id: int, user_email: str):
 
 
 def add_sources_to_db(message_id, sources):
-    combined_sources = ""
-
-    print(f"DEBUG: sources type: {type(sources)}")
-    print(f"DEBUG: sources content: {sources}")
-
-    for i, source in enumerate(sources):
-        print(f"DEBUG: source {i} type: {type(source)}")
-        print(f"DEBUG: source {i} content: {source}")
-        print(f"DEBUG: source {i} length: {len(source) if hasattr(source, '__len__') else 'no length'}")
-
-        if len(source) >= 2:
-            chunk_text, document_name = source[0], source[1]
-        else:
-            print(f"WARNING: Skipping malformed source {i}: {source}")
-            continue
-
-        combined_sources += f"Document: {document_name}: {chunk_text}\n\n"
-
-    conn, cursor = get_db_connection()
-
-    cursor.execute('UPDATE messages SET relevant_chunks = %s WHERE id = %s', (combined_sources, message_id))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+    return add_sources_to_message(message_id, sources)
 
 def add_wf_sources_to_db(prompt_id, sources):
-    combined_sources = ""
-
-    for source in sources:
-        chunk_text, document_name = source
-        combined_sources += f"Document: {document_name}: {chunk_text}\n\n"
-
-    conn, cursor = get_db_connection()
-
-    cursor.execute('UPDATE prompts SET relevant_chunks = %s WHERE id = %s', (combined_sources, prompt_id))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
+    return add_sources_to_prompt(prompt_id, sources)
 
 
 def add_message_to_db(text, chat_id, isUser, reasoning=None):
     return add_message(text, chat_id, isUser, reasoning)
 
 def add_prompt_to_db(prompt_text):
-    conn, cursor = get_db_connection()
-
-    cursor.execute('INSERT INTO prompts (prompt_text) VALUES (%s, %s)', (prompt_text))
-
-    prompt_id = cursor.lastrowid
-
-    conn.commit()
-    conn.close()
-    cursor.close()
-
-    return prompt_id
+    return add_prompt(prompt_text)
 
 
 def add_answer_to_db(answer, citation_id):
-    conn, cursor = get_db_connection()
-
-    # Insert the answer into the prompt_answers table
-    cursor.execute(
-        'INSERT INTO prompt_answers (prompt_id, citation_id, answer_text) VALUES (%s, %s, %s)',
-        (citation_id, answer)
-    )
-    answer_id = cursor.lastrowid
-
-    conn.commit()
-    conn.close()
-    cursor.close()
-
-    return answer_id
+    return add_prompt_answer(answer, citation_id)
 
 def retrieve_docs_from_db(chat_id, user_email):
     return retrieve_docs(chat_id, user_email)
@@ -988,87 +743,17 @@ def get_text_pages_from_single_file(file):
 
 #for the demo
 def ensure_demo_user_exists(user_email):
-    conn, cursor = get_db_connection()
-
-    cursor.execute("SELECT id FROM users WHERE email = %s", (user_email,))
-    result = cursor.fetchone()
-    if result:
-        return result['id']  # Assuming 'id' is the column name for user ID
-    else:
-        # Insert demo user
-        insert_query = """
-        INSERT INTO users (email, person_name, profile_pic_url, credits)
-        VALUES (%s, 'Demo User', 'url_to_default_image', 0)
-        """
-        cursor.execute(insert_query, (user_email,))
-        conn.commit()
-        return cursor.lastrowid  # Return the newly created user ID
+    return ensure_demo_user(user_email)
 
 #For the SDK
 def ensure_SDK_user_exists(user_email):
-    conn, cursor = get_db_connection()
-
-    cursor.execute("SELECT id FROM users WHERE email = %s", (user_email,))
-    result = cursor.fetchone()
-    if result:
-        return result['id']  # Assuming 'id' is the column name for user ID
-    else:
-        # Insert SDK user with some initial credits for testing
-        # NOTE: In production, you might want to set this to 0 and require users to purchase credits
-        initial_credits = 0  # Give new SDK users 10 credits to start
-        insert_query = """
-        INSERT INTO users (email, person_name, profile_pic_url, credits)
-        VALUES (%s, 'SDK User', 'url_to_default_image', %s)
-        """
-        cursor.execute(insert_query, (user_email, initial_credits))
-        conn.commit()
-        return cursor.lastrowid  # Return the newly created user ID
+    return ensure_sdk_user(user_email)
 
 def get_chat_info(chat_id):
     return fetch_chat_info(chat_id)
 
 def get_message_info(answer_id, user_email):
-    conn, cursor = get_db_connection()
-
-    # Query to get the answer message and verify it belongs to the specified user by email
-    answer_query = """
-    SELECT m.*, c.id as chunk_id, c.start_index, c.end_index, c.page_number
-    FROM messages m
-    JOIN chats ct ON m.chat_id = ct.id
-    JOIN users u ON ct.user_id = u.id
-    LEFT JOIN chunks c ON FIND_IN_SET(c.id, m.relevant_chunks) > 0
-    WHERE m.id = %s AND u.email = %s
-    """
-
-    cursor.execute(answer_query, (answer_id, user_email))
-    answer_data = cursor.fetchall()
-
-    if not answer_data:
-        print("Either the answer does not exist or it doesn't belong to the specified user.")
-        return None, None, None
-
-    answer = answer_data[0]
-    #chunks = answer_data[0]['chunk_id'] and [{
-    #    'id': chunk['chunk_id'],
-    #    'start_index': chunk['start_index'],
-    #    'end_index': chunk['end_index'],
-    #    'page_number': chunk['page_number']
-    #} for chunk in answer_data if chunk['chunk_id']] or []
-
-    # Query to find the previous message (question) in the same chat, sent from the user
-    question_query = """
-    SELECT m.*
-    FROM messages m
-    WHERE m.id < %s AND m.chat_id = %s AND m.sent_from_user = 1
-    ORDER BY m.id DESC
-    LIMIT 1
-    """
-
-    cursor.execute(question_query, (answer_id, answer['chat_id']))
-    question = cursor.fetchone()
-
-    cursor.close()
-    return question, answer
+    return fetch_message_info(answer_id, user_email)
 
 def get_text_from_url(web_url):
     response = requests.get(web_url)

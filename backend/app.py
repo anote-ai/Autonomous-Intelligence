@@ -30,20 +30,8 @@ from api_endpoints.documents.handler import (
 )
 from api_endpoints.financeGPT.chatbot_endpoints import (
     _get_model,
-    access_sharable_chat,
-    add_chat_to_db,
-    add_document_to_db,
-    add_message_to_db,
-    add_model_key_to_db,
-    add_sources_to_db,
     chunk_document,
-    create_chat_shareable_url,
-    ensure_SDK_user_exists,
-    get_chat_info,
-    get_message_info,
     get_relevant_chunks,
-    get_text_from_url,
-    retrieve_message_from_db,
 )
 from api_endpoints.generate_api_key.handler import GenerateAPIKeyHandler
 from api_endpoints.get_api_keys.handler import GetAPIKeysHandler
@@ -69,7 +57,21 @@ from app_helpers import (
 )
 from bs4 import BeautifulSoup
 from constants.global_constants import kSessionTokenExpirationTime
-from database.db import create_user_if_does_not_exist, update_chat_name
+from database.db import (
+    add_chat as add_chat_to_db,
+    add_document as add_document_to_db,
+    add_message as add_message_to_db,
+    add_model_key as add_model_key_to_db,
+    add_sources_to_message as add_sources_to_db,
+    access_shareable_chat,
+    create_user_if_does_not_exist,
+    create_chat_shareable_url,
+    ensure_sdk_user_exists as ensure_SDK_user_exists,
+    get_chat_info,
+    get_message_info,
+    retrieve_messages as retrieve_message_from_db,
+    update_chat_name as update_chat_name_in_db,
+)
 from database.db_auth import (
     api_key_access_invalid,
     extractUserEmailFromRequest,
@@ -111,6 +113,9 @@ from api_endpoints.languages.korean import korean_blueprint
 from api_endpoints.languages.spanish import spanish_blueprint
 
 load_dotenv(override=True)
+
+# Backward-compatible alias while callers migrate off the legacy misspelling.
+access_sharable_chat = access_shareable_chat
 
 app = Flask(__name__)
 app.register_blueprint(gpt4_blueprint)
@@ -245,7 +250,12 @@ def create_shareable_playbook(chat_id):
 @app.route('/playbook/<string:playbook_url>', methods=["POST"])
 @cross_origin(supports_credentials=True)
 def import_shared_chat(playbook_url):
-    return access_sharable_chat(playbook_url)
+    new_chat_id = access_sharable_chat(playbook_url)
+    if isinstance(new_chat_id, Response):
+        return new_chat_id
+    if new_chat_id is None:
+        return jsonify({"error": "Snapshot not found"}), 404
+    return jsonify({"new_chat_id": new_chat_id})
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -651,7 +661,7 @@ def infer_chat_name():
     )
     new_name = str(completion.choices[0].message.content)
 
-    update_chat_name(user_email, chat_id, new_name)
+    update_chat_name_in_db(user_email, chat_id, new_name)
 
     return jsonify(chat_name=new_name)
 
