@@ -1,0 +1,124 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: anote-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      REACT_APP_BACK_END_HOST: "http://localhost:5000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - anote-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: anote-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+      - "6379:6379"
+      - "9998:9998"
+    volumes:
+      - ./backend:/app
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    env_file:
+      - ./backend/.env.example
+    environment:
+      FLASK_APP: app.py
+      FLASK_ENV: development
+      FLASK_DEBUG: "1"
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      TIKA_SERVER_ENDPOINT: http://tika:9998
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tika:
+        condition: service_healthy
+    networks:
+      - anote-network
+    shm_size: "2.44gb"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  db:
+    image: mysql:8.0
+    container_name: anote-db
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+      MYSQL_DATABASE: agents
+      MYSQL_ROOT_PASSWORD: ""
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password
+    networks:
+      - anote-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "db", "-u", "root"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  tika:
+    image: apache/tika:latest
+    container_name: anote-tika
+    restart: unless-stopped
+    ports:
+      - "9999:9998"
+    networks:
+      - anote-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9998/tika"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: anote-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - anote-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  anote-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:

@@ -1,4 +1,12 @@
-const API_ENDPOINT = process.env.REACT_APP_BACK_END_HOST;
+const API_ENDPOINT = (process.env.REACT_APP_BACK_END_HOST || "").replace(
+  /\/$/,
+  ""
+);
+
+function buildApiUrl(path) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return API_ENDPOINT ? `${API_ENDPOINT}${normalizedPath}` : normalizedPath;
+}
 
 // Enhanced error types for better error handling
 export const ErrorTypes = {
@@ -154,7 +162,7 @@ export function refreshAccessToken() {
 
   const { controller, timeoutId } = createRequestController();
 
-  return fetch(`${API_ENDPOINT}/refresh`, {
+  return fetch(buildApiUrl("/refresh"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -232,7 +240,7 @@ async function fetcher(url, options = {}, retryCount = 0) {
   const requestId = `req_${Date.now()}_${Math.random()
     .toString(36)}`;
     
-  const fullUrl = `${API_ENDPOINT}/${url}`;
+  const fullUrl = buildApiUrl(url);
 
   // Check if this is a guest mode request
   let isGuest = options.isGuest || false;
