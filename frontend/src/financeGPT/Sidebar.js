@@ -16,7 +16,15 @@ const icons = {
   ),
 };
 
-const Sidebar = ({ handleChatSelect, isCollapsed, onToggle }) => {
+const Sidebar = ({
+  handleChatSelect,
+  isCollapsed,
+  onToggle,
+  chats,
+  onRefreshChats,
+  onRenameChat,
+  onDeleteChat,
+}) => {
   return (
     <aside
       className={`md:flex flex-col z-50 h-screen text-white md:p-2 md:py-5 justify-between shadow-lg ${
@@ -60,7 +68,13 @@ const Sidebar = ({ handleChatSelect, isCollapsed, onToggle }) => {
             <Link to="/">
               <SidebarItem icon={icons.newChat} label="New chat" />
             </Link>
-            <ChatHistory handleChatSelect={handleChatSelect} />
+            <ChatHistory
+              chats={chats}
+              handleChatSelect={handleChatSelect}
+              onRefreshChats={onRefreshChats}
+              onRenameChat={onRenameChat}
+              onDeleteChat={onDeleteChat}
+            />
           </>
         )}
       </div>

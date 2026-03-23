@@ -29,7 +29,15 @@ import fetcher from "../../http/RequestConfig";
 // Development-only debug logging helper
 const isDev = process.env.NODE_ENV === "development";
 
-const Chatbot = (props) => {
+const Chatbot = ({
+  createNewChat,
+  handleChatSelect,
+  isGuestMode = false,
+  isPrivate,
+  onChatsChanged,
+  onUploadComplete,
+  selectedChatId,
+}) => {
   const [message, setMessage] = useState("");
   const inputRef = useRef(null);
   const navigate = useNavigate();
@@ -48,7 +56,6 @@ const Chatbot = (props) => {
   const [expandedReasoning, setExpandedReasoning] = useState({});
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showFileUpload, setShowFileUpload] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const shouldShowUpgradeModal = () => {
@@ -73,7 +80,7 @@ const Chatbot = (props) => {
 
     try {
       // Check if we have a chat ID, if not, create a new chat first
-      let chatId = id || props.selectedChatId;
+      let chatId = id || selectedChatId;
 
       if (!chatId) {
         // For guests, don't create a persistent chat or navigate
@@ -84,7 +91,7 @@ const Chatbot = (props) => {
 
         // Create a new chat first for authenticated users
         try {
-          chatId = await props.createNewChat();
+          chatId = await createNewChat();
           // Navigate to the new chat
           navigate(`/chat/${chatId}`, { id: chatId });
         } catch (err) {
@@ -122,8 +129,6 @@ const Chatbot = (props) => {
           size: fileObj.size,
           uploadTime: new Date().toISOString(),
         }));
-        setUploadedFiles((prev) => [...prev, ...uploadedFileInfo]);
-
         // Add a system message to show files were uploaded
         const systemMessage = {
           id: `upload-${Date.now()}`,
@@ -144,8 +149,8 @@ const Chatbot = (props) => {
         setSelectedFiles([]);
 
         // Optionally trigger a refresh or update
-        if (props.onUploadComplete) {
-          props.onUploadComplete(result);
+        if (onUploadComplete) {
+          onUploadComplete(result);
         }
 
         // Don't show alert since we're showing it in chat
@@ -172,9 +177,8 @@ const Chatbot = (props) => {
         },
         body: JSON.stringify({ messages: combinedText, chat_id: chatId }),
       });
-      const data = await response.json();
-      props.setCurrChatName?.(data.chat_name);
-      props.handleForceUpdate?.();
+      await response.json();
+      onChatsChanged?.();
     } catch (err) {
       console.error("Chat name inference failed", err);
     }
@@ -301,101 +305,6 @@ const Chatbot = (props) => {
     return [];
   }, []);
 
-  const handleLoadChat = useCallback(async () => {
-    if (!id) return;
-
-    if (!props.selectedChatId) {
-      props.handleChatSelect(id);
-    }
-
-    try {
-      const res = await fetcher("retrieve-messages-from-chat", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ chat_id: id, chat_type: 0 }),
-      });
-
-      const data = await res.json();
-
-      console.log("res", data);
-      props.setCurrChatName?.(data.chat_name);
-      setChatNameGenerated(true);
-
-      if (!data.messages?.length) {
-        const pending =
-          location.state?.message ||
-          localStorage.getItem(`pending-message-${id}`);
-        if (pending) {
-          console.log(
-            "[handleLoadChat] Loading pending message after new chat creation:",
-            pending
-          );
-          const userMsg = {
-            id: "user-content",
-            chat_id: id,
-            role: "user",
-            content: pending,
-            timestamp: Date.now(),
-          };
-          const thinkingMsg = {
-            id: `thinking-${Date.now()}`,
-            chat_id: id,
-            role: "assistant",
-            content: "",
-            isThinking: true,
-            reasoning: [],
-            sources: [],
-            timestamp: Date.now() + 1,
-          };
-          setMessages([userMsg, thinkingMsg]);
-          if (location.state?.message) {
-            localStorage.setItem(
-              `pending-message-${id}`,
-              location.state.message
-            );
-          }
-          await sendToAPI(pending, id, thinkingMsg.id);
-          return;
-        } else {
-          setMessages([]);
-        }
-        return;
-      }
-
-      localStorage.removeItem(`pending-message-${id}`);
-      const formatted = data.messages.map((m) => ({
-        id: m.id,
-        chat_id: id,
-        content: m.message_text,
-        role: m.sent_from_user === 1 ? "user" : "assistant",
-        relevant_chunks: m.relevant_chunks,
-        reasoning: m.reasoning || [], // Include reasoning data from database
-        sources: m.sources || [], // Include sources if available
-        timestamp: new Date(m.created).getTime(), // Add timestamp from database
-      }));
-
-      // Fetch uploaded documents and create system messages for them
-      const fileSystemMessages = await fetchUploadedDocuments(id);
-
-      // Combine regular messages with file system messages and sort by timestamp
-      const allMessages = [...formatted, ...fileSystemMessages];
-
-      // Sort messages by timestamp
-      allMessages.sort((a, b) => {
-        const aTime = a.timestamp || 0;
-        const bTime = b.timestamp || 0;
-        return aTime - bTime;
-      });
-
-      setMessages(allMessages);
-    } catch (err) {
-      console.error("Failed to load chat:", err);
-    }
-  }, [id, location.state?.message, fetchUploadedDocuments]);
-
   const handleSendMessage = async (event) => {
     event.preventDefault();
     console.log(
@@ -502,7 +411,7 @@ const Chatbot = (props) => {
         }
         if (user) {
           // For authenticated users, create a real chat and navigate
-          targetChatId = await props.createNewChat();
+          targetChatId = await createNewChat();
           navigate(`/chat/${targetChatId}`, {
             state: { message: currentMessage },
           });
@@ -597,8 +506,8 @@ const Chatbot = (props) => {
         body: JSON.stringify({
           message: text,
           chat_id: isGuestChat ? null : Number(chatId), // Send null for guest chats
-          model_type: props.isPrivate,
-          model_key: props.confirmedModelKey,
+          model_type: isPrivate,
+          model_key: "",
           is_guest: isGuestChat, // Flag to indicate guest chat
         }),
       });
@@ -709,7 +618,7 @@ const Chatbot = (props) => {
               ) {
                 await inferChatName(originalText, eventData.answer, chatId);
                 setChatNameGenerated(true);
-                props.handleForceUpdate?.();
+                onChatsChanged?.();
               }
 
               // Force final state update for completion events
@@ -1147,11 +1056,98 @@ const Chatbot = (props) => {
     pollingStartedRef.current = false;
 
     if (id) {
-      handleLoadChat();
+      const loadChat = async () => {
+        if (!selectedChatId) {
+          handleChatSelect(id);
+        }
+
+        try {
+          const res = await fetcher("retrieve-messages-from-chat", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ chat_id: id, chat_type: 0 }),
+          });
+
+          const data = await res.json();
+
+          console.log("res", data);
+          setChatNameGenerated(true);
+
+          if (!data.messages?.length) {
+            const pending =
+              location.state?.message ||
+              localStorage.getItem(`pending-message-${id}`);
+            if (pending) {
+              console.log(
+                "[handleLoadChat] Loading pending message after new chat creation:",
+                pending
+              );
+              const userMsg = {
+                id: "user-content",
+                chat_id: id,
+                role: "user",
+                content: pending,
+                timestamp: Date.now(),
+              };
+              const thinkingMsg = {
+                id: `thinking-${Date.now()}`,
+                chat_id: id,
+                role: "assistant",
+                content: "",
+                isThinking: true,
+                reasoning: [],
+                sources: [],
+                timestamp: Date.now() + 1,
+              };
+              setMessages([userMsg, thinkingMsg]);
+              if (location.state?.message) {
+                localStorage.setItem(
+                  `pending-message-${id}`,
+                  location.state.message
+                );
+              }
+              await sendToAPI(pending, id, thinkingMsg.id);
+              return;
+            }
+
+            setMessages([]);
+            return;
+          }
+
+          localStorage.removeItem(`pending-message-${id}`);
+          const formatted = data.messages.map((m) => ({
+            id: m.id,
+            chat_id: id,
+            content: m.message_text,
+            role: m.sent_from_user === 1 ? "user" : "assistant",
+            relevant_chunks: m.relevant_chunks,
+            reasoning: m.reasoning || [],
+            sources: m.sources || [],
+            timestamp: new Date(m.created).getTime(),
+          }));
+
+          const fileSystemMessages = await fetchUploadedDocuments(id);
+          const allMessages = [...formatted, ...fileSystemMessages];
+
+          allMessages.sort((a, b) => {
+            const aTime = a.timestamp || 0;
+            const bTime = b.timestamp || 0;
+            return aTime - bTime;
+          });
+
+          setMessages(allMessages);
+        } catch (err) {
+          console.error("Failed to load chat:", err);
+        }
+      };
+
+      loadChat();
     } else {
       setMessages([]);
       setChatNameGenerated(false);
-      setUploadedFiles([]); // Clear uploaded files when switching chats
     }
 
     return () => {
@@ -1160,7 +1156,14 @@ const Chatbot = (props) => {
         pollingTimeoutRef.current = null;
       }
     };
-  }, [id, handleLoadChat]);
+  }, [
+    id,
+    location.state?.message,
+    fetchUploadedDocuments,
+    selectedChatId,
+    handleChatSelect,
+    sendToAPI,
+  ]);
 
   const handleInputKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1175,7 +1178,7 @@ const Chatbot = (props) => {
     <div
       className={`h-full bg-anoteblack-800 w-full ${
         messages.length !== 0 && "pt-16"
-      } flex flex-col ${props.menu ? "md:blur-none blur" : ""}`}
+      } flex flex-col`}
     >
       <div
         ref={(ref) =>
@@ -1360,18 +1363,16 @@ const Chatbot = (props) => {
                 console.log(
                   "Upload button clicked in Chatbot",
                   "selectedChatId:",
-                  props.selectedChatId
+                  selectedChatId
                 );
                 setShowFileUpload(true);
                 setUploadButtonClicked(true);
                 setTimeout(() => setUploadButtonClicked(false), 1000);
               }}
-              disabled={props.isUploading || (!user ? false : numCredits === 0)}
+              disabled={!user ? false : numCredits === 0}
               className={`flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 ${
                 uploadButtonClicked
                   ? "bg-gray-600 text-white"
-                  : props.isUploading
-                  ? "bg-gray-500 text-gray-300 cursor-not-allowed"
                   : "bg-gray-600 hover:bg-gray-500 text-white"
               }`}
               title={

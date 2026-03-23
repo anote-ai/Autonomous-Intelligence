@@ -1,18 +1,9 @@
-import React, { useState, useRef, useEffect } from "react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPaperPlane, faUndoAlt } from "@fortawesome/free-solid-svg-icons";
-import PDFUploader from "../../../landing_page_screens/Chatbots/PdfUploader";
+import React, { useState } from "react";
 import Chatbot from "../../../landing_page_screens/Chatbots/Chatbot";
 import fetcher from "../../../../http/RequestConfig";
 
 const CreateCompany = () => {
   const [chatId, setChatId] = useState(null);
-  const [forceUpdateFlag, setForceUpdateFlag] = useState(false);
-
-  const handleForceUpdate = () => {
-    // This is passed to PDFUploader to trigger re-rendering if needed
-    setForceUpdateFlag(!forceUpdateFlag);
-  };
 
   const handlePDFUploadAndCreateChat = async (e) => {
     const files = e.target.files;
@@ -33,7 +24,6 @@ const CreateCompany = () => {
 
       if (responseData.chat_id) {
         setChatId(responseData.chat_id);
-        handleForceUpdate(); // trigger Chatbot update if needed
       }
     } catch (error) {
       console.error("Failed to create chat from PDF:", error);
@@ -60,7 +50,7 @@ const CreateCompany = () => {
           />
         </>
       ) : (
-        <Chatbot selectedChatId={chatId} handleForceUpdate={handleForceUpdate} />
+        <Chatbot selectedChatId={chatId} />
       )}
     </div>
   );

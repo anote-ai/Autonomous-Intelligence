@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import Chatbot from "./Chatbot";
 import fetcher from "../../http/RequestConfig";
 import Sidebar from "../Sidebar";
+import { useChatHistory } from "../useChatHistory";
 
 function HomeChatbot({
   isGuestMode = false,
@@ -12,6 +13,10 @@ function HomeChatbot({
   const [errorMessage, setErrorMessage] = useState("");
   const isPrivate = 0;
   const currTask = 0;
+  const { chats, refreshChats, renameChatById, deleteChatById } =
+    useChatHistory({
+      enabled: !isGuestMode,
+    });
 
   const showError = (message) => {
     setErrorMessage(message);
@@ -53,6 +58,7 @@ function HomeChatbot({
       }
 
       handleChatSelect(response_data.chat_id);
+      refreshChats();
       return response_data.chat_id;
     } catch (error) {
       // Only log errors that aren't silent network errors
@@ -101,6 +107,10 @@ function HomeChatbot({
             handleChatSelect={handleChatSelect}
             isCollapsed={isSidebarCollapsed}
             onToggle={handleSidebarToggle}
+            chats={chats}
+            onRefreshChats={refreshChats}
+            onRenameChat={renameChatById}
+            onDeleteChat={deleteChatById}
           />
         )}
         {/* Chat area */}
@@ -112,6 +122,7 @@ function HomeChatbot({
             createNewChat={createNewChat}
             isPrivate={isPrivate}
             isGuestMode={isGuestMode}
+            onChatsChanged={refreshChats}
           />
         </div>
       </div>

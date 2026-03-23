@@ -1,6 +1,4 @@
-import axios from "axios";
 import React, { useRef, useState } from "react";
-import { Document, Page } from "react-pdf";
 import { pdfjs } from "react-pdf";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFileUpload } from "@fortawesome/free-solid-svg-icons";
@@ -14,14 +12,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/$
 
 // is_private = input("Please choose an option (enter 1 or 2): ")
 function PDFUploader({ chat_id, handleForceUpdate }) {
-  const [file, setFile] = useState();
-  const [numPages, setNumPages] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef();
-
-  const onDocumentLoadSuccess = ({ numPages }) => {
-    setNumPages(numPages);
-  };
 
   const splashScreenStyle = {
     position: "fixed",
@@ -55,14 +47,14 @@ function PDFUploader({ chat_id, handleForceUpdate }) {
       const response = await fetcher("ingest-pdf-demo", {
         method: "POST",
         body: formData,
-      })
-        const response_str = await response.json();
-        setIsUploading(false);
-        handleForceUpdate();
+      });
+      await response.json();
+      setIsUploading(false);
+      handleForceUpdate();
     } catch (error) {
-      console.error("Error during file upload")
+      console.error("Error during file upload");
+      setIsUploading(false);
     }
-
   };
 
   const handleUploadBtnClick = () => {
@@ -87,28 +79,8 @@ function PDFUploader({ chat_id, handleForceUpdate }) {
           icon={faFileUpload}
           onClick={handleUploadBtnClick}
           className="px-2 text-black"
-          style={{ color: 'black' }}
+          style={{ color: "black" }}
         />
-      </div>
-      <div>
-        {file && (
-          <div>
-            {Array.from(file).map((singleFile, fileIndex) => (
-              <Document
-                key={`file_${fileIndex}`}
-                file={singleFile}
-                onLoadSuccess={onDocumentLoadSuccess}
-              >
-                {Array.from(new Array(numPages), (el, pageIndex) => (
-                  <Page
-                    key={`page_${fileIndex}_${pageIndex + 1}`}
-                    pageNumber={pageIndex + 1}
-                  />
-                ))}
-              </Document>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
