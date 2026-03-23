@@ -173,8 +173,8 @@ const Chatbot = (props) => {
         body: JSON.stringify({ messages: combinedText, chat_id: chatId }),
       });
       const data = await response.json();
-      props.setCurrChatName(data.chat_name);
-      props.handleForceUpdate();
+      props.setCurrChatName?.(data.chat_name);
+      props.handleForceUpdate?.();
     } catch (err) {
       console.error("Chat name inference failed", err);
     }
@@ -321,7 +321,7 @@ const Chatbot = (props) => {
       const data = await res.json();
 
       console.log("res", data);
-      props.setCurrChatName(data.chat_name);
+      props.setCurrChatName?.(data.chat_name);
       setChatNameGenerated(true);
 
       if (!data.messages?.length) {
