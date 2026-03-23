@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
-
+import pytest
 from services import finance_gpt
 
 
@@ -12,7 +12,7 @@ def _fake_embedding_response(vectors: list[list[float]]) -> Any:
     return SimpleNamespace(data=[SimpleNamespace(embedding=vector) for vector in vectors])
 
 
-def test_get_model_and_embedding_helpers(monkeypatch) -> None:
+def test_get_model_and_embedding_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     finance_gpt._embedding_model = None
     finance_gpt._text_splitters = {}
 
@@ -36,7 +36,7 @@ def test_get_model_and_embedding_helpers(monkeypatch) -> None:
     assert len(embeddings) == 3
 
 
-def test_text_splitter_and_preload_helpers(monkeypatch) -> None:
+def test_text_splitter_and_preload_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     finance_gpt._text_splitters = {}
     splitter = finance_gpt._get_text_splitter(5)
     assert splitter.split_text("abcdefghij") == ["abcde", "fghij"]
@@ -66,7 +66,7 @@ def test_prepare_chunks_and_knn() -> None:
     assert result[0]["index"] == 0
 
 
-def test_chunk_document_optimized(monkeypatch) -> None:
+def test_chunk_document_optimized(monkeypatch: pytest.MonkeyPatch) -> None:
     inserted = []
     monkeypatch.setattr(finance_gpt, "get_embeddings_batch", lambda texts, batch_size=32: [[0.1] * finance_gpt.EMBEDDING_DIMENSIONS for _ in texts])
     monkeypatch.setattr(finance_gpt, "add_chunks", lambda chunk_data: inserted.extend(chunk_data))
@@ -77,7 +77,7 @@ def test_chunk_document_optimized(monkeypatch) -> None:
     assert inserted[0][2] == 99
 
 
-def test_chunk_document_by_page_and_fast_ingestion(monkeypatch) -> None:
+def test_chunk_document_by_page_and_fast_ingestion(monkeypatch: pytest.MonkeyPatch) -> None:
     inserted = []
     monkeypatch.setattr(finance_gpt, "get_embeddings_batch", lambda texts, batch_size=32: [[0.2] * finance_gpt.EMBEDDING_DIMENSIONS for _ in texts])
     monkeypatch.setattr(finance_gpt, "add_chunks_with_page_numbers", lambda chunk_data: inserted.extend(chunk_data))
@@ -90,7 +90,7 @@ def test_chunk_document_by_page_and_fast_ingestion(monkeypatch) -> None:
     assert any(row[2] == 456 for row in inserted)
 
 
-def test_get_relevant_chunks(monkeypatch) -> None:
+def test_get_relevant_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
     vector = np.array([1.0] * finance_gpt.EMBEDDING_DIMENSIONS, dtype=np.float64).tobytes()
     monkeypatch.setattr(
         finance_gpt,
@@ -119,7 +119,7 @@ def test_get_relevant_chunks(monkeypatch) -> None:
     assert sources[0][1] in {"doc-a", "doc-b"}
 
 
-def test_get_relevant_chunks_handles_embedding_failure(monkeypatch) -> None:
+def test_get_relevant_chunks_handles_embedding_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(finance_gpt, "get_chat_chunks", lambda user_email, chat_id: [])
     assert finance_gpt.get_relevant_chunks(2, "question", 1, "user@example.com") == []
 
@@ -140,7 +140,7 @@ def test_get_relevant_chunks_handles_embedding_failure(monkeypatch) -> None:
     assert finance_gpt.get_relevant_chunks(2, "question", 1, "user@example.com") == []
 
 
-def test_pdf_and_url_helpers(monkeypatch) -> None:
+def test_pdf_and_url_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakePage:
         def __init__(self, text: str) -> None:
             self._text = text
