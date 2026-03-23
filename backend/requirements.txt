@@ -33,6 +33,8 @@ tika==1.24
 PyPDF2==3.0.1
 fpdf==1.7.2
 beautifulsoup4
+requests
+pandas
 
 # External services
 stripe==5.5.0
@@ -46,6 +48,10 @@ pycryptodome==3.20.0
 
 # Dev / test
 pytest
+pytest-cov
+ruff
+mypy
+pre-commit
 mkdocstrings
 mkdocstrings-python
 ratelimit
