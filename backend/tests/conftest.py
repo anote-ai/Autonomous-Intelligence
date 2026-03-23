@@ -192,6 +192,14 @@ def _install_import_stubs() -> None:
 
     class FakeOpenAIClient:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.embeddings = SimpleNamespace(
+                create=lambda **kwargs: SimpleNamespace(
+                    data=[
+                        SimpleNamespace(embedding=[0.1] * 768)
+                        for _ in kwargs.get("input", [])
+                    ]
+                )
+            )
             self.chat = SimpleNamespace(
                 completions=SimpleNamespace(
                     create=lambda **kwargs: SimpleNamespace(
@@ -215,7 +223,34 @@ def _install_import_stubs() -> None:
     ray_module.is_initialized = lambda: True
     ray_module.init = lambda *args, **kwargs: None
     ray_module.get = lambda value: value
+
+    def remote(fn: Any) -> Any:
+        fn.remote = fn
+        return fn
+
+    ray_module.remote = remote
     _register_module("ray", ray_module)
+
+    langchain_splitter_module = types.ModuleType("langchain.text_splitter")
+
+    class FakeRecursiveCharacterTextSplitter:
+        def __init__(
+            self,
+            *,
+            chunk_size: int,
+            chunk_overlap: int,
+            separators: list[str],
+            length_function: Any,
+        ) -> None:
+            self.chunk_size = chunk_size
+
+        def split_text(self, text: str) -> list[str]:
+            if not text:
+                return []
+            return [text[index : index + self.chunk_size] for index in range(0, len(text), self.chunk_size)]
+
+    langchain_splitter_module.RecursiveCharacterTextSplitter = FakeRecursiveCharacterTextSplitter
+    _register_module("langchain.text_splitter", langchain_splitter_module)
 
 
 _install_import_stubs()

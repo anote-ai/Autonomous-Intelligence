@@ -28,11 +28,6 @@ from api_endpoints.documents.handler import (
     ResetChatHandler,
     RetrieveCurrentDocsHandler,
 )
-from api_endpoints.financeGPT.chatbot_endpoints import (
-    _get_model,
-    chunk_document,
-    get_relevant_chunks,
-)
 from api_endpoints.generate_api_key.handler import GenerateAPIKeyHandler
 from api_endpoints.get_api_keys.handler import GetAPIKeysHandler
 from api_endpoints.login.handler import (
@@ -98,6 +93,7 @@ from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
 from jwt import InvalidTokenError
 from pip._vendor import cachecontrol
+from services.finance_gpt import _get_model, chunk_document, get_relevant_chunks, get_text_from_url
 from tika import parser as p
 
 _get_model()
@@ -547,13 +543,6 @@ def get_links(initial_url: str):  # pragma: no cover
                     links.append(web_url)
                     links_text.append(web_text)
     return links, links_text
-
-# Helper function to extract text from a URL
-def get_text_from_url(web_url):  # pragma: no cover
-    response = requests.get(web_url)
-    result = p.from_buffer(response.content)
-    text = result.get("content", "").strip()
-    return text.replace("\n", "").replace("\t", "")
 
 ## CHATBOT SECTION
 output_document_path = 'output_document'
