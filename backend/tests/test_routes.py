@@ -275,7 +275,11 @@ def test_reset_everything_error_path(client: Any, app_module: Any, monkeypatch: 
     output_dir.mkdir()
     monkeypatch.setattr(app_module, "output_document_path", str(output_dir))
     monkeypatch.setattr(app_module, "source_documents_path", str(tmp_path / "sources"))
-    monkeypatch.setattr(app_module.shutil, "rmtree", lambda path: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        app_module,
+        "reset_local_chat_artifacts",
+        lambda source_documents_path, output_document_path: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
     response = client.post("/api/reset-everything")
     assert response.status_code == 500
     assert "Failed to delete DB folder: boom" == response.get_data(as_text=True)
@@ -306,7 +310,7 @@ def test_download_chat_history_invalid_token_and_error(
     monkeypatch.setattr(app_module, "retrieve_message_from_db", lambda *args: None)
     error_response = client.post("/download-chat-history", json={"chat_type": 0, "chat_id": 9}, headers=auth_headers)
     assert error_response.status_code == 500
-    assert "NoneType" in error_response.get_json()["error"]
+    assert error_response.get_json()["error"] == "messages must not be None"
 
 
 @pytest.mark.parametrize(
@@ -480,7 +484,7 @@ def test_demo_download_route_error_branch(client: Any, app_module: Any, monkeypa
     monkeypatch.setattr(app_module, "retrieve_message_from_db", lambda *args: None)
     response = client.post("/download-chat-history-demo", json={})
     assert response.status_code == 500
-    assert "NoneType" in response.get_json()["error"]
+    assert response.get_json()["error"] == "messages must not be None"
 
 
 def test_add_model_key_and_temp_test(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]) -> None:

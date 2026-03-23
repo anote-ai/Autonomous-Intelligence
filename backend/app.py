@@ -1,30 +1,17 @@
-from flask import Flask, request, jsonify, Response, abort, redirect, Blueprint
-from flask_cors import CORS, cross_origin
-from api_endpoints.login.handler import LoginHandler, SignUpHandler, ForgotPasswordHandler, ResetPasswordHandler
+import json
 import os
 import pathlib
-from google_auth_oauthlib.flow import Flow
-from google.oauth2 import id_token
-from pip._vendor import cachecontrol
-import google.auth.transport.requests
-import json
-import jwt
-import requests
-from database.db_auth import api_key_access_invalid
-from flask_jwt_extended import jwt_required, create_access_token, create_refresh_token, decode_token, JWTManager, get_jwt_identity
-from flask_mail import Mail
-from jwt import InvalidTokenError
-from urllib.parse import urlparse
-from database.db import create_user_if_does_not_exist, update_chat_name
-from constants.global_constants import kSessionTokenExpirationTime
-from database.db_auth import extractUserEmailFromRequest, is_api_key_valid, user_id_for_email, verifyAuthForPaymentsTrustedTesters, verifyAuthForCheckoutSession, verifyAuthForPortalSession
+from enum import Enum
 from functools import wraps
-from api_endpoints.payments.handler import CreateCheckoutSessionHandler, CreatePortalSessionHandler, StripeWebhookHandler
-from api_endpoints.refresh_credits.handler import RefreshCreditsHandler
-from api_endpoints.user.handler import ViewUserHandler
-from api_endpoints.generate_api_key.handler import GenerateAPIKeyHandler
-from api_endpoints.delete_api_key.handler import DeleteAPIKeyHandler
-from api_endpoints.get_api_keys.handler import GetAPIKeysHandler
+from urllib.parse import urlparse
+
+import google.auth.transport.requests
+import jwt
+import openai
+import ray
+import requests
+import stripe
+from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic
 from api_endpoints.chat.handler import (
     CreateNewChatHandler,
     DeleteChatHandler,
@@ -33,6 +20,7 @@ from api_endpoints.chat.handler import (
     RetrieveMessagesHandler,
     UpdateChatNameHandler,
 )
+from api_endpoints.delete_api_key.handler import DeleteAPIKeyHandler
 from api_endpoints.documents.handler import (
     ChangeChatModeHandler,
     DeleteDocHandler,
@@ -40,37 +28,87 @@ from api_endpoints.documents.handler import (
     ResetChatHandler,
     RetrieveCurrentDocsHandler,
 )
-from enum import Enum
-import stripe
-from dotenv import load_dotenv
-import ray
-import csv
-import openai
-import shutil
-import io
-from tika import parser as p
-from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
-import re
+from api_endpoints.financeGPT.chatbot_endpoints import (
+    _get_model,
+    access_sharable_chat,
+    add_chat_to_db,
+    add_document_to_db,
+    add_message_to_db,
+    add_model_key_to_db,
+    add_sources_to_db,
+    chunk_document,
+    create_chat_shareable_url,
+    ensure_SDK_user_exists,
+    get_chat_info,
+    get_message_info,
+    get_relevant_chunks,
+    get_text_from_url,
+    retrieve_message_from_db,
+)
+from api_endpoints.generate_api_key.handler import GenerateAPIKeyHandler
+from api_endpoints.get_api_keys.handler import GetAPIKeysHandler
+from api_endpoints.login.handler import (
+    ForgotPasswordHandler,
+    LoginHandler,
+    ResetPasswordHandler,
+    SignUpHandler,
+)
+from api_endpoints.payments.handler import (
+    CreateCheckoutSessionHandler,
+    CreatePortalSessionHandler,
+    StripeWebhookHandler,
+)
+from api_endpoints.refresh_credits.handler import RefreshCreditsHandler
+from api_endpoints.user.handler import ViewUserHandler
+from app_helpers import (
+    build_callback_redirect_url,
+    build_oauth_state,
+    chat_history_csv_response,
+    pair_chat_messages,
+    reset_local_chat_artifacts,
+)
 from bs4 import BeautifulSoup
+from constants.global_constants import kSessionTokenExpirationTime
+from database.db import create_user_if_does_not_exist, update_chat_name
+from database.db_auth import (
+    api_key_access_invalid,
+    extractUserEmailFromRequest,
+    is_api_key_valid,
+    user_id_for_email,
+    verifyAuthForCheckoutSession,
+    verifyAuthForPaymentsTrustedTesters,
+    verifyAuthForPortalSession,
+)
+from dotenv import load_dotenv
+from flask import Blueprint, Flask, Response, abort, jsonify, redirect, request
+from flask_cors import CORS, cross_origin
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    get_jwt_identity,
+    jwt_required,
+)
+from flask_mail import Mail
 from flask_mysql_connector import MySQL
-from api_endpoints.financeGPT.chatbot_endpoints import \
-    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
-    create_chat_shareable_url, access_sharable_chat, _get_model, add_sources_to_db, \
-    add_model_key_to_db, ensure_SDK_user_exists, get_chat_info, get_message_info, get_text_from_url, retrieve_message_from_db
+from google.oauth2 import id_token
+from google_auth_oauthlib.flow import Flow
+from jwt import InvalidTokenError
+from pip._vendor import cachecontrol
+from tika import parser as p
 
 _get_model()
-from agents.reactive_agent import ReactiveDocumentAgent
-from agents.config import AgentConfig
-
 from datetime import datetime
 
-from api_endpoints.languages.gtm import gpt4_blueprint
+from agents.config import AgentConfig
+from agents.reactive_agent import ReactiveDocumentAgent
+from api_endpoints.languages.arabic import arabic_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
+from api_endpoints.languages.gtm import gpt4_blueprint
 from api_endpoints.languages.japanese import japanese_blueprint
 from api_endpoints.languages.korean import korean_blueprint
 from api_endpoints.languages.spanish import spanish_blueprint
-from api_endpoints.languages.arabic import arabic_blueprint
-from datetime import datetime
 
 load_dotenv(override=True)
 
@@ -243,16 +281,11 @@ def login():
       flow.redirect_uri = f'{scheme}://{netloc}/callback'
     #   flow.redirect_uri = f'https://upreachapi.upreach.ai/callback'
 
-      state_dict = {
-        "redirect_uri": flow.redirect_uri
-      }
-
-      if request.args.get('product_hash'):
-        print("during checking product hash")
-        state_dict["product_hash"] = request.args.get('product_hash')
-      if request.args.get('free_trial_code'):
-        print("during checking free_trial_code")
-        state_dict["free_trial_code"] = request.args.get('free_trial_code')
+      state_dict = build_oauth_state(
+        flow.redirect_uri,
+        request.args.get('product_hash'),
+        request.args.get('free_trial_code'),
+      )
 
       state = jwt.encode(state_dict, app.config["JWT_SECRET_KEY"], algorithm="HS256")
 
@@ -303,13 +336,6 @@ def callback():
 
     access_token = create_access_token(identity=id_info.get("email"))
     refresh_token = create_refresh_token(identity=id_info.get("email"))
-    productGetParam = ""
-    if product_hash is not None:
-      productGetParam = "&" + "product_hash=" + product_hash
-    freeTrialCodeGetParam = ""
-    if free_trial_code is not None:
-      freeTrialCodeGetParam = "&" + "free_trial_code=" + free_trial_code
-
     print("request.referrer")
     print(request.referrer)
     # response = redirect(
@@ -318,9 +344,13 @@ def callback():
     #   "refreshToken=" + refresh_token
     # )
     response = redirect(
-      (default_referrer) +
-      "?accessToken=" + access_token + "&"
-      "refreshToken=" + refresh_token + productGetParam + freeTrialCodeGetParam
+      build_callback_redirect_url(
+        default_referrer,
+        access_token,
+        refresh_token,
+        product_hash,
+        free_trial_code,
+      )
     )
     return response
 
@@ -524,25 +554,7 @@ source_documents_path = 'source_documents'
 @app.route('/api/reset-everything', methods=['POST']) #Change this to use MYSQL db
 def reset_everything():
     try:
-        # Delete vector database
-        #shutil.rmtree(vector_base_path)
-        # Delete user input documents
-        if os.path.exists(source_documents_path):
-            shutil.rmtree(source_documents_path)
-        # Delete chat history
-        if os.path.exists(output_document_path):
-            shutil.rmtree(output_document_path)
-            # Recreate the output folder
-            os.makedirs(output_document_path)
-
-        # Create an empty chat history CSV file
-        chat_history_file_path = os.path.join(output_document_path, 'chat_history.csv')
-        with open(chat_history_file_path, 'w', newline='') as csvfile:
-            print("test1")
-            writer = csv.writer(csvfile)
-            writer.writerow(['query', 'response'])
-
-        return 'Reset was successful!'
+        return reset_local_chat_artifacts(source_documents_path, output_document_path)
     except Exception as e:
         return f'Failed to delete DB folder: {str(e)}', 500
 
@@ -560,33 +572,8 @@ def download_chat_history():
 
         messages = retrieve_message_from_db(user_email, chat_id, chat_type)
 
-        paired_messages = []
-
-        for i in range(len(messages) - 1):
-            if messages[i]['sent_from_user'] == 1 and messages[i+1]['sent_from_user'] == 0:
-                regex = re.compile(r"Document:\s*[^:]+:\s*(.*?)(?=Document:|$)", re.DOTALL)
-                if messages[i+1]["relevant_chunks"]:
-                    found = re.findall(regex, messages[i+1]["relevant_chunks"])
-                    paragraphs = [paragraph.strip() for paragraph in found]
-                    if len(paragraphs) > 1:
-                        paired_messages.append((messages[i]['message_text'], messages[i+1]['message_text'], paragraphs[0], paragraphs[1]))
-                    elif len(paragraphs) == 1:
-                        paired_messages.append((messages[i]['message_text'],  messages[i+1]['message_text'], paragraphs[0], None))
-                else:
-                    paired_messages.append((messages[i]['message_text'], messages[i+1]['message_text'], None, None))
-
-
-        csv_output = io.StringIO()
-        writer = csv.writer(csv_output)
-        writer.writerow(['query', 'response', 'chunk1', 'chunk2'])  # Write header
-        writer.writerows(paired_messages)
-        csv_output.seek(0)  # Go back to the start of the StringIO object
-
-        return Response(
-            csv_output.getvalue(),
-            mimetype='text/csv',
-            headers={"Content-disposition": "attachment; filename=chat_history.csv"}
-        )
+        paired_messages = pair_chat_messages(messages)
+        return chat_history_csv_response(paired_messages)
     except Exception as e:
         print("error is,", str(e))
         return jsonify({"error": str(e)}), 500
@@ -1033,32 +1020,8 @@ def download_chat_history_demo():
 
         print("messages", messages)
 
-        paired_messages = []
-        for i in range(len(messages) - 1):
-            if messages[i]['sent_from_user'] == 1 and messages[i+1]['sent_from_user'] == 0:
-                regex = re.compile(r"Document:\s*[^:]+:\s*(.*?)(?=Document:|$)", re.DOTALL)
-                if messages[i+1]["relevant_chunks"]:
-                    found = re.findall(regex, messages[i+1]["relevant_chunks"])
-                    paragraphs = [paragraph.strip() for paragraph in found]
-                    if len(paragraphs) > 1:
-                        paired_messages.append((messages[i]['message_text'], messages[i+1]['message_text'], paragraphs[0], paragraphs[1]))
-                    elif len(paragraphs) == 1:
-                        paired_messages.append((messages[i]['message_text'],  messages[i+1]['message_text'], paragraphs[0], None))
-                else:
-                    paired_messages.append((messages[i]['message_text'], messages[i+1]['message_text'], None, None))
-
-        csv_output = io.StringIO()
-        writer = csv.writer(csv_output)
-        writer.writerow(['query', 'response', 'chunk1', 'chunk2'])
-        writer.writerows(paired_messages)
-        csv_output.seek(0)
-
-        # Return the CSV content as a response
-        return Response(
-            csv_output.getvalue(),
-            mimetype='text/csv',
-            headers={"Content-disposition": "attachment; filename=chat_history.csv"}
-        )
+        paired_messages = pair_chat_messages(messages)
+        return chat_history_csv_response(paired_messages)
     except Exception as e:
         print("error is,", str(e))
         return jsonify({"error": str(e)}), 500

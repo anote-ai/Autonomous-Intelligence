@@ -58,6 +58,7 @@ files = [
   "backend/tests",
   "backend/api_endpoints/chat/handler.py",
   "backend/api_endpoints/documents/handler.py",
+  "backend/app_helpers.py",
 ]
 
 [[tool.mypy.overrides]]

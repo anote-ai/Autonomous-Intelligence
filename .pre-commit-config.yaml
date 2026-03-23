@@ -13,7 +13,7 @@ repos:
         entry: mypy
         language: system
         pass_filenames: false
-        args: ["backend/tests", "backend/api_endpoints/chat/handler.py", "backend/api_endpoints/documents/handler.py"]
+        args: ["--explicit-package-bases", "backend/tests", "backend/api_endpoints/chat/handler.py", "backend/api_endpoints/documents/handler.py", "backend/app_helpers.py"]
         stages: [pre-commit]
 
       - id: pytest-backend-cov

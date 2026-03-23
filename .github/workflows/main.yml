@@ -61,10 +61,10 @@ jobs:
         run: python -m pip install -r backend/requirements-ci.txt
 
       - name: Ruff
-        run: ruff check backend/tests backend/api_endpoints/chat/handler.py backend/api_endpoints/documents/handler.py
+        run: ruff check backend/tests backend/api_endpoints/chat/handler.py backend/api_endpoints/documents/handler.py backend/app_helpers.py
 
       - name: MyPy
-        run: mypy --explicit-package-bases backend/tests backend/api_endpoints/chat/handler.py backend/api_endpoints/documents/handler.py
+        run: mypy --explicit-package-bases backend/tests backend/api_endpoints/chat/handler.py backend/api_endpoints/documents/handler.py backend/app_helpers.py
 
       - name: Pytest Coverage
         run: pytest backend/tests
