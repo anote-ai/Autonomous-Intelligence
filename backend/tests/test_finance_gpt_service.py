@@ -153,9 +153,28 @@ def test_pdf_and_url_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
         "PdfReader",
         lambda file: SimpleNamespace(pages=[FakePage("first"), FakePage("second")]),
     )
-    monkeypatch.setattr(finance_gpt.requests, "get", lambda url: SimpleNamespace(content=b"<html></html>"))
+    monkeypatch.setattr(finance_gpt, "fetch_external_url", lambda url: SimpleNamespace(content=b"<html></html>"))
     monkeypatch.setattr(finance_gpt.p, "from_buffer", lambda content: {"content": "line 1\nline 2\t"})
 
     assert finance_gpt.get_text_from_single_file("file") == "firstsecond"
     assert finance_gpt.get_text_pages_from_single_file("file") == ["first", "second"]
     assert finance_gpt.get_text_from_url("https://example.com") == "line 1line 2"
+
+
+def test_validate_external_url_allows_public_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        finance_gpt.socket,
+        "getaddrinfo",
+        lambda host, port: [(None, None, None, None, ("93.184.216.34", 0))],
+    )
+    finance_gpt.validate_external_url("https://example.com")
+
+
+def test_validate_external_url_blocks_private_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        finance_gpt.socket,
+        "getaddrinfo",
+        lambda host, port: [(None, None, None, None, ("127.0.0.1", 0))],
+    )
+    with pytest.raises(finance_gpt.UnsafeUrlError):
+        finance_gpt.validate_external_url("http://localhost")

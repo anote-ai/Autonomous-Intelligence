@@ -1,4 +1,7 @@
+import ipaddress
+import socket
 import threading
+from urllib.parse import urlparse
 
 import numpy as np
 import PyPDF2
@@ -23,6 +26,40 @@ _client = OpenAI()
 _model_lock = threading.Lock()
 _splitter_lock = threading.RLock()
 _text_splitters = {}
+
+
+class UnsafeUrlError(ValueError):
+    pass
+
+
+def validate_external_url(web_url: str) -> None:
+    parsed = urlparse(web_url)
+    if parsed.scheme not in {"http", "https"}:
+        raise UnsafeUrlError("Only http and https URLs are allowed")
+    if not parsed.hostname or parsed.username or parsed.password:
+        raise UnsafeUrlError("Invalid URL")
+
+    try:
+        address_info = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror as err:
+        raise UnsafeUrlError("Could not resolve host") from err
+
+    for _, _, _, _, sockaddr in address_info:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise UnsafeUrlError("URL resolves to a non-public address")
+
+
+def fetch_external_url(web_url: str) -> requests.Response:
+    validate_external_url(web_url)
+    return requests.get(web_url, timeout=10, allow_redirects=False)
 
 
 def _get_model():
@@ -409,6 +446,6 @@ def get_text_pages_from_single_file(file):
 
 
 def get_text_from_url(web_url):
-    response = requests.get(web_url)
+    response = fetch_external_url(web_url)
     result = p.from_buffer(response.content)
     return result.get("content", "").strip().replace("\n", "").replace("\t", "")

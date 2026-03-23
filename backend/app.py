@@ -93,7 +93,13 @@ from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
 from jwt import InvalidTokenError
 from pip._vendor import cachecontrol
-from services.finance_gpt import _get_model, chunk_document, get_relevant_chunks, get_text_from_url
+from services.finance_gpt import (
+    _get_model,
+    chunk_document,
+    fetch_external_url,
+    get_relevant_chunks,
+    get_text_from_url,
+)
 from tika import parser as p
 
 _get_model()
@@ -525,8 +531,7 @@ def ViewUser():
 
 # Helper function to scrape sub-URLs from the main website
 def get_links(initial_url: str):  # pragma: no cover
-    # Send a GET request to the website's URL
-    response = requests.get(initial_url)
+    response = fetch_external_url(initial_url)
 
     # Parse the HTML code with BeautifulSoup
     soup = BeautifulSoup(response.text, 'html.parser')
