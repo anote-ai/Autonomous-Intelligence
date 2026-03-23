@@ -14,7 +14,24 @@ import os
 import uuid
 from flask import jsonify
 import requests
-from database.db import get_db_connection
+from database.db import (
+    add_chat,
+    add_document,
+    add_message,
+    add_model_key,
+    change_chat_mode,
+    delete_chat,
+    delete_doc,
+    find_most_recent_chat,
+    get_chat_info as fetch_chat_info,
+    get_db_connection,
+    reset_chat,
+    reset_uploaded_docs as clear_uploaded_docs,
+    retrieve_chats,
+    retrieve_docs,
+    retrieve_messages,
+    update_chat_name,
+)
 from tika import parser as p
 
 
@@ -43,21 +60,7 @@ except ImportError:
 ## General for all chatbots
 # Chat_type is an integer where 0=chatbot, 1=Edgar, 2=PDFUploader, etc
 def add_chat_to_db(user_email, chat_type, model_type): #intake the current userID and the model type into the chat table
-    conn, cursor = get_db_connection()
-
-    cursor.execute("SELECT id FROM users WHERE email = %s", [user_email])
-    user_id = cursor.fetchone()['id']
-
-    cursor.execute('INSERT INTO chats (user_id, model_type, associated_task) VALUES (%s, %s, %s)', (user_id, model_type, chat_type))
-    chat_id = cursor.lastrowid
-
-    name = f"Chat {chat_id}"
-    cursor.execute('UPDATE chats SET chat_name = %s WHERE id = %s', (name, chat_id))
-
-    conn.commit()
-    conn.close()
-
-    return chat_id
+    return add_chat(user_email, chat_type, model_type)
 
 def create_chat_shareable_url(chat_id):
     conn, cursor = get_db_connection()
@@ -193,203 +196,20 @@ def access_sharable_chat(share_uuid, user_id=1):
 # Worflow_type is an integer where 2=FinancialReports
 
 def update_chat_name_db(user_email, chat_id, new_name):
-    conn, cursor = get_db_connection()
-
-    query = """
-    UPDATE chats
-    JOIN users ON chats.user_id = users.id
-    SET chats.chat_name = %s
-    WHERE chats.id = %s AND users.email = %s;
-    """
-    cursor.execute(query, (new_name, chat_id, user_email))
-
-    conn.commit()
-    conn.close()
-
-    return
+    return update_chat_name(user_email, chat_id, new_name)
 
 def retrieve_chats_from_db(user_email):
-    conn, cursor = get_db_connection()
-
-    query = """
-        SELECT chats.id, chats.model_type, chats.chat_name, chats.associated_task, chats.custom_model_key
-        FROM chats
-        JOIN users ON chats.user_id = users.id
-        WHERE users.email = %s;
-    """
-
-    try:
-        cursor.execute(query, (user_email,))
-        chat_info = cursor.fetchall()
-
-        # Force conversion to Python-native objects
-        chat_info = [dict(row) for row in chat_info] if hasattr(cursor, "description") else chat_info
-
-    finally:
-        cursor.close()   # Always close cursor first
-        conn.close()     # Then close connection
-        # Removed conn.commit() – not needed for SELECT
-
-    return chat_info
+    return retrieve_chats(user_email)
 
 def find_most_recent_chat_from_db(user_email):
-    conn, cursor = get_db_connection()
-
-    query = """
-        SELECT chats.id, chats.chat_name
-        FROM chats
-        JOIN users ON chats.user_id = users.id
-        WHERE users.email = %s
-        ORDER BY chats.created DESC
-        LIMIT 1;
-    """
-
-    # Execute the query
-    cursor.execute(query, [user_email])
-    chat_info = cursor.fetchone()
-
-    conn.commit()
-    conn.close()
-
-    return chat_info
+    return find_most_recent_chat(user_email)
 
 
 def retrieve_message_from_db(user_email, chat_id, chat_type):
-    conn, cursor = get_db_connection()
-
-    query = """
-        SELECT messages.created, chats.id, messages.id, messages.reasoning, messages.message_text, messages.sent_from_user, messages.relevant_chunks
-        FROM messages
-        JOIN chats ON messages.chat_id = chats.id
-        JOIN users ON chats.user_id = users.id
-        WHERE chats.id = %s AND users.email = %s AND chats.associated_task = %s;
-        """
-
-    # Execute the query
-    cursor.execute(query, (chat_id, user_email, chat_type))
-    messages = cursor.fetchall()
-
-    conn.commit()
-    conn.close()
-
-    print("messages")
-
-    # Process messages to parse reasoning JSON and format for frontend
-    if messages:
-        processed_messages = []
-        for msg in messages:
-            msg_dict = dict(msg)
-
-            # Parse reasoning JSON if it exists
-            if msg_dict.get('reasoning'):
-                try:
-                    reasoning_data = json.loads(msg_dict['reasoning'])
-                    # Convert reasoning data to frontend format
-                    if isinstance(reasoning_data, list):
-                        # Already in array format
-                        msg_dict['reasoning'] = reasoning_data
-                    elif isinstance(reasoning_data, dict):
-                        # Convert single reasoning object to array format
-                        msg_dict['reasoning'] = [reasoning_data]
-                    elif isinstance(reasoning_data, str):
-                        # If it's a string, wrap it in a reasoning step object
-                        msg_dict['reasoning'] = [{
-                            'id': f'step-{msg_dict["id"]}',
-                            'type': 'llm_reasoning',
-                            'thought': reasoning_data,
-                            'message': 'AI Reasoning',
-                            'timestamp': int(time.time() * 1000)
-                        }]
-                    else:
-                        msg_dict['reasoning'] = []
-
-                    # Add the "complete" step that the frontend would have added during streaming
-                    # This ensures consistency between streaming and reloaded messages
-                    if msg_dict.get('reasoning') and msg_dict.get('sent_from_user') == 0:
-                        # Extract the final thought from the last reasoning step if available
-                        final_thought = None
-                        for step in reversed(msg_dict['reasoning']):
-                            if step.get('thought'):
-                                final_thought = step['thought']
-                                break
-
-                        # If no thought found in reasoning steps, use part of the message text as thought
-                        if not final_thought and msg_dict.get('message_text'):
-                            # Use first 100 characters of the response as the thought
-                            final_thought = msg_dict['message_text'][:100] + "..." if len(msg_dict['message_text']) > 100 else msg_dict['message_text']
-
-                        complete_step = {
-                            'id': f'step-complete-{msg_dict["id"]}',
-                            'type': 'complete',
-                            'thought': final_thought,
-                            'message': 'Response complete',
-                            'timestamp': int(time.time() * 1000)
-                        }
-                        msg_dict['reasoning'].append(complete_step)
-                except (json.JSONDecodeError, TypeError) as e:
-                    print(f"Error parsing reasoning JSON for message {msg_dict.get('id')}: {e}")
-                    msg_dict['reasoning'] = []
-            else:
-                msg_dict['reasoning'] = []
-
-            processed_messages.append(msg_dict)
-
-        return processed_messages
-
-    return None if messages is None else messages
+    return retrieve_messages(user_email, chat_id, chat_type)
 
 def delete_chat_from_db(chat_id, user_email):
-    print("delete chat from db")
-    conn, cursor = get_db_connection()
-
-    delete_chunks_query = """
-    DELETE chunks
-    FROM chunks
-    INNER JOIN documents ON chunks.document_id = documents.id
-    INNER JOIN chats ON documents.chat_id = chats.id
-    INNER JOIN users ON chats.user_id = users.id
-    WHERE chats.id = %s AND users.email = %s;
-    """
-    cursor.execute(delete_chunks_query, (chat_id, user_email))
-
-    delete_documents_query = """
-    DELETE documents
-    FROM documents
-    INNER JOIN chats ON documents.chat_id = chats.id
-    INNER JOIN users ON chats.user_id = users.id
-    WHERE chats.id = %s AND users.email = %s;
-    """
-    cursor.execute(delete_documents_query, (chat_id, user_email))
-
-    delete_messages_query = """
-    DELETE messages
-    FROM messages
-    INNER JOIN chats ON messages.chat_id = chats.id
-    INNER JOIN users ON chats.user_id = users.id
-    WHERE chats.id = %s AND users.email = %s;
-    """
-    cursor.execute(delete_messages_query, (chat_id, user_email))
-
-    query = """
-    DELETE chats
-    FROM chats
-    INNER JOIN users ON chats.user_id = users.id
-    WHERE chats.id = %s AND users.email = %s;
-    """
-    cursor.execute(query, (chat_id, user_email))
-
-    conn.commit()
-
-    if cursor.rowcount > 0:
-        print(f"Deleted chat with ID {chat_id} for user {user_email}.")
-        conn.close()
-        cursor.close()
-        return 'Successfully deleted'
-    else:
-        print(f"No chat deleted. Chat ID {chat_id} may not exist or does not belong to user {user_email}.")
-        conn.close()
-        cursor.close()
-        return 'Could not delete'
+    return delete_chat(chat_id, user_email)
 
 def retrieve_messages_from_share_uuid(share_uuid):
     conn, cursor = get_db_connection()
@@ -435,114 +255,19 @@ def get_document_content_from_db(id, email):
         return None
 
 def reset_chat_db(chat_id, user_email):
-    print("reset chat")
-    conn, cursor = get_db_connection()
-
-    delete_messages_query = """
-    DELETE messages
-    FROM messages
-    INNER JOIN chats ON messages.chat_id = chats.id
-    INNER JOIN users ON chats.user_id = users.id
-    WHERE chats.id = %s AND users.email = %s;
-    """
-    cursor.execute(delete_messages_query, (chat_id, user_email))
-
-    conn.commit()
-
-    if cursor.rowcount > 0:
-        print(f"Deleted chat with ID {chat_id} for user {user_email}.")
-        conn.close()
-        cursor.close()
-        return 'Successfully deleted'
-    else:
-        print(f"No chat deleted. Chat ID {chat_id} may not exist or does not belong to user {user_email}.")
-        conn.close()
-        cursor.close()
-        return 'Could not delete'
+    return reset_chat(chat_id, user_email)
 
 def reset_uploaded_docs(chat_id, user_email):
-    conn, cursor = get_db_connection()
-
-    delete_chunks_query = """
-    DELETE chunks
-    FROM chunks
-    INNER JOIN documents ON chunks.document_id = documents.id
-    INNER JOIN chats ON documents.chat_id = chats.id
-    INNER JOIN users ON chats.user_id = users.id
-    WHERE chats.id = %s AND users.email = %s;
-    """
-    cursor.execute(delete_chunks_query, (chat_id, user_email))
-
-    delete_documents_query = """
-    DELETE documents
-    FROM documents
-    INNER JOIN chats ON documents.chat_id = chats.id
-    INNER JOIN users ON chats.user_id = users.id
-    WHERE chats.id = %s AND users.email = %s;
-    """
-    cursor.execute(delete_documents_query, (chat_id, user_email))
-
-    conn.commit()
-
-    conn.close()
-    cursor.close()
+    return clear_uploaded_docs(chat_id, user_email)
 
 
 def change_chat_mode_db(chat_mode_to_change_to, chat_id, user_email):
-    conn, cursor = get_db_connection()
-
-    query = """
-    UPDATE chats
-    JOIN users ON chats.user_id = users.id
-    SET chats.model_type = %s
-    WHERE chats.id = %s AND users.email = %s;
-    """
-
-    # Execute the query
-    cursor.execute(query, (chat_mode_to_change_to, chat_id, user_email))
-
-    conn.commit()
-    conn.close()
-    cursor.close()
+    return change_chat_mode(chat_mode_to_change_to, chat_id, user_email)
 
 
 
 def add_document_to_db(text, document_name, chat_id=None):
-    if chat_id == 0:
-        print(f"Guest session: Skipping database storage for document '{document_name}'")
-        return None, False
-
-    conn, cursor = get_db_connection()
-
-    try:
-        # Check if the document already exists for the given chat_id
-        cursor.execute("""
-            SELECT id, document_text
-            FROM documents
-            WHERE document_name = %s
-            AND chat_id = %s
-        """, (document_name, chat_id))
-        existing_doc = cursor.fetchone()
-
-        if existing_doc:
-            existing_doc_id, existing_doc_text = existing_doc
-            print(f"Document '{document_name}' already exists. Not creating a new entry.")
-            return existing_doc_id, True  # Returning the ID of the existing document
-
-        # If the document doesn't exist, create a new one
-        storage_key = "temp"  # You can adjust how the storage key is generated
-        cursor.execute("""
-            INSERT INTO documents (document_text, document_name, storage_key, chat_id)
-            VALUES (%s, %s, %s, %s)
-        """, (text, document_name, storage_key, chat_id))
-
-        doc_id = cursor.lastrowid
-
-        conn.commit()
-        return doc_id, False  # Returning the ID of the new document
-    finally:
-        cursor.close()
-        conn.close()
+    return add_document(text, document_name, chat_id)
 
 
 @ray.remote
@@ -1195,20 +920,7 @@ def add_wf_sources_to_db(prompt_id, sources):
 
 
 def add_message_to_db(text, chat_id, isUser, reasoning=None):
-
-    if chat_id == 0:
-        return None #don't save guest messages
-    #If isUser is 0, it is a bot message, 1 is a user message
-    conn, cursor = get_db_connection()
-
-    cursor.execute('INSERT INTO messages (message_text, chat_id, reasoning, sent_from_user) VALUES (%s,%s,%s, %s)', (text, chat_id, reasoning, isUser))
-    message_id = cursor.lastrowid
-
-    conn.commit()
-    conn.close()
-    cursor.close()
-
-    return message_id
+    return add_message(text, chat_id, isUser, reasoning)
 
 def add_prompt_to_db(prompt_text):
     conn, cursor = get_db_connection()
@@ -1241,66 +953,13 @@ def add_answer_to_db(answer, citation_id):
     return answer_id
 
 def retrieve_docs_from_db(chat_id, user_email):
-    conn, cursor = get_db_connection()
-
-    query = """
-        SELECT documents.document_name, documents.id
-        FROM documents
-        JOIN chats ON documents.chat_id = chats.id
-        JOIN users ON chats.user_id = users.id
-        WHERE chats.id = %s AND users.email = %s;
-        """
-
-    # Execute the query
-    cursor.execute(query, (chat_id, user_email))
-    docs = cursor.fetchall()
-
-    conn.commit()
-    conn.close()
-
-    return docs
+    return retrieve_docs(chat_id, user_email)
 
 def delete_doc_from_db(doc_id, user_email):
-    #Deletes the document and the associated chunks in the db
-    conn, cursor = get_db_connection()
-
-    verification_query = """
-            SELECT d.id
-            FROM documents d
-            JOIN chats c ON d.chat_id = c.id
-            JOIN users u ON c.user_id = u.id
-            WHERE u.email = %s AND d.id = %s
-        """
-    cursor.execute(verification_query, (user_email, doc_id))
-    verification_result = cursor.fetchone()
-
-    if verification_result:
-        delete_chunks_query = "DELETE FROM chunks WHERE document_id = %s"
-        cursor.execute(delete_chunks_query, (doc_id,))
-        delete_document_query = "DELETE FROM documents WHERE id = %s"
-        cursor.execute(delete_document_query, (doc_id,))
-        conn.commit()
-    else:
-        print("Document does not belong to the user or does not exist.")
-
-    cursor.close()
-    conn.close()
-
-    return "success"
+    return delete_doc(doc_id, user_email)
 
 def add_model_key_to_db(model_key, chat_id, user_email):
-    conn, cursor = get_db_connection()
-
-    update_query = """
-        UPDATE chats
-        JOIN users ON chats.user_id = users.id
-        SET chats.custom_model_key = %s
-        WHERE chats.id = %s AND users.email = %s;
-        """
-
-    cursor.execute(update_query, (model_key, chat_id, user_email))
-
-    conn.commit()
+    return add_model_key(model_key, chat_id, user_email)
 
 
 #specific to PDF reader
@@ -1366,21 +1025,7 @@ def ensure_SDK_user_exists(user_email):
         return cursor.lastrowid  # Return the newly created user ID
 
 def get_chat_info(chat_id):
-    conn, cursor = get_db_connection()
-
-    cursor.execute("SELECT model_type, chat_name, associated_task FROM chats WHERE id = %s", (chat_id,))
-    result = cursor.fetchone()
-
-    if result:
-        model_type = result['model_type']
-        associated_task = result['associated_task'],
-        chat_name = result['chat_name']
-    else:
-        model_type, associated_task, chat_name = None, None, None
-    cursor.close()
-    conn.close()
-
-    return model_type, associated_task, chat_name
+    return fetch_chat_info(chat_id)
 
 def get_message_info(answer_id, user_email):
     conn, cursor = get_db_connection()

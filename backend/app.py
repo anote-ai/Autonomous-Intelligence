@@ -15,7 +15,7 @@ from flask_jwt_extended import jwt_required, create_access_token, create_refresh
 from flask_mail import Mail
 from jwt import InvalidTokenError
 from urllib.parse import urlparse
-from database.db import create_user_if_does_not_exist
+from database.db import create_user_if_does_not_exist, update_chat_name
 from constants.global_constants import kSessionTokenExpirationTime
 from database.db_auth import extractUserEmailFromRequest, is_api_key_valid, user_id_for_email, verifyAuthForPaymentsTrustedTesters, verifyAuthForCheckoutSession, verifyAuthForPortalSession
 from functools import wraps
@@ -25,6 +25,21 @@ from api_endpoints.user.handler import ViewUserHandler
 from api_endpoints.generate_api_key.handler import GenerateAPIKeyHandler
 from api_endpoints.delete_api_key.handler import DeleteAPIKeyHandler
 from api_endpoints.get_api_keys.handler import GetAPIKeysHandler
+from api_endpoints.chat.handler import (
+    CreateNewChatHandler,
+    DeleteChatHandler,
+    FindMostRecentChatHandler,
+    RetrieveChatsHandler,
+    RetrieveMessagesHandler,
+    UpdateChatNameHandler,
+)
+from api_endpoints.documents.handler import (
+    ChangeChatModeHandler,
+    DeleteDocHandler,
+    IngestDocumentsHandler,
+    ResetChatHandler,
+    RetrieveCurrentDocsHandler,
+)
 from enum import Enum
 import stripe
 from dotenv import load_dotenv
@@ -40,13 +55,8 @@ from bs4 import BeautifulSoup
 from flask_mysql_connector import MySQL
 from api_endpoints.financeGPT.chatbot_endpoints import \
     add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
-    retrieve_chats_from_db, create_chat_shareable_url, access_sharable_chat, _get_model, \
-    delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, change_chat_mode_db, update_chat_name_db, \
-    reset_uploaded_docs, add_model_key_to_db, \
-    add_chat_to_db, add_message_to_db, chunk_document, add_document_to_db, get_relevant_chunks, \
-    retrieve_chats_from_db, delete_chat_from_db, retrieve_message_from_db, retrieve_docs_from_db, add_sources_to_db, delete_doc_from_db, reset_chat_db, \
-    change_chat_mode_db, update_chat_name_db, find_most_recent_chat_from_db, \
-    ensure_SDK_user_exists, get_chat_info, get_message_info, get_text_from_url
+    create_chat_shareable_url, access_sharable_chat, _get_model, add_sources_to_db, \
+    add_model_key_to_db, ensure_SDK_user_exists, get_chat_info, get_message_info, get_text_from_url, retrieve_message_from_db
 
 _get_model()
 from agents.reactive_agent import ReactiveDocumentAgent
@@ -590,12 +600,7 @@ def create_new_chat():
     # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
 
-    chat_type = request.json.get('chat_type')
-    model_type = request.json.get('model_type')
-
-    chat_id = add_chat_to_db(user_email, chat_type, model_type) #for now hardcode the model type as being 0
-
-    return jsonify(chat_id=chat_id)
+    return CreateNewChatHandler(request, user_email)
 
 @app.route('/retrieve-all-chats', methods=['POST'])
 def retrieve_chats():
@@ -606,11 +611,7 @@ def retrieve_chats():
     except InvalidTokenError:
     # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
-    #chat_type = request.json.get('chat_type')
-
-    chat_info = retrieve_chats_from_db(user_email)
-
-    return jsonify(chat_info=chat_info)
+    return RetrieveChatsHandler(user_email)
 
 @app.route('/retrieve-messages-from-chat', methods=['POST'])
 def retrieve_messages_from_chat():
@@ -621,15 +622,7 @@ def retrieve_messages_from_chat():
     # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
 
-    chat_type = request.json.get('chat_type')
-    chat_id = request.json.get('chat_id')
-
-    messages = retrieve_message_from_db(user_email, chat_id, chat_type)
-    chat_name = get_chat_info(chat_id)
-    return jsonify({
-        "messages": messages,
-        "chat_name": chat_name
-    })
+    return RetrieveMessagesHandler(request, user_email)
 
 @app.route('/retrieve-shared-messages-from-chat', methods=['POST'])
 def get_playbook_messages():
@@ -648,14 +641,7 @@ def update_chat_name():
     # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
 
-    chat_name = request.json.get('chat_name')
-    chat_id = request.json.get('chat_id')
-
-    print("chat_name", chat_name)
-
-    update_chat_name_db(user_email, chat_id, chat_name)
-
-    return jsonify({"Success": "Chat name updated"}), 200
+    return UpdateChatNameHandler(request, user_email)
 
 @app.route('/infer-chat-name', methods=['POST'])
 def infer_chat_name():
@@ -678,7 +664,7 @@ def infer_chat_name():
     )
     new_name = str(completion.choices[0].message.content)
 
-    update_chat_name_db(user_email, chat_id, new_name)
+    update_chat_name(user_email, chat_id, new_name)
 
     return jsonify(chat_name=new_name)
 
@@ -693,7 +679,7 @@ def delete_chat():
     # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
 
-    return delete_chat_from_db(chat_id, user_email)
+    return DeleteChatHandler(request, user_email)
 
 
 @app.route('/find-most-recent-chat', methods=['POST'])
@@ -704,9 +690,7 @@ def find_most_recent_chat():
     # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
 
-    chat_info = find_most_recent_chat_from_db(user_email)
-
-    return jsonify(chat_info=chat_info)
+    return FindMostRecentChatHandler(user_email)
 
 
 @app.route('/ingest-pdf', methods=['POST'])
@@ -717,99 +701,43 @@ def ingest_pdfs():
         # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
 
-    start_time = datetime.now()
-    print("start time is", start_time)
-
-    chat_id = request.form.getlist('chat_id')[0]
-    files = request.files.getlist('files[]')
-
-    MAX_CHUNK_SIZE = 1000
-
-    print("before files loop time is", datetime.now() - start_time)
-    for file in files:
-        #text = get_text_from_single_file(file)
-        #text_pages = get_text_pages_from_single_file(file)
-
-        result = p.from_buffer(file)
-        text = result["content"].strip()
-
-        filename = file.filename
-
-        doc_id, doesExist = add_document_to_db(text, filename, chat_id=chat_id)
-
-        if not doesExist:
-            chunk_document.remote(text, MAX_CHUNK_SIZE, doc_id)
-
-
-    return jsonify({"Success": "Document Uploaded"}), 200
+    return IngestDocumentsHandler(request, user_email, p, chunk_document)
 
 
     #return text, filename
 
 @app.route('/retrieve-current-docs', methods=['POST'])
 def retrieve_current_docs():
-    chat_id = request.json.get('chat_id')
-
     try:
         user_email = extractUserEmailFromRequest(request)
     except InvalidTokenError:
-    # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
-
-    doc_info = retrieve_docs_from_db(chat_id, user_email)
-
-    return jsonify(doc_info=doc_info)
+    return RetrieveCurrentDocsHandler(request, user_email)
 
 @app.route('/delete-doc', methods=['POST'])
 def delete_doc():
-    doc_id = request.json.get('doc_id')
-
     try:
         user_email = extractUserEmailFromRequest(request)
     except InvalidTokenError:
-    # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
-
-    delete_doc_from_db(doc_id, user_email)
-
-    return "success"
+    return DeleteDocHandler(request, user_email)
 
 @app.route('/change-chat-mode', methods=['POST'])
 def change_chat_mode_and_reset_chat():
-    chat_mode_to_change_to = request.json.get('model_type')
-    chat_id = request.json.get('chat_id')
-
     try:
         user_email = extractUserEmailFromRequest(request)
     except InvalidTokenError:
-    # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
-
-    try:
-        reset_chat_db(chat_id, user_email)
-        change_chat_mode_db(chat_mode_to_change_to, chat_id, user_email)
-
-        return "Success"
-    except:
-        return "Error"
+    return ChangeChatModeHandler(request, user_email)
 
 @app.route('/reset-chat', methods=['POST'])
 def reset_chat():
-    chat_id = request.json.get('chat_id')
-    delete_docs = request.json.get('delete_docs')
-
     try:
         user_email = extractUserEmailFromRequest(request)
     except InvalidTokenError:
     # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
-
-    if delete_docs:
-        reset_uploaded_docs(chat_id, user_email)
-
-    reset_chat_db(chat_id, user_email)
-
-    return jsonify({"Success": "Success"}), 200
+    return ResetChatHandler(request, user_email)
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, o):
@@ -1314,7 +1242,7 @@ def public_ingest_pdf():
     chat_id = request.json['chat_id']
     model_key = request.json.get('model_key')
 
-    model_type, task_type = get_chat_info(chat_id)
+    model_type, task_type, _ = get_chat_info(chat_id)
 
     if AgentConfig.is_agent_enabled():
         try:
