@@ -31,6 +31,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "vitest",
+    "test:ci": "CI=true react-scripts test --runInBand --watch=false",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

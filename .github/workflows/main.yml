@@ -30,9 +30,13 @@ jobs:
         working-directory: frontend
         run: npm install --force
 
-      - name: Lint frontend with ESLint
+      - name: Build frontend
         working-directory: frontend
-        run: npm test
+        run: npm run build
+
+      - name: Run frontend unit tests
+        working-directory: frontend
+        run: npm run test:ci -- src/redux/UserSlice.test.js
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -44,7 +48,8 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Unit Tests 
-        run: pytest 
+        working-directory: backend
+        run: pytest
 
   codeql:
     name: CodeQL Analysis

@@ -116,7 +116,7 @@ Frontend tests:
 
 ```bash
 cd frontend
-CI=true npx react-scripts test --runInBand --watch=false
+npm run test:ci
 ```
 
 Backend tests:
@@ -131,4 +131,6 @@ pytest
 - If `vitest` fails locally with Node 16 errors, upgrade to Node 18+ or use the CRA/Jest runner shown above.
 - If the frontend cannot reach the backend, confirm the backend is actually listening on `http://localhost:5000`.
 - If Docker healthchecks fail, verify `backend/.env` exists and MySQL finished initializing.
+- The backend container healthcheck relies on `curl`, which is now installed in the backend image.
+- Tika is started as a dependency, but the backend no longer waits on a brittle container-local Tika healthcheck.
 - If file upload flows fail, verify Tika is running.
