@@ -4,16 +4,10 @@ import {
   faPaperPlane,
   faFile,
   faBrain,
-  faSearch,
-  faCog,
   faCheckCircle,
   faExclamationTriangle,
   faChevronDown,
   faChevronUp,
-  faArrowRight,
-  faInfoCircle,
-  faSitemap,
-  faLightbulb,
 } from "@fortawesome/free-solid-svg-icons";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
@@ -25,6 +19,13 @@ import {
 import { useDispatch } from "react-redux";
 import FileUpload from "../../components/FileUpload";
 import fetcher from "../../http/RequestConfig";
+import ThinkingIndicator from "../chatbot/ThinkingIndicator";
+import {
+  createUploadedDocumentMessages,
+  formatChatMessages,
+  sortMessagesByTimestamp,
+  updateMessageWithStreamData,
+} from "../chatbot/messageUtils";
 
 // Development-only debug logging helper
 const isDev = process.env.NODE_ENV === "development";
@@ -166,7 +167,7 @@ const Chatbot = ({
     }
   };
 
-  const inferChatName = async (text, answer, chatId) => {
+  const inferChatName = useCallback(async (text, answer, chatId) => {
     const combinedText = `${text} ${answer}`;
     try {
       const response = await fetcher("infer-chat-name", {
@@ -182,7 +183,7 @@ const Chatbot = ({
     } catch (err) {
       console.error("Chat name inference failed", err);
     }
-  };
+  }, [onChatsChanged]);
 
   const pollForMessages = useCallback((chatId, maxAttempts = 3) => {
     let attempts = 0;
@@ -201,16 +202,7 @@ const Chatbot = ({
 
         const data = await res.json();
         if (data.messages && data.messages.length > 0) {
-          const formatted = data.messages.map((m) => ({
-            id: m.id,
-            chat_id: chatId,
-            content: m.message_text,
-            role: m.sent_from_user === 1 ? "user" : "assistant",
-            relevant_chunks: m.relevant_chunks,
-            reasoning: m.reasoning || [], // Include reasoning data from database
-            sources: m.sources || [], // Include sources if available
-            timestamp: new Date(m.created).getTime(), // Add timestamp from database
-          }));
+          const formatted = formatChatMessages(data.messages, chatId);
           setMessages(formatted);
           localStorage.removeItem(`pending-message-${chatId}`);
           pollingTimeoutRef.current = null;
@@ -271,32 +263,7 @@ const Chatbot = ({
         console.log("Backend doc_info response:", result.doc_info);
         if (result.doc_info && result.doc_info.length > 0) {
           // Create system messages for uploaded files
-          const fileSystemMessages = result.doc_info.map((doc, index) => {
-            console.log("Processing doc:", doc);
-            return {
-              id: `file-system-${doc.id}`,
-              chat_id: chatId,
-              role: "system",
-              content: doc.documents
-                ? doc.documents
-                : `📎 Uploaded 1 file(s): ${doc.document_name}`,
-              isFileUpload: true,
-              uploadedFiles: [
-                {
-                  name: doc.document_name,
-                  size: 0, // Size not available from database
-                  uploadTime: doc.created || new Date().toISOString(), // Fallback if created is undefined
-                  id: doc.id,
-                },
-              ],
-              // Use current time so uploaded files appear at current position in chat
-              timestamp: doc.created
-                ? new Date(doc.created).getTime() + index
-                : Date.now() + index,
-            };
-          });
-          console.log(fileSystemMessages);
-          return fileSystemMessages;
+          return createUploadedDocumentMessages(result.doc_info, chatId);
         }
       }
     } catch (error) {
@@ -483,69 +450,7 @@ const Chatbot = ({
     await sendToAPI(currentMessage, targetChatId, thinkingId);
   };
 
-  const sendToAPI = async (text, chatId, thinkingId) => {
-    try {
-      // Check if this is a guest chat
-      const isGuestChat =
-        (typeof chatId === "string" && chatId.startsWith("guest-")) ||
-        (!user && chatId === null); // Also detect guest mode when no user and chatId is null
-
-      if (isDev) {
-        console.log("sendToAPI called with:", {
-          text,
-          chatId,
-          isGuestChat,
-          user: !!user,
-        });
-      }
-
-      const res = await fetcher("process-message-pdf", {
-        method: "POST",
-        isGuest: isGuestChat, // Only set isGuest for actual guest chats
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          chat_id: isGuestChat ? null : Number(chatId), // Send null for guest chats
-          model_type: isPrivate,
-          model_key: "",
-          is_guest: isGuestChat, // Flag to indicate guest chat
-        }),
-      });
-
-      if (isDev) {
-        console.log("API response status:", res.status);
-      }
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      await handleSSEStreamingResponse(res, thinkingId, text, chatId);
-
-      // Only remove from localStorage for authenticated user chats
-      if (!isGuestChat) {
-        localStorage.removeItem(`pending-message-${chatId}`);
-      }
-      if (isDev) {
-        console.log("sendToAPI completed successfully");
-      }
-    } catch (err) {
-      console.error("Message send error:", err);
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === thinkingId
-            ? {
-                ...msg,
-                content:
-                  "Sorry, I couldn't connect to the server. Please try again.",
-                isThinking: false,
-              }
-            : msg
-        )
-      );
-    }
-  };
-
-  const handleSSEStreamingResponse = async (
+  const handleSSEStreamingResponse = useCallback(async (
     response,
     thinkingId,
     originalText,
@@ -662,382 +567,67 @@ const Chatbot = ({
         )
       );
     }
-  };
+  }, [chatNameGenerated, inferChatName, onChatsChanged]);
 
-  const updateMessageWithStreamData = (message, eventData) => {
-    const updatedMessage = { ...message };
+  const sendToAPI = useCallback(async (text, chatId, thinkingId) => {
+    try {
+      const isGuestChat =
+        (typeof chatId === "string" && chatId.startsWith("guest-")) ||
+        (!user && chatId === null);
 
-    console.log("Processing event:", eventData);
+      if (isDev) {
+        console.log("sendToAPI called with:", {
+          text,
+          chatId,
+          isGuestChat,
+          user: !!user,
+        });
+      }
 
-    switch (eventData.type) {
-      case "tool_start":
-      case "tools_start":
-        // Add reasoning step for tool start
-        const toolStartStep = {
-          id: `step-${Date.now()}`,
-          type: eventData.type,
-          tool_name: eventData.tool_name,
-          message: `Using ${eventData.tool_name}...`,
-          timestamp: Date.now(),
-        };
-        updatedMessage.reasoning = [
-          ...(updatedMessage.reasoning || []),
-          toolStartStep,
-        ];
-        updatedMessage.currentStep = toolStartStep;
-        break;
+      const res = await fetcher("process-message-pdf", {
+        method: "POST",
+        isGuest: isGuestChat,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          chat_id: isGuestChat ? null : Number(chatId),
+          model_type: isPrivate,
+          model_key: "",
+          is_guest: isGuestChat,
+        }),
+      });
 
-      case "tool_end":
-        // Update the last tool step with output
-        const reasoningWithOutput = [...(updatedMessage.reasoning || [])];
-        const lastToolIndex = reasoningWithOutput.findLastIndex(
-          (step) => step.type === "tool_start" || step.type === "tools_start"
-        );
-        if (lastToolIndex !== -1) {
-          reasoningWithOutput[lastToolIndex] = {
-            ...reasoningWithOutput[lastToolIndex],
-            tool_output: eventData.output,
-            message: "Tool execution completed",
-          };
-        }
-        updatedMessage.reasoning = reasoningWithOutput;
-        updatedMessage.currentStep = {
-          type: "tool_end",
-          message: "Tool execution completed",
-        };
-        break;
+      if (isDev) {
+        console.log("API response status:", res.status);
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
 
-      case "agent_thinking":
-        // Add thinking step
-        const thinkingStep = {
-          id: `step-${Date.now()}`,
-          type: eventData.type,
-          agent_thought: eventData.thought,
-          planned_action: eventData.action,
-          message: "Planning next step...",
-          timestamp: Date.now(),
-        };
-        updatedMessage.reasoning = [
-          ...(updatedMessage.reasoning || []),
-          thinkingStep,
-        ];
-        updatedMessage.currentStep = thinkingStep;
-        break;
+      await handleSSEStreamingResponse(res, thinkingId, text, chatId);
 
-      case "complete":
-        // Set final answer and sources
-        updatedMessage.content = eventData.answer || "";
-        updatedMessage.sources = eventData.sources || [];
-        updatedMessage.isThinking = false;
-        updatedMessage.currentStep = null;
-
-        // Add completion step to reasoning
-        const completeStep = {
-          id: `step-${Date.now()}`,
-          type: eventData.type,
-          thought: eventData.thought,
-          message: "Response complete",
-          timestamp: Date.now(),
-        };
-        updatedMessage.reasoning = [
-          ...(updatedMessage.reasoning || []),
-          completeStep,
-        ];
-        break;
-      case "step-complete":
-        // Set final answer and sources
-        updatedMessage.content = eventData.answer || "";
-        updatedMessage.sources = eventData.sources || [];
-        updatedMessage.isThinking = false;
-        updatedMessage.currentStep = null;
-
-        // Add completion step to reasoning
-        const StepComplete = {
-          id: `step-${Date.now()}`,
-          type: eventData.type,
-          thought: eventData.thought,
-          message: "Query processing completed",
-          timestamp: Date.now(),
-        };
-        updatedMessage.reasoning = [
-          ...(updatedMessage.reasoning || []),
-          StepComplete,
-        ];
-        break;
-
-      // Multi-agent system event types
-      case "agent_start":
-        const agentStartStep = {
-          id: `step-${Date.now()}`,
-          type: eventData.type,
-          agent_name: eventData.agent_name,
-          message: eventData.message || `${eventData.agent_name} started`,
-          timestamp: Date.now(),
-        };
-        updatedMessage.reasoning = [
-          ...(updatedMessage.reasoning || []),
-          agentStartStep,
-        ];
-        updatedMessage.currentStep = agentStartStep;
-        break;
-
-      case "agent_progress":
-        const progressStep = {
-          id: `step-${Date.now()}`,
-          type: eventData.type,
-          current_agent: eventData.current_agent,
-          completed_agents: eventData.completed_agents,
-          message: eventData.message || `${eventData.current_agent} completed`,
-          timestamp: Date.now(),
-        };
-        updatedMessage.reasoning = [
-          ...(updatedMessage.reasoning || []),
-          progressStep,
-        ];
-        break;
-
-      case "agent_reasoning":
-        const reasoningStep = {
-          id: `step-${Date.now()}`,
-          type: eventData.type,
-          agent_name: eventData.agent_name,
-          reasoning: eventData.reasoning,
-          message: `${eventData.agent_name} reasoning`,
-          timestamp: Date.now(),
-        };
-        updatedMessage.reasoning = [
-          ...(updatedMessage.reasoning || []),
-          reasoningStep,
-        ];
-        break;
-
-      case "agent_tool_use":
-        const agentToolStep = {
-          id: `step-${Date.now()}`,
-          type: eventData.type,
-          agent_name: eventData.agent_name,
-          tool_name: eventData.tool_name,
-          input: eventData.input,
-          message:
-            eventData.message ||
-            `${eventData.agent_name} using ${eventData.tool_name}`,
-          timestamp: Date.now(),
-        };
-        updatedMessage.reasoning = [
-          ...(updatedMessage.reasoning || []),
-          agentToolStep,
-        ];
-        break;
-
-      case "agent_tool_complete":
-        // Update the last agent tool step with output
-        const agentReasoningWithOutput = [...(updatedMessage.reasoning || [])];
-        const lastAgentToolIndex = agentReasoningWithOutput.findLastIndex(
-          (step) => step.type === "agent_tool_use"
-        );
-        if (lastAgentToolIndex !== -1) {
-          agentReasoningWithOutput[lastAgentToolIndex] = {
-            ...agentReasoningWithOutput[lastAgentToolIndex],
-            tool_output: eventData.output,
-            message: eventData.message || "Agent tool execution completed",
-          };
-        }
-        updatedMessage.reasoning = agentReasoningWithOutput;
-        break;
-
-      case "reasoning_step":
-        // Add reasoning step from multi-agent system
-        if (eventData.step) {
-          updatedMessage.reasoning = [
-            ...(updatedMessage.reasoning || []),
-            eventData.step,
-          ];
-        }
-        break;
-
-      default:
-        console.warn("Unhandled event type:", eventData.type);
+      if (!isGuestChat) {
+        localStorage.removeItem(`pending-message-${chatId}`);
+      }
+      if (isDev) {
+        console.log("sendToAPI completed successfully");
+      }
+    } catch (err) {
+      console.error("Message send error:", err);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === thinkingId
+            ? {
+                ...msg,
+                content:
+                  "Sorry, I couldn't connect to the server. Please try again.",
+                isThinking: false,
+              }
+            : msg
+        )
+      );
     }
-
-    return updatedMessage;
-  };
-
-  // Component for displaying thinking steps
-  const ThinkingIndicator = ({ step }) => {
-    const getStepIcon = (type) => {
-      switch (type) {
-        case "llm_reasoning":
-          return <FontAwesomeIcon icon={faBrain} className="text-accent" />;
-        case "tool_start":
-        case "tools_start":
-        case "tool_end":
-          return <FontAwesomeIcon icon={faSearch} className="text-accent" />;
-        case "agent_thinking":
-          return <FontAwesomeIcon icon={faCog} className="text-accent" />;
-        case "complete":
-        case "step-complete":
-          return (
-            <FontAwesomeIcon icon={faCheckCircle} className="text-accent" />
-          );
-        // Multi-agent system icons
-        case "agent_start":
-          return <FontAwesomeIcon icon={faCog} className="text-accent" />;
-        case "agent_progress":
-          return (
-            <FontAwesomeIcon icon={faArrowRight} className="text-accent" />
-          );
-        case "agent_reasoning":
-          return <FontAwesomeIcon icon={faBrain} className="text-accent" />;
-        case "agent_tool_use":
-        case "agent_tool_complete":
-          return <FontAwesomeIcon icon={faSearch} className="text-accent" />;
-        case "agent_completion":
-        case "agent_error":
-          return (
-            <FontAwesomeIcon icon={faInfoCircle} className="text-accent" />
-          );
-        case "orchestrator_decision":
-        case "orchestrator_synthesis":
-          return <FontAwesomeIcon icon={faSitemap} className="text-accent" />;
-        case "reasoning_step":
-          return <FontAwesomeIcon icon={faLightbulb} className="text-accent" />;
-        default:
-          return <FontAwesomeIcon icon={faCog} className="text-accent" />;
-      }
-    };
-    console.log("stepsss", step);
-    const getStepColor = (type) => {
-      switch (type) {
-        case "llm_reasoning":
-          return "border-l-accent bg-accent/10";
-        case "tool_start":
-        case "tools_start":
-        case "tool_end":
-          return "border-l-accent bg-accent/10";
-        case "agent_thinking":
-          return "border-l-accent bg-accent/10";
-        case "complete":
-        case "step-complete":
-          return "border-l-accent bg-accent/20";
-        // Multi-agent system colors
-        case "agent_start":
-          return "border-l-accent bg-accent/10";
-        case "agent_progress":
-          return "border-l-accent bg-accent/10";
-        case "agent_reasoning":
-          return "border-l-accent bg-accent/10";
-        case "agent_tool_use":
-        case "agent_tool_complete":
-          return "border-l-accent bg-accent/10";
-        case "agent_completion":
-          return "border-l-accent bg-accent/10";
-        case "agent_error":
-          return "border-l-red-400 bg-red-950/20";
-        case "orchestrator_decision":
-        case "orchestrator_synthesis":
-          return "border-l-accent bg-accent/10";
-        case "reasoning_step":
-          return "border-l-accent bg-accent/10";
-        default:
-          return "border-l-gray-400 bg-gray-800/20";
-      }
-    };
-    console.log(`${step.message || "Processing"}: `, step);
-    if (!step) return null;
-    return (
-      <div
-        className={`border-l-2 ${getStepColor(
-          step.type
-        )} pl-3 py-2 mb-2 text-sm`}
-      >
-        <div className="flex items-center gap-2 mb-1">
-          {getStepIcon(step.type)}
-          <span className="text-gray-300 font-medium">
-            {step.message || "Processing..."}
-          </span>
-        </div>
-
-        {step.thought && (
-          <div className="text-gray-400 text-xs mb-1">
-            <strong>Thought:</strong> {step.thought}
-          </div>
-        )}
-
-        {step.agent_thought && (
-          <div className="text-gray-400 text-xs mb-1">
-            <strong>Planning:</strong> {step.agent_thought}
-          </div>
-        )}
-
-        {step.tool_name && (
-          <div className="text-gray-500 text-xs">
-            <strong>Tool:</strong> {step.tool_name}
-          </div>
-        )}
-
-        {step.tool_output && (
-          <div className="text-gray-500 text-xs mt-1">
-            <strong>Result:</strong>{" "}
-            {step.tool_output.length > 100
-              ? step.tool_output.substring(0, 100) + "..."
-              : step.tool_output}
-          </div>
-        )}
-
-        {/* Multi-agent system specific fields */}
-        {step.agent_name && (
-          <div className="text-gray-400 text-xs mb-1">
-            <strong>Agent:</strong> {step.agent_name}
-          </div>
-        )}
-
-        {step.reasoning && (
-          <div className="text-gray-400 text-xs mb-1">
-            <strong>Reasoning:</strong>{" "}
-            {step.reasoning.length > 150
-              ? step.reasoning.substring(0, 150) + "..."
-              : step.reasoning}
-          </div>
-        )}
-
-        {step.current_agent && (
-          <div className="text-gray-400 text-xs mb-1">
-            <strong>Current Agent:</strong> {step.current_agent}
-          </div>
-        )}
-
-        {step.completed_agents && step.completed_agents.length > 0 && (
-          <div className="text-gray-500 text-xs">
-            <strong>Completed:</strong> {step.completed_agents.join(", ")}
-          </div>
-        )}
-
-        {step.final_thought && (
-          <div className="text-gray-400 text-xs mb-1">
-            <strong>Final Thought:</strong> {step.final_thought}
-          </div>
-        )}
-
-        {step.planned_action && (
-          <div className="text-gray-500 text-xs">
-            <strong>Planned Action:</strong> {step.planned_action}
-          </div>
-        )}
-
-        {step.confidence && (
-          <div className="text-gray-500 text-xs">
-            <strong>Confidence:</strong> {Math.round(step.confidence * 100)}%
-          </div>
-        )}
-
-        {step.error && (
-          <div className="text-red-400 text-xs mt-1">
-            <strong>Error:</strong> {step.error}
-          </div>
-        )}
-      </div>
-    );
-  };
+  }, [handleSSEStreamingResponse, isPrivate, user]);
 
   // Function to toggle reasoning expansion
   const toggleReasoningExpansion = (messageId) => {
@@ -1118,27 +708,10 @@ const Chatbot = ({
           }
 
           localStorage.removeItem(`pending-message-${id}`);
-          const formatted = data.messages.map((m) => ({
-            id: m.id,
-            chat_id: id,
-            content: m.message_text,
-            role: m.sent_from_user === 1 ? "user" : "assistant",
-            relevant_chunks: m.relevant_chunks,
-            reasoning: m.reasoning || [],
-            sources: m.sources || [],
-            timestamp: new Date(m.created).getTime(),
-          }));
+          const formatted = formatChatMessages(data.messages, id);
 
           const fileSystemMessages = await fetchUploadedDocuments(id);
-          const allMessages = [...formatted, ...fileSystemMessages];
-
-          allMessages.sort((a, b) => {
-            const aTime = a.timestamp || 0;
-            const bTime = b.timestamp || 0;
-            return aTime - bTime;
-          });
-
-          setMessages(allMessages);
+          setMessages(sortMessagesByTimestamp([...formatted, ...fileSystemMessages]));
         } catch (err) {
           console.error("Failed to load chat:", err);
         }
