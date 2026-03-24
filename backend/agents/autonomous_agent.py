@@ -6,28 +6,41 @@ Architecture
 - Anthropic path: streaming API with real-time text/thinking tokens; extended
   thinking enabled only for claude-3-7+ models (bug fix vs v1)
 - OpenAI path: function-calling loop with streaming text
-- 15 tools: retrieve_documents, retrieve_documents_multi, list_documents,
-            get_chat_history, run_python, search_web, fetch_url, create_note,
-            think, send_email, create_calendar_invite, extract_structured_data,
-            generate_chart, translate_text, call_webhook
+- 16 built-in tools + unlimited dynamic tools via register_tool
 - Parallel tool execution via ThreadPoolExecutor
+
+Dynamic tool registration
+--------------------------
+The agent can call register_tool(name, description, parameters_schema, python_code)
+to create a new tool at runtime. The tool is validated (AST-based safety check),
+compiled, and added to the session registry. On the next iteration it appears as a
+first-class tool that the LLM can call with a proper schema.
+
+Built-in tools: retrieve_documents, retrieve_documents_multi, list_documents,
+               get_chat_history, run_python, search_web, fetch_url, create_note,
+               think, send_email, create_calendar_invite, extract_structured_data,
+               generate_chart, translate_text, call_webhook, register_tool
 
 Streaming events emitted (SSE-compatible dicts)
 -----------------------------------------------
   {"type": "start"}
-  {"type": "thinking",        "content": "..."}   ← extended-thinking block
-  {"type": "llm_reasoning",   "thought": "..."}   ← alias for old frontend path
-  {"type": "text_token",      "content": "..."}   ← streamed text token
+  {"type": "thinking",        "content": "..."}
+  {"type": "llm_reasoning",   "thought": "..."}
+  {"type": "text_token",      "content": "..."}
   {"type": "tool_start",      "tool_name": "...", "input": "..."}
   {"type": "tool_end",        "tool_name": "...", "output": "..."}
+  {"type": "tool_registered", "tool_name": "...", "description": "..."}
   {"type": "chart_generated", "image_data": "...", "title": "..."}
   {"type": "complete",        "answer": "...", "sources": [...], "charts": [...], "thought": "..."}
 """
 
 from __future__ import annotations
 
+import ast
 import json
+import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -391,7 +404,66 @@ _TOOL_SPECS: list[dict] = [
             "required": ["url", "payload"],
         },
     },
+    {
+        "name": "register_tool",
+        "description": (
+            "Create a brand-new reusable tool by writing its Python implementation. "
+            "Use this when a task requires a capability not covered by any existing tool. "
+            "The tool is validated, compiled, and added to your toolkit for the rest of this "
+            "conversation — you can call it immediately on the next turn. "
+            "Examples: a custom API wrapper, a domain-specific parser, a specialized calculator."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": (
+                        "Tool name in snake_case (e.g. 'fetch_stock_price'). "
+                        "Must not conflict with an existing tool name."
+                    ),
+                },
+                "description": {
+                    "type": "string",
+                    "description": (
+                        "One-paragraph description of what the tool does, when to use it, "
+                        "and what it returns. This text will guide future tool selection."
+                    ),
+                },
+                "parameters_schema": {
+                    "type": "object",
+                    "description": (
+                        "JSON Schema object describing the tool's input parameters. "
+                        "Must include 'type': 'object', 'properties': {...}, 'required': [...]."
+                    ),
+                },
+                "python_code": {
+                    "type": "string",
+                    "description": (
+                        "Complete Python source that defines: def run(inputs: dict) -> str. "
+                        "The function receives the tool's input as a dict and must return a string. "
+                        "Allowed stdlib: json, re, math, datetime, collections, itertools, urllib. "
+                        "Allowed third-party: requests, bs4, pandas, numpy. "
+                        "Raise ValueError for bad inputs. Do NOT use: os, sys, subprocess, open, "
+                        "exec, eval, __import__, socket, shutil, pickle, ctypes."
+                    ),
+                },
+            },
+            "required": ["name", "description", "parameters_schema", "python_code"],
+        },
+    },
 ]
+
+# ---------------------------------------------------------------------------
+# Session registry — per-conversation dynamic tool store
+# ---------------------------------------------------------------------------
+
+def _new_session_registry() -> dict:
+    """Create a fresh session registry for one conversation."""
+    return {
+        "specs": [],        # list[dict] — same format as _TOOL_SPECS
+        "executors": {},    # name -> callable(inputs: dict) -> str
+    }
 
 _SYSTEM_PROMPT = """\
 You are Autonomous Intelligence — a highly capable AI agent that reasons carefully \
@@ -438,10 +510,19 @@ STEP 3 — Synthesize: Compose a clear, well-structured response.
 STEP 4 — Persist (optional): If the user asked for a report, summary, or artifact, \
 call create_note so it is searchable later.
 
+WHEN EXISTING TOOLS ARE NOT ENOUGH
+  If no existing tool covers what you need, call `register_tool` to create one:
+  1. Write a `run(inputs: dict) -> str` function using allowed libraries.
+  2. Define a clear parameters_schema so you know exactly how to call it.
+  3. After registration succeeds, call your new tool immediately.
+  You can build API wrappers, domain-specific parsers, custom calculators — anything
+  that can be expressed as a pure Python function.
+
 Quality rules:
   • Never hallucinate document content — always retrieve first.
   • For email/calendar/webhook: echo the details to the user in your final answer.
   • For charts: briefly describe what the chart shows after generating it.
+  • When registering a tool, explain to the user what you just built and why.
   • Do not pad responses. Be thorough on content, concise on prose.
 """
 
@@ -453,18 +534,20 @@ _MAX_TOOL_OUTPUT_CHARS = 8000
 # Provider-specific tool formats
 # ---------------------------------------------------------------------------
 
-def _anthropic_tools() -> list[dict]:
+def _anthropic_tools(session_registry: Optional[dict] = None) -> list[dict]:
+    all_specs = _TOOL_SPECS + (session_registry["specs"] if session_registry else [])
     return [
         {
             "name": s["name"],
             "description": s["description"],
             "input_schema": s["parameters"],
         }
-        for s in _TOOL_SPECS
+        for s in all_specs
     ]
 
 
-def _openai_tools() -> list[dict]:
+def _openai_tools(session_registry: Optional[dict] = None) -> list[dict]:
+    all_specs = _TOOL_SPECS + (session_registry["specs"] if session_registry else [])
     return [
         {
             "type": "function",
@@ -474,7 +557,7 @@ def _openai_tools() -> list[dict]:
                 "parameters": s["parameters"],
             },
         }
-        for s in _TOOL_SPECS
+        for s in all_specs
     ]
 
 
@@ -531,10 +614,14 @@ class AutonomousDocumentAgent:
         yield {"type": "start", "message": "Processing your query...", "timestamp": _ts()}
         add_message_to_db(query, chat_id, 1)
 
+        # Each conversation gets its own tool registry — dynamically registered
+        # tools live here and are injected into every subsequent LLM call.
+        session_registry = _new_session_registry()
+
         if self.model_type == 1:
-            yield from _run_anthropic(query, chat_id, user_email, media_attachments, self.model_key)
+            yield from _run_anthropic(query, chat_id, user_email, media_attachments, self.model_key, session_registry)
         else:
-            yield from _run_openai(query, chat_id, user_email, media_attachments, self.model_key)
+            yield from _run_openai(query, chat_id, user_email, media_attachments, self.model_key, session_registry)
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +634,7 @@ def _run_anthropic(
     user_email: str,
     media_attachments: list,
     model_key: str,
+    session_registry: dict,
 ) -> Generator[dict, None, None]:
     from anthropic import Anthropic
 
@@ -569,7 +657,7 @@ def _run_anthropic(
             "model": model,
             "max_tokens": 10000 if use_thinking else 4096,
             "system": _SYSTEM_PROMPT,
-            "tools": _anthropic_tools(),
+            "tools": _anthropic_tools(session_registry),
             "messages": messages,
         }
         if use_thinking:
@@ -682,22 +770,31 @@ def _run_anthropic(
                 final_thought = "Reasoned and composed the final answer."
             break
 
-        # ── execute tool calls in parallel ─────────────────────────────
+        # ── execute tool calls ─────────────────────────────────────────
+        # register_tool must run sequentially (it mutates session_registry)
+        # All other tools can run in parallel.
         messages.append({"role": "assistant", "content": response.content})
         tool_results = []
 
-        # Emit tool_start for all non-think tools before executing
-        non_think_calls = [tc for tc in tool_calls if tc["name"] != "think"]
+        register_calls = [tc for tc in tool_calls if tc["name"] == "register_tool"]
+        parallel_calls = [tc for tc in tool_calls if tc["name"] != "register_tool"]
 
-        with ThreadPoolExecutor(max_workers=min(len(tool_calls), 4)) as executor:
-            future_to_tc = {
-                executor.submit(_execute_tool, tc["name"], tc["input"], chat_id, user_email): tc
-                for tc in tool_calls
-            }
-            results_map: dict[str, tuple[str, list, list]] = {}
-            for future in as_completed(future_to_tc):
-                tc = future_to_tc[future]
-                results_map[tc["id"]] = future.result()
+        results_map: dict[str, tuple[str, list, list]] = {}
+
+        # Run register_tool calls first, sequentially
+        for tc in register_calls:
+            results_map[tc["id"]] = _execute_tool(tc["name"], tc["input"], chat_id, user_email, session_registry)
+
+        # Run remaining tools in parallel
+        if parallel_calls:
+            with ThreadPoolExecutor(max_workers=min(len(parallel_calls), 4)) as executor:
+                future_to_tc = {
+                    executor.submit(_execute_tool, tc["name"], tc["input"], chat_id, user_email, session_registry): tc
+                    for tc in parallel_calls
+                }
+                for future in as_completed(future_to_tc):
+                    tc = future_to_tc[future]
+                    results_map[tc["id"]] = future.result()
 
         for tc in tool_calls:
             output, docs, charts = results_map[tc["id"]]
@@ -707,7 +804,6 @@ def _run_anthropic(
             if len(output) > _MAX_TOOL_OUTPUT_CHARS:
                 truncated += f"\n… [output truncated at {_MAX_TOOL_OUTPUT_CHARS} chars]"
 
-            # Emit chart events immediately
             for chart in charts:
                 yield {
                     "type": "chart_generated",
@@ -716,11 +812,20 @@ def _run_anthropic(
                     "timestamp": _ts(),
                 }
 
-            if tc["name"] != "think":
+            _SILENT_TOOLS = {"think", "register_tool"}
+            if tc["name"] not in _SILENT_TOOLS:
                 yield {
                     "type": "tool_end",
                     "tool_name": tc["name"],
                     "output": output[:300] + "…" if len(output) > 300 else output,
+                    "timestamp": _ts(),
+                }
+            elif tc["name"] == "register_tool" and "registered" in output.lower():
+                # Surface successful registrations as a special event
+                yield {
+                    "type": "tool_registered",
+                    "tool_name": tc["input"].get("name", ""),
+                    "description": tc["input"].get("description", ""),
                     "timestamp": _ts(),
                 }
             tool_results.append({
@@ -730,7 +835,6 @@ def _run_anthropic(
             })
 
         messages.append({"role": "user", "content": tool_results})
-        # Prune old tool results to keep context window manageable
         messages = _prune_messages(messages)
 
     else:
@@ -750,6 +854,7 @@ def _run_openai(
     user_email: str,
     media_attachments: list,
     model_key: str,
+    session_registry: dict,
 ) -> Generator[dict, None, None]:
     import openai as _openai
 
@@ -776,7 +881,7 @@ def _run_openai(
             with client.chat.completions.create(
                 model=model,
                 messages=messages,
-                tools=_openai_tools(),
+                tools=_openai_tools(session_registry),
                 tool_choice="auto",
                 max_tokens=4096,
                 stream=True,
@@ -840,9 +945,10 @@ def _run_openai(
                 parsed_inputs[tc["id"]] = {}
         messages.append({"role": "assistant", "content": None, "tool_calls": parsed_tool_calls})
 
-        # Emit tool_start for non-think tools
+        # Emit tool_start for visible tools
+        _SILENT_TOOLS = {"think", "register_tool"}
         for tc in tool_calls_raw:
-            if tc["name"] != "think":
+            if tc["name"] not in _SILENT_TOOLS:
                 yield {
                     "type": "tool_start",
                     "tool_name": tc["name"],
@@ -850,16 +956,23 @@ def _run_openai(
                     "timestamp": _ts(),
                 }
 
-        # Execute tools in parallel
-        with ThreadPoolExecutor(max_workers=min(len(tool_calls_raw), 4)) as executor:
-            future_to_tc = {
-                executor.submit(_execute_tool, tc["name"], parsed_inputs[tc["id"]], chat_id, user_email): tc
-                for tc in tool_calls_raw
-            }
-            results_map_oai: dict[str, tuple[str, list, list]] = {}
-            for future in as_completed(future_to_tc):
-                tc = future_to_tc[future]
-                results_map_oai[tc["id"]] = future.result()
+        # register_tool mutates session_registry — run sequentially first
+        register_calls_oai = [tc for tc in tool_calls_raw if tc["name"] == "register_tool"]
+        parallel_calls_oai = [tc for tc in tool_calls_raw if tc["name"] != "register_tool"]
+
+        results_map_oai: dict[str, tuple[str, list, list]] = {}
+        for tc in register_calls_oai:
+            results_map_oai[tc["id"]] = _execute_tool(tc["name"], parsed_inputs[tc["id"]], chat_id, user_email, session_registry)
+
+        if parallel_calls_oai:
+            with ThreadPoolExecutor(max_workers=min(len(parallel_calls_oai), 4)) as executor:
+                future_to_tc = {
+                    executor.submit(_execute_tool, tc["name"], parsed_inputs[tc["id"]], chat_id, user_email, session_registry): tc
+                    for tc in parallel_calls_oai
+                }
+                for future in as_completed(future_to_tc):
+                    tc = future_to_tc[future]
+                    results_map_oai[tc["id"]] = future.result()
 
         for tc in tool_calls_raw:
             output, docs, charts = results_map_oai[tc["id"]]
@@ -874,11 +987,18 @@ def _run_openai(
                     "timestamp": _ts(),
                 }
 
-            if tc["name"] != "think":
+            if tc["name"] not in _SILENT_TOOLS:
                 yield {
                     "type": "tool_end",
                     "tool_name": tc["name"],
                     "output": output[:300] + "…" if len(output) > 300 else output,
+                    "timestamp": _ts(),
+                }
+            elif tc["name"] == "register_tool" and "registered" in output.lower():
+                yield {
+                    "type": "tool_registered",
+                    "tool_name": parsed_inputs[tc["id"]].get("name", ""),
+                    "description": parsed_inputs[tc["id"]].get("description", ""),
                     "timestamp": _ts(),
                 }
             truncated = output[:_MAX_TOOL_OUTPUT_CHARS]
@@ -902,7 +1022,7 @@ def _run_openai(
 # ---------------------------------------------------------------------------
 
 def _execute_tool(
-    name: str, inputs: dict, chat_id: int, user_email: str
+    name: str, inputs: dict, chat_id: int, user_email: str, session_registry: dict
 ) -> tuple[str, list[dict], list[dict]]:
     """Execute a tool and return (output_text, source_docs, charts)."""
     docs: list[dict] = []
@@ -943,8 +1063,12 @@ def _execute_tool(
             return _tool_translate_text(inputs), docs, charts
         elif name == "call_webhook":
             return _tool_call_webhook(inputs), docs, charts
+        elif name == "register_tool":
+            return _tool_register_tool(inputs, session_registry), docs, charts
+        elif name in session_registry["executors"]:
+            return _tool_run_dynamic(name, inputs, session_registry), docs, charts
         else:
-            return f"Unknown tool: {name}", docs, charts
+            return f"Unknown tool: '{name}'. If you need this capability, use register_tool to create it.", docs, charts
     except Exception as exc:
         return f"Tool error ({name}): {exc}\n{traceback.format_exc()[:400]}", docs, charts
 
@@ -1167,6 +1291,185 @@ def _tool_retrieve_multi(
         + "\n\n---\n\n".join(all_parts),
         docs,
     )
+
+
+def _validate_tool_code(code: str) -> Optional[str]:
+    """AST-based safety check for dynamically registered tool code.
+
+    Returns an error string if the code is unsafe, None if it passes.
+    """
+    BLOCKED_MODULES = {
+        "os", "sys", "subprocess", "shutil", "socket", "importlib",
+        "ctypes", "pickle", "pathlib", "tempfile", "glob", "signal",
+        "multiprocessing", "threading", "pty", "atexit", "gc",
+    }
+    BLOCKED_ATTRS = {
+        "__import__", "__builtins__", "__globals__", "__code__",
+        "__class__", "__subclasses__", "__mro__",
+    }
+    BLOCKED_BUILTINS = {
+        "exec", "eval", "compile", "open", "input", "__import__",
+        "breakpoint", "memoryview", "vars", "globals", "locals",
+    }
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as exc:
+        return f"Syntax error in tool code: {exc}"
+
+    for node in ast.walk(tree):
+        # Block dangerous imports
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            names = (
+                [alias.name for alias in node.names]
+                if isinstance(node, ast.Import)
+                else ([node.module] if node.module else [])
+            )
+            for mod in names:
+                root = mod.split(".")[0] if mod else ""
+                if root in BLOCKED_MODULES:
+                    return f"Import of '{root}' is not allowed in dynamic tools."
+
+        # Block dangerous builtin calls
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in BLOCKED_BUILTINS:
+                return f"Call to '{node.func.id}' is not allowed in dynamic tools."
+
+        # Block dunder attribute access
+        if isinstance(node, ast.Attribute) and node.attr in BLOCKED_ATTRS:
+            return f"Access to '{node.attr}' is not allowed in dynamic tools."
+
+        # Block dangerous name usage
+        if isinstance(node, ast.Name) and node.id in BLOCKED_BUILTINS:
+            if not isinstance(node.ctx, ast.Load):
+                continue
+            # Allow as function argument names etc., block direct calls (caught above)
+
+    # Ensure a `run` function is defined
+    fn_names = [
+        node.name for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    ]
+    if "run" not in fn_names:
+        return "Tool code must define a function named 'run(inputs: dict) -> str'."
+
+    return None  # passed
+
+
+def _tool_register_tool(inputs: dict, session_registry: dict) -> str:
+    """Validate, compile, and register a new dynamic tool for this session."""
+    name = inputs.get("name", "").strip()
+    description = inputs.get("description", "").strip()
+    parameters_schema = inputs.get("parameters_schema") or {}
+    python_code = inputs.get("python_code", "").strip()
+
+    if not name or not description or not python_code:
+        return "Error: 'name', 'description', and 'python_code' are all required."
+
+    # Validate name
+    if not re.match(r"^[a-z][a-z0-9_]{0,63}$", name):
+        return "Error: tool name must be lowercase snake_case, start with a letter, max 64 chars."
+
+    # Don't allow overriding built-in tools
+    builtin_names = {s["name"] for s in _TOOL_SPECS}
+    if name in builtin_names:
+        return f"Error: '{name}' is a built-in tool and cannot be overridden."
+
+    # Safety check
+    error = _validate_tool_code(python_code)
+    if error:
+        return f"Tool validation failed: {error}"
+
+    # Build a sandboxed namespace with allowed libraries
+    import datetime
+    import collections
+    import itertools
+    import urllib.parse
+
+    try:
+        import requests as _requests
+    except ImportError:
+        _requests = None  # type: ignore[assignment]
+    try:
+        import numpy as _np
+    except ImportError:
+        _np = None  # type: ignore[assignment]
+    try:
+        import pandas as _pd
+    except ImportError:
+        _pd = None  # type: ignore[assignment]
+    try:
+        from bs4 import BeautifulSoup as _BS4
+    except ImportError:
+        _BS4 = None  # type: ignore[assignment]
+
+    sandbox: dict = {
+        "json": json,
+        "re": re,
+        "math": math,
+        "datetime": datetime,
+        "collections": collections,
+        "itertools": itertools,
+        "urllib": urllib,
+        "requests": _requests,
+        "numpy": _np,
+        "pandas": _pd,
+        "BeautifulSoup": _BS4,
+        # Safe builtins subset
+        "__builtins__": {
+            k: __builtins__[k]  # type: ignore[index]
+            for k in (
+                "abs", "all", "any", "bin", "bool", "bytes", "chr", "dict",
+                "divmod", "enumerate", "filter", "float", "format", "frozenset",
+                "getattr", "hasattr", "hash", "hex", "int", "isinstance",
+                "issubclass", "iter", "len", "list", "map", "max", "min",
+                "next", "oct", "ord", "pow", "print", "range", "repr",
+                "reversed", "round", "set", "slice", "sorted", "str", "sum",
+                "tuple", "type", "zip", "ValueError", "TypeError", "KeyError",
+                "IndexError", "StopIteration", "Exception", "RuntimeError",
+                "True", "False", "None",
+            )
+            if isinstance(__builtins__, dict) and k in __builtins__  # type: ignore[operator]
+            or not isinstance(__builtins__, dict)
+        },
+    }
+
+    try:
+        exec(python_code, sandbox)  # noqa: S102
+    except Exception as exc:
+        return f"Tool code raised an error during compilation: {exc}"
+
+    if "run" not in sandbox or not callable(sandbox["run"]):
+        return "Tool code must define a callable function named 'run'."
+
+    # Register the tool
+    spec = {
+        "name": name,
+        "description": description,
+        "parameters": parameters_schema if parameters_schema else {
+            "type": "object", "properties": {}, "required": [],
+        },
+    }
+    session_registry["specs"].append(spec)
+    session_registry["executors"][name] = sandbox["run"]
+
+    return (
+        f"Tool '{name}' registered successfully. "
+        f"You can now call it using its name. "
+        f"Total dynamic tools in this session: {len(session_registry['specs'])}."
+    )
+
+
+def _tool_run_dynamic(name: str, inputs: dict, session_registry: dict) -> str:
+    """Execute a dynamically registered tool."""
+    executor = session_registry["executors"].get(name)
+    if not executor:
+        return f"Dynamic tool '{name}' not found in session registry."
+    try:
+        result = executor(inputs)
+        return str(result) if result is not None else "(no output)"
+    except Exception as exc:
+        return f"Dynamic tool '{name}' error: {exc}\n{traceback.format_exc()[:300]}"
 
 
 def _tool_think(inputs: dict) -> str:

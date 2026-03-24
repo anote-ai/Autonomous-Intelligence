@@ -127,6 +127,22 @@ export function updateMessageWithStreamData(message, eventData) {
       updatedMessage.currentStep = thinkingStep;
       break;
     }
+    case "tool_registered": {
+      const registeredStep = {
+        id: `step-${Date.now()}`,
+        type: "tool_registered",
+        tool_name: eventData.tool_name || "",
+        description: eventData.description || "",
+        message: `New tool created: ${eventData.tool_name}`,
+        timestamp: Date.now(),
+      };
+      updatedMessage.reasoning = [
+        ...(updatedMessage.reasoning || []),
+        registeredStep,
+      ];
+      updatedMessage.currentStep = registeredStep;
+      break;
+    }
     case "chart_generated": {
       const chart = {
         image_data: eventData.image_data || "",
