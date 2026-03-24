@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from database import db_pool
 
 
-def test_get_db_connection_reuses_single_pool(monkeypatch) -> None:
+def test_get_db_connection_reuses_single_pool(monkeypatch: pytest.MonkeyPatch) -> None:
     connection = MagicMock()
     cursor = MagicMock()
     connection.cursor.return_value = cursor
