@@ -1,14 +1,12 @@
 import os
-import mysql.connector
 from flask import request
-import socket
 from jwt import InvalidTokenError
 from flask_jwt_extended import decode_token
 from db_enums import PaidUserStatus
 from flask_mail import Message
 from constants.global_constants import productHashMap
 from constants.global_constants import priceToPaymentPlan
-from constants.global_constants import dbName, dbHost, dbUser, dbPassword
+from database.db_pool import get_db_connection
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -44,23 +42,6 @@ def extractUserEmailFromRequest(request):
                     raise InvalidTokenError() from e
     else:
         raise InvalidTokenError()
-
-def get_db_connection():
-    # print('in db_auth')
-    if ('.local' in socket.gethostname() or '.lan' in socket.gethostname() or 'Shadow' in socket.gethostname()) or ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
-        conn = mysql.connector.connect(
-            user='root',
-            unix_socket='/tmp/mysql.sock',
-            database=dbName,
-        )
-    else:
-        conn = mysql.connector.connect(
-            host=dbHost,
-            user=dbUser,
-            password=dbPassword,
-            database=dbName,
-        )
-    return conn, conn.cursor(dictionary=True)
 
 def user_email_for_session_token(session_token):
     conn, cursor = get_db_connection()
