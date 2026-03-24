@@ -19,7 +19,6 @@ import {
 import { useDispatch, useSelector } from "react-redux";
 import { setChatMessages, selectCachedMessages } from "../../redux/ChatSlice";
 import FileUpload from "../../components/FileUpload";
-import fetcher from "../../http/RequestConfig";
 import ThinkingIndicator from "../chatbot/ThinkingIndicator";
 import {
   createUploadedDocumentMessages,
@@ -27,6 +26,7 @@ import {
   sortMessagesByTimestamp,
   updateMessageWithStreamData,
 } from "../chatbot/messageUtils";
+import { useChatbotApi } from "../useChatbotApi";
 
 // Development-only debug logging helper
 const isDev = process.env.NODE_ENV === "development";
@@ -39,6 +39,13 @@ const Chatbot = ({
   onChatsChanged,
   onUploadComplete,
   selectedChatId,
+  processMessagePath = "process-message-pdf",
+  uploadPath = "ingest-pdf",
+  retrieveMessagesPath = "retrieve-messages-from-chat",
+  retrieveDocsPath = "retrieve-current-docs",
+  enableChatNameInference = true,
+  emptyStateTitle = "What can I help you with?",
+  streamResponses = true,
 }) => {
   const [message, setMessage] = useState("");
   const inputRef = useRef(null);
@@ -48,6 +55,13 @@ const Chatbot = ({
   const dispatch = useDispatch();
   const cachedMessages = useSelector(selectCachedMessages(id));
   const location = useLocation();
+  const {
+    inferChatName: inferChatNameRequest,
+    processChatMessage,
+    retrieveCurrentDocs,
+    retrieveMessages,
+    uploadDocuments,
+  } = useChatbotApi();
   const numCredits = useNumCredits();
   const user = useUser();
   const [chatNameGenerated, setChatNameGenerated] = useState(false);
@@ -116,14 +130,8 @@ const Chatbot = ({
       formData.append("chat_id", chatId);
 
       // Upload files using your existing fetcher to ingest-pdf endpoint
-      const response = await fetcher("ingest-pdf", {
-        method: "POST",
-        body: formData,
-        // Don't set Content-Type header for FormData, let browser set it
-      });
-
-      if (response.ok) {
-        const result = await response.json();
+      const result = await uploadDocuments(uploadPath, formData);
+      if (result) {
         console.log("Upload successful:", result);
 
         // Add uploaded files to the state for display
@@ -158,34 +166,22 @@ const Chatbot = ({
 
         // Don't show alert since we're showing it in chat
         // alert(`Successfully uploaded ${selectedFiles.length} file(s) to chat`);
-      } else {
-        const errorData = await response.json();
-        console.error("Upload failed:", errorData);
-        alert(errorData.error || "Upload failed. Please try again.");
       }
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Upload failed. Please check your connection and try again.");
+      alert(error?.message || "Upload failed. Please check your connection and try again.");
     }
   };
 
   const inferChatName = useCallback(async (text, answer, chatId) => {
     const combinedText = `${text} ${answer}`;
     try {
-      const response = await fetcher("infer-chat-name", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ messages: combinedText, chat_id: chatId }),
-      });
-      await response.json();
+      await inferChatNameRequest(combinedText, chatId);
       onChatsChanged?.();
     } catch (err) {
       console.error("Chat name inference failed", err);
     }
-  }, [onChatsChanged]);
+  }, [inferChatNameRequest, onChatsChanged]);
 
   const pollForMessages = useCallback((chatId, maxAttempts = 3) => {
     let attempts = 0;
@@ -193,16 +189,7 @@ const Chatbot = ({
     const poll = async () => {
       attempts++;
       try {
-        const res = await fetcher("retrieve-messages-from-chat", {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ chat_id: chatId, chat_type: 0 }),
-        });
-
-        const data = await res.json();
+        const data = await retrieveMessages("retrieve-messages-from-chat", chatId, 0);
         if (data.messages && data.messages.length > 0) {
           const formatted = formatChatMessages(data.messages, chatId);
           setMessages(formatted);
@@ -246,33 +233,21 @@ const Chatbot = ({
     };
 
     pollingTimeoutRef.current = setTimeout(poll, 2000);
-  }, []);
+  }, [retrieveMessages]);
 
   // Function to fetch uploaded documents for a chat and create system messages
   const fetchUploadedDocuments = useCallback(async (chatId) => {
     try {
-      const response = await fetcher("retrieve-current-docs", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ chat_id: chatId }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log("Backend doc_info response:", result.doc_info);
-        if (result.doc_info && result.doc_info.length > 0) {
-          // Create system messages for uploaded files
-          return createUploadedDocumentMessages(result.doc_info, chatId);
-        }
+      const result = await retrieveCurrentDocs(retrieveDocsPath, chatId);
+      console.log("Backend doc_info response:", result.doc_info);
+      if (result.doc_info && result.doc_info.length > 0) {
+        return createUploadedDocumentMessages(result.doc_info, chatId);
       }
     } catch (error) {
       console.error("Error fetching uploaded documents:", error);
     }
     return [];
-  }, []);
+  }, [retrieveCurrentDocs, retrieveDocsPath]);
 
   const handleSendMessage = async (event) => {
     event.preventDefault();
@@ -298,12 +273,9 @@ const Chatbot = ({
     const currentMessage = message.trim();
     setMessage("");
 
-    let targetChatId = id;
+    let targetChatId = id || selectedChatId;
 
-    const isNewChat =
-      !id ||
-      window.location.pathname === "/" ||
-      window.location.pathname === "/chat";
+    const isNewChat = !targetChatId;
 
     if (isNewChat) {
       try {
@@ -521,7 +493,8 @@ const Chatbot = ({
                   eventData.type === "step-complete") &&
                 eventData.answer &&
                 !chatNameGenerated &&
-                !isGuestChat
+                !isGuestChat &&
+                enableChatNameInference
               ) {
                 await inferChatName(originalText, eventData.answer, chatId);
                 setChatNameGenerated(true);
@@ -569,7 +542,7 @@ const Chatbot = ({
         )
       );
     }
-  }, [chatNameGenerated, inferChatName, onChatsChanged]);
+  }, [chatNameGenerated, enableChatNameInference, inferChatName, onChatsChanged]);
 
   const sendToAPI = useCallback(async (text, chatId, thinkingId) => {
     try {
@@ -586,18 +559,17 @@ const Chatbot = ({
         });
       }
 
-      const res = await fetcher("process-message-pdf", {
-        method: "POST",
-        isGuest: isGuestChat,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await processChatMessage(
+        processMessagePath,
+        {
           message: text,
           chat_id: isGuestChat ? null : Number(chatId),
           model_type: isPrivate,
           model_key: "",
           is_guest: isGuestChat,
-        }),
-      });
+        },
+        { isGuest: isGuestChat }
+      );
 
       if (isDev) {
         console.log("API response status:", res.status);
@@ -606,7 +578,26 @@ const Chatbot = ({
         throw new Error(`HTTP error! status: ${res.status}`);
       }
 
-      await handleSSEStreamingResponse(res, thinkingId, text, chatId);
+      if (streamResponses) {
+        await handleSSEStreamingResponse(res, thinkingId, text, chatId);
+      } else {
+        const data = await res.json();
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === thinkingId
+              ? {
+                  ...msg,
+                  content:
+                    data.answer ||
+                    "Sorry, I couldn't generate a response. Please try again.",
+                  isThinking: false,
+                  sources: data.sources || [],
+                  reasoning: data.reasoning || [],
+                }
+              : msg
+          )
+        );
+      }
 
       if (!isGuestChat) {
         localStorage.removeItem(`pending-message-${chatId}`);
@@ -629,7 +620,7 @@ const Chatbot = ({
         )
       );
     }
-  }, [handleSSEStreamingResponse, isPrivate, user]);
+  }, [handleSSEStreamingResponse, isPrivate, processChatMessage, processMessagePath, streamResponses, user]);
 
   // Function to toggle reasoning expansion
   const toggleReasoningExpansion = (messageId) => {
@@ -647,10 +638,12 @@ const Chatbot = ({
 
     pollingStartedRef.current = false;
 
-    if (id) {
+    const activeChatId = id || selectedChatId;
+
+    if (activeChatId) {
       const loadChat = async () => {
-        if (!selectedChatId) {
-          handleChatSelect(id);
+        if (handleChatSelect && activeChatId !== selectedChatId) {
+          handleChatSelect(activeChatId);
         }
 
         // Seed from Redux cache immediately so the user sees messages
@@ -660,16 +653,7 @@ const Chatbot = ({
         }
 
         try {
-          const res = await fetcher("retrieve-messages-from-chat", {
-            method: "POST",
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ chat_id: id, chat_type: 0 }),
-          });
-
-          const data = await res.json();
+          const data = await retrieveMessages(retrieveMessagesPath, activeChatId, 0);
 
           console.log("res", data);
           setChatNameGenerated(true);
@@ -677,7 +661,7 @@ const Chatbot = ({
           if (!data.messages?.length) {
             const pending =
               location.state?.message ||
-              localStorage.getItem(`pending-message-${id}`);
+              localStorage.getItem(`pending-message-${activeChatId}`);
             if (pending) {
               console.log(
                 "[handleLoadChat] Loading pending message after new chat creation:",
@@ -685,14 +669,14 @@ const Chatbot = ({
               );
               const userMsg = {
                 id: "user-content",
-                chat_id: id,
+                chat_id: activeChatId,
                 role: "user",
                 content: pending,
                 timestamp: Date.now(),
               };
               const thinkingMsg = {
                 id: `thinking-${Date.now()}`,
-                chat_id: id,
+                chat_id: activeChatId,
                 role: "assistant",
                 content: "",
                 isThinking: true,
@@ -703,11 +687,11 @@ const Chatbot = ({
               setMessages([userMsg, thinkingMsg]);
               if (location.state?.message) {
                 localStorage.setItem(
-                  `pending-message-${id}`,
+                  `pending-message-${activeChatId}`,
                   location.state.message
                 );
               }
-              await sendToAPI(pending, id, thinkingMsg.id);
+              await sendToAPI(pending, activeChatId, thinkingMsg.id);
               return;
             }
 
@@ -715,14 +699,14 @@ const Chatbot = ({
             return;
           }
 
-          localStorage.removeItem(`pending-message-${id}`);
-          const formatted = formatChatMessages(data.messages, id);
+          localStorage.removeItem(`pending-message-${activeChatId}`);
+          const formatted = formatChatMessages(data.messages, activeChatId);
 
-          const fileSystemMessages = await fetchUploadedDocuments(id);
+          const fileSystemMessages = await fetchUploadedDocuments(activeChatId);
           const sorted = sortMessagesByTimestamp([...formatted, ...fileSystemMessages]);
           setMessages(sorted);
           // Update the Redux cache so the next visit to this chat is instant.
-          dispatch(setChatMessages({ chatId: id, messages: sorted }));
+          dispatch(setChatMessages({ chatId: activeChatId, messages: sorted }));
         } catch (err) {
           console.error("Failed to load chat:", err);
         }
@@ -744,6 +728,8 @@ const Chatbot = ({
     id,
     location.state?.message,
     fetchUploadedDocuments,
+    retrieveMessages,
+    retrieveMessagesPath,
     selectedChatId,
     handleChatSelect,
     sendToAPI,
@@ -934,7 +920,7 @@ const Chatbot = ({
         {/* Welcome message */}
         {messages.length === 0 && (
           <div className="w-full text-white animate-typing overflow-hidden whitespace-nowrap flex items-center justify-center font-bold text-2xl mb-4">
-            What can I help you with?
+            {emptyStateTitle}
           </div>
         )}
 

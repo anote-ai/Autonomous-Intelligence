@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPaperPlane, faUndoAlt } from "@fortawesome/free-solid-svg-icons";
+import { useLandingChatApi } from "../useLandingChatApi";
 
 const GTMChatbot = () => {
   const [file, setFile] = useState(null);
@@ -13,6 +14,7 @@ const GTMChatbot = () => {
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
+  const { sendMultipartChat } = useLandingChatApi();
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -55,16 +57,9 @@ const GTMChatbot = () => {
 
       console.log("Sending message:", text);
 
-      const res = await fetch("/gtm/respond", {
-        method: "POST",
-        credentials: "include", //necessary to avoid CORS issues 
-        // headers: { "Content-Type": "application/json" },
-        body: formData,
-      });
+      const data = await sendMultipartChat("/gtm/respond", formData);
 
-      const data = await res.json();
-
-      console.log("Received response:", res);
+      console.log("Received response:", data);
 
       setMessages((prev) =>
         prev.map((msg) =>
