@@ -986,7 +986,14 @@ def change_chat_mode(chat_mode_to_change_to, chat_id, user_email):
     conn.close()
 
 
-def add_document(text, document_name, chat_id=None):
+def add_document(text, document_name, chat_id=None, media_type="text", mime_type=None):
+    """Insert a document record and return (doc_id, already_existed).
+
+    ``text`` may be None for binary-only media (images, video, audio) where
+    the textual representation is derived separately (e.g. via transcription).
+    ``media_type`` is one of: 'text', 'image', 'video', 'audio'.
+    ``mime_type`` is the MIME string (e.g. 'image/png', 'video/mp4').
+    """
     if chat_id == 0:
         return None, False
 
@@ -994,7 +1001,7 @@ def add_document(text, document_name, chat_id=None):
     try:
         cursor.execute(
             """
-            SELECT id, document_text
+            SELECT id
             FROM documents
             WHERE document_name = %s
             AND chat_id = %s
@@ -1003,16 +1010,15 @@ def add_document(text, document_name, chat_id=None):
         )
         existing_doc = cursor.fetchone()
         if existing_doc:
-            existing_doc_id, _ = existing_doc
-            return existing_doc_id, True
+            return existing_doc["id"], True
 
         storage_key = "temp"
         cursor.execute(
             """
-            INSERT INTO documents (document_text, document_name, storage_key, chat_id)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO documents (document_text, document_name, storage_key, chat_id, media_type, mime_type)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (text, document_name, storage_key, chat_id),
+            (text, document_name, storage_key, chat_id, media_type, mime_type),
         )
         doc_id = cursor.lastrowid
         conn.commit()
@@ -1035,6 +1041,39 @@ def add_message(text, chat_id, is_user, reasoning=None):
     cursor.close()
     conn.close()
     return message_id
+
+
+def add_message_attachment(message_id, media_type, mime_type, storage_key, original_filename=None):
+    """Attach a media file record to an existing message row."""
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute(
+            """
+            INSERT INTO message_attachments (message_id, media_type, mime_type, storage_key, original_filename)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (message_id, media_type, mime_type, storage_key, original_filename),
+        )
+        attachment_id = cursor.lastrowid
+        conn.commit()
+        return attachment_id
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_message_attachments(message_id):
+    """Return all attachment records for a given message."""
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute(
+            "SELECT * FROM message_attachments WHERE message_id = %s",
+            (message_id,),
+        )
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def add_chunks_with_page_numbers(chunk_data):

@@ -1,10 +1,12 @@
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain.tools import BaseTool
+from langchain_core.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from typing import Dict, List, Any, Optional, Generator
 import os
+import re
 import time
 from pydantic import Field
 import json
@@ -429,9 +431,9 @@ class ReactiveDocumentAgent:
         self.model_key = model_key
         # Use config default if not explicitly specified
         self.use_multi_agent = use_multi_agent if use_multi_agent is not None else AgentConfig.is_multi_agent_enabled()
-        self.llm = self._initialize_llm()
+        self.llm = self._initialize_llm(vision=False)
         self.agent_executor = None
-        
+
         # Initialize multi-agent system if enabled
         if self.use_multi_agent:
             try:
@@ -444,23 +446,80 @@ class ReactiveDocumentAgent:
         else:
             self.multi_agent_system = None
         
-    def _initialize_llm(self):
-        if self.model_type == 0:  # OpenAI/GPT
-            model_name = self.model_key if self.model_key else "gpt-4"
+    def _initialize_llm(self, vision: bool = False):
+        """Initialise the LLM.
+
+        When *vision* is True the model is chosen from the vision-capable
+        model config; otherwise the standard text model is used.  In practice
+        both currently point to the same multimodal-capable models (gpt-4o /
+        claude-3-5-sonnet) so the flag is mainly for clarity and future
+        flexibility.
+        """
+        if self.model_type == 0:  # OpenAI
+            model_name = (
+                self.model_key
+                or (AgentConfig.OPENAI_VISION_MODEL if vision else AgentConfig.OPENAI_TEXT_MODEL)
+            )
             return ChatOpenAI(
                 model=model_name,
                 temperature=AgentConfig.AGENT_TEMPERATURE,
                 openai_api_key=os.getenv("OPENAI_API_KEY"),
-                streaming=True  # Enable streaming for OpenAI
+                streaming=True,
             )
-        else:  # Anthropic/Claude
+        else:  # Anthropic
+            model_name = (
+                self.model_key
+                or (AgentConfig.ANTHROPIC_VISION_MODEL if vision else AgentConfig.ANTHROPIC_TEXT_MODEL)
+            )
             return ChatAnthropic(
-                model="claude-3-sonnet-20240229",
+                model=model_name,
                 temperature=AgentConfig.AGENT_TEMPERATURE,
                 anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
-                streaming=True  # Enable streaming for Anthropic
+                streaming=True,
             )
     
+    def _describe_images(self, attachments: List[Dict[str, Any]]) -> str:
+        """Call the vision LLM once per image attachment and return a combined
+        description string that can be prepended to the user's query.
+
+        Each attachment dict must have:
+            "data"      – base64-encoded image bytes
+            "mime_type" – e.g. "image/png"
+
+        Only image attachments are handled here; video/audio are skipped and
+        should be processed by their dedicated pipelines.
+        """
+        image_attachments = [a for a in attachments if a.get("media_type") == "image"]
+        if not image_attachments:
+            return ""
+
+        vision_llm = self._initialize_llm(vision=True)
+        descriptions = []
+
+        for idx, att in enumerate(image_attachments, start=1):
+            data_b64 = att.get("data", "")
+            mime = att.get("mime_type", "image/jpeg")
+
+            if self.model_type == 0:  # OpenAI — uses image_url with data URI
+                content = [
+                    {"type": "text", "text": "Describe this image in detail for use in a document Q&A context."},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data_b64}"}},
+                ]
+            else:  # Anthropic — uses source block
+                content = [
+                    {"type": "image", "source": {"type": "base64", "media_type": mime, "data": data_b64}},
+                    {"type": "text", "text": "Describe this image in detail for use in a document Q&A context."},
+                ]
+
+            try:
+                response = vision_llm.invoke([HumanMessage(content=content)])
+                desc = response.content if hasattr(response, "content") else str(response)
+                descriptions.append(f"[Image {idx}: {desc.strip()}]")
+            except Exception as e:
+                descriptions.append(f"[Image {idx}: could not be described — {e}]")
+
+        return "\n".join(descriptions)
+
     def _create_agent(self, chat_id: int, user_email: str) -> AgentExecutor:
         tools = [
             DocumentRetrievalTool(chat_id, user_email),
@@ -548,41 +607,73 @@ class ReactiveDocumentAgent:
             return_intermediate_steps=True  # Important for capturing reasoning
         )
     
-    def process_query_stream(self, query: str, chat_id: int, user_email: str) -> Generator[Dict[str, Any], None, None]:
+    def process_query_stream(
+        self,
+        query: str,
+        chat_id: int,
+        user_email: str,
+        media_attachments: Optional[List[Dict[str, Any]]] = None,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """Streamable version of process_query that yields intermediate results and final response.
+
+        ``media_attachments`` is an optional list of dicts describing inline media
+        (images / audio clips) that arrived alongside the text query.  Each dict has:
+            {
+                "media_type": "image" | "audio" | "video",
+                "mime_type": "image/png",
+                "data": "<base64-encoded bytes>",      # for images sent inline
+                "storage_key": "uploads/...",          # for server-side stored files
+            }
+
+        When attachments are present and multimodal is enabled the agent
+        will swap to the vision-capable LLM variant.
         """
-        Streamable version of process_query that yields intermediate results and final response
-        """
+        has_media = bool(media_attachments) and AgentConfig.ENABLE_MULTIMODAL
+
+        # Re-initialise with a vision-capable LLM if the message contains media
+        if has_media:
+            self.llm = self._initialize_llm(vision=True)
+
+        # Describe any inline images and fold the descriptions into the query
+        enriched_query = query
+        if has_media:
+            image_context = self._describe_images(media_attachments)
+            if image_context:
+                enriched_query = f"{query}\n\n{image_context}".strip()
+
         # Use multi-agent system if enabled
         if self.use_multi_agent and self.multi_agent_system:
-            yield from self.multi_agent_system.process_query_stream(query, chat_id, user_email)
+            yield from self.multi_agent_system.process_query_stream(enriched_query, chat_id, user_email)
             return
-            
+
         # Fallback to original single-agent system
         try:
             # Create agent for this specific chat context
             agent_executor = self._create_agent(chat_id, user_email)
-            
-            # Add user message to database
+
+            # Add user message to database (store original query, not enriched version)
             if user_email:
                 add_message_to_db(query, chat_id, 1)
             
-            # Yield initial status
+            # Yield initial status — also tell the frontend if images were enriched
             yield {
                 "type": "start",
                 "message": "Processing your query...",
+                "has_images": has_media,
                 "timestamp": self._get_timestamp()
             }
             
             # Track intermediate steps and current answer
             intermediate_steps = []
             current_answer = ""
-            
+
             # Create a list to collect streaming events
             streaming_events = []
-            
+
             # Track the final reasoning steps as built by frontend logic
             final_reasoning_steps = []
-            
+
+
             # Create a callback to capture and immediately yield streaming events
             def stream_callback(event):
                 streaming_events.append(event)
@@ -594,7 +685,7 @@ class ReactiveDocumentAgent:
                 callback_handler = StreamingAgentCallbackHandler(stream_callback)
                 
                 response = agent_executor.invoke(
-                    {"input": query},
+                    {"input": enriched_query},
                     config={"callbacks": [callback_handler]}
                 )
                 
