@@ -106,6 +106,7 @@ _get_model()
 from datetime import datetime
 
 from agents.config import AgentConfig
+from agents.autonomous_agent import AutonomousDocumentAgent
 from agents.reactive_agent import ReactiveDocumentAgent
 from api_endpoints.languages.arabic import arabic_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
@@ -741,28 +742,65 @@ class CustomJSONEncoder(json.JSONEncoder):
             return asdict(o)
         return super().default(o)
 
+def _parse_message_request(req):
+    """Extract (message_text, chat_id, model_type, model_key, is_guest, media_attachments)
+    from either a JSON body or a multipart/form-data request.
+
+    Multipart is used when the client attaches inline image files alongside the
+    chat message.  The form fields mirror the JSON keys; files are sent under
+    the field name ``attachments[]``.
+    """
+    content_type = req.content_type or ""
+    if "multipart/form-data" in content_type:
+        raw_message = req.form.get("message", "")
+        chat_id = req.form.get("chat_id")
+        model_type = int(req.form.get("model_type", 0))
+        model_key = req.form.get("model_key", "")
+        is_guest = req.form.get("is_guest", "false").lower() == "true"
+
+        media_attachments = []
+        for f in req.files.getlist("attachments[]"):
+            mime = (f.content_type or "application/octet-stream").split(";")[0].strip()
+            media_category = "image"
+            if mime.startswith("video/"):
+                media_category = "video"
+            elif mime.startswith("audio/"):
+                media_category = "audio"
+            import base64
+            data_b64 = base64.b64encode(f.read()).decode("utf-8")
+            media_attachments.append({
+                "media_type": media_category,
+                "mime_type": mime,
+                "data": data_b64,
+                "original_filename": f.filename,
+            })
+    else:
+        body = req.get_json(force=True) or {}
+        raw_message = body.get("message", "")
+        chat_id = body.get("chat_id")
+        model_type = body.get("model_type", 0)
+        model_key = body.get("model_key", "")
+        is_guest = body.get("is_guest", False)
+        # Allow clients to pass pre-encoded attachments in JSON for small images
+        media_attachments = body.get("attachments", [])
+
+    # Normalise message to a plain string
+    if isinstance(raw_message, dict):
+        message_text = raw_message.get("text") or raw_message.get("content") or str(raw_message)
+    else:
+        message_text = str(raw_message) if raw_message is not None else ""
+
+    return message_text, chat_id, model_type, model_key, is_guest, media_attachments
+
+
 @app.route('/process-message-pdf', methods=['POST'])
 def process_message_pdf():  # pragma: no cover
     print("=== DEBUG: process_message_pdf called ===")
-    message = request.json.get('message')
-    chat_id = request.json.get('chat_id')
-    model_type = request.json.get('model_type', 0)
-    model_key = request.json.get('model_key', "")
-    is_guest = request.json.get("is_guest", False)
 
-    print(f"DEBUG: is_guest = {is_guest}")
-    print(f"DEBUG: message type = {type(message)}")
-    print(f"DEBUG: message content = {message}")
-    print(f"DEBUG: request headers: {dict(request.headers)}")
+    message_text, chat_id, model_type, model_key, is_guest, media_attachments = _parse_message_request(request)
 
-    # Handle message extraction - it might be a dict or string
-    if isinstance(message, dict):
-        # If message is a dict, extract the actual message text
-        message_text = message.get('text') or message.get('content') or str(message)
-        print(f"DEBUG: Extracted message_text from dict: {message_text}")
-    else:
-        message_text = str(message) if message is not None else ""
-        print(f"DEBUG: Using message as string: {message_text}")
+    print(f"DEBUG: is_guest={is_guest}, model_type={model_type}, attachments={len(media_attachments)}")
+    print(f"DEBUG: message_text={message_text!r}")
 
     # Handle user authentication based on guest status
     user_email = None
@@ -783,8 +821,8 @@ def process_message_pdf():  # pragma: no cover
     # Check if agents are enabled
     if AgentConfig.is_agent_enabled():
         try:
-            # Initialize the reactive agent
-            agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
+            # Use the autonomous agent (tool-calling loop with optional extended thinking)
+            agent = AutonomousDocumentAgent(model_type=model_type, model_key=model_key)
 
             # Process the query using the appropriate method based on guest status
             if is_guest:
@@ -794,7 +832,12 @@ def process_message_pdf():  # pragma: no cover
                 # Use regular method for authenticated users
                 if not user_email or not isinstance(user_email, str):
                     return jsonify({"error": "User email is missing or invalid"}), 401
-                result = agent.process_query_stream(message_text.strip(), chat_id, user_email)
+                result = agent.process_query_stream(
+                    message_text.strip(),
+                    chat_id,
+                    user_email,
+                    media_attachments=media_attachments or None,
+                )
 
             def generate():
                 for chunk in result:
@@ -836,16 +879,11 @@ def process_message_pdf():  # pragma: no cover
         return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
 
 def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email, is_guest=False):  # pragma: no cover
-    """Fallback implementation using the original direct LLM approach without the ReActive Agent"""
+    """Fallback implementation using the original direct LLM approach without the ReActive Agent.
 
-    # Handle message extraction - it might be a dict or string
-    if isinstance(message, dict):
-        # If message is a dict, extract the actual message text
-        message_text = message.get('text') or message.get('content') or str(message)
-    else:
-        message_text = str(message) if message is not None else ""
-
-    query = message_text.strip()
+    ``message`` is already a plain string at this point (normalised upstream).
+    """
+    query = str(message).strip()
 
     # For guest users, skip database operations
     if not is_guest:

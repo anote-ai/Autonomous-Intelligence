@@ -429,9 +429,9 @@ class ReactiveDocumentAgent:
         self.model_key = model_key
         # Use config default if not explicitly specified
         self.use_multi_agent = use_multi_agent if use_multi_agent is not None else AgentConfig.is_multi_agent_enabled()
-        self.llm = self._initialize_llm()
+        self.llm = self._initialize_llm(vision=False)
         self.agent_executor = None
-        
+
         # Initialize multi-agent system if enabled
         if self.use_multi_agent:
             try:
@@ -444,21 +444,36 @@ class ReactiveDocumentAgent:
         else:
             self.multi_agent_system = None
         
-    def _initialize_llm(self):
-        if self.model_type == 0:  # OpenAI/GPT
-            model_name = self.model_key if self.model_key else "gpt-4"
+    def _initialize_llm(self, vision: bool = False):
+        """Initialise the LLM.
+
+        When *vision* is True the model is chosen from the vision-capable
+        model config; otherwise the standard text model is used.  In practice
+        both currently point to the same multimodal-capable models (gpt-4o /
+        claude-3-5-sonnet) so the flag is mainly for clarity and future
+        flexibility.
+        """
+        if self.model_type == 0:  # OpenAI
+            model_name = (
+                self.model_key
+                or (AgentConfig.OPENAI_VISION_MODEL if vision else AgentConfig.OPENAI_TEXT_MODEL)
+            )
             return ChatOpenAI(
                 model=model_name,
                 temperature=AgentConfig.AGENT_TEMPERATURE,
                 openai_api_key=os.getenv("OPENAI_API_KEY"),
-                streaming=True  # Enable streaming for OpenAI
+                streaming=True,
             )
-        else:  # Anthropic/Claude
+        else:  # Anthropic
+            model_name = (
+                self.model_key
+                or (AgentConfig.ANTHROPIC_VISION_MODEL if vision else AgentConfig.ANTHROPIC_TEXT_MODEL)
+            )
             return ChatAnthropic(
-                model="claude-3-sonnet-20240229",
+                model=model_name,
                 temperature=AgentConfig.AGENT_TEMPERATURE,
                 anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
-                streaming=True  # Enable streaming for Anthropic
+                streaming=True,
             )
     
     def _create_agent(self, chat_id: int, user_email: str) -> AgentExecutor:
@@ -548,20 +563,43 @@ class ReactiveDocumentAgent:
             return_intermediate_steps=True  # Important for capturing reasoning
         )
     
-    def process_query_stream(self, query: str, chat_id: int, user_email: str) -> Generator[Dict[str, Any], None, None]:
+    def process_query_stream(
+        self,
+        query: str,
+        chat_id: int,
+        user_email: str,
+        media_attachments: Optional[List[Dict[str, Any]]] = None,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """Streamable version of process_query that yields intermediate results and final response.
+
+        ``media_attachments`` is an optional list of dicts describing inline media
+        (images / audio clips) that arrived alongside the text query.  Each dict has:
+            {
+                "media_type": "image" | "audio" | "video",
+                "mime_type": "image/png",
+                "data": "<base64-encoded bytes>",      # for images sent inline
+                "storage_key": "uploads/...",          # for server-side stored files
+            }
+
+        When attachments are present and multimodal is enabled the agent
+        will swap to the vision-capable LLM variant.
         """
-        Streamable version of process_query that yields intermediate results and final response
-        """
+        has_media = bool(media_attachments) and AgentConfig.ENABLE_MULTIMODAL
+
+        # Re-initialise with a vision-capable LLM if the message contains media
+        if has_media:
+            self.llm = self._initialize_llm(vision=True)
+
         # Use multi-agent system if enabled
         if self.use_multi_agent and self.multi_agent_system:
             yield from self.multi_agent_system.process_query_stream(query, chat_id, user_email)
             return
-            
+
         # Fallback to original single-agent system
         try:
             # Create agent for this specific chat context
             agent_executor = self._create_agent(chat_id, user_email)
-            
+
             # Add user message to database
             if user_email:
                 add_message_to_db(query, chat_id, 1)

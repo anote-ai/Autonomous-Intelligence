@@ -12,6 +12,8 @@ import {
 
 function getStepIcon(type) {
   switch (type) {
+    case "thinking":
+      return <FontAwesomeIcon icon={faLightbulb} className="text-yellow-400" />;
     case "llm_reasoning":
       return <FontAwesomeIcon icon={faBrain} className="text-accent" />;
     case "tool_start":
@@ -47,6 +49,8 @@ function getStepIcon(type) {
 
 function getStepColor(type) {
   switch (type) {
+    case "thinking":
+      return "border-l-yellow-400 bg-yellow-950/20";
     case "llm_reasoning":
     case "tool_start":
     case "tools_start":
