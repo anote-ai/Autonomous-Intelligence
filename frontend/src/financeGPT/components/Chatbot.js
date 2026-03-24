@@ -543,6 +543,10 @@ const Chatbot = ({
                             currentStep: null,
                             content: eventData.answer || msg.content,
                             sources: eventData.sources || msg.sources || [],
+                            charts: [
+                              ...(msg.charts || []),
+                              ...(eventData.charts || []),
+                            ],
                           }
                         : msg
                     )
@@ -906,6 +910,20 @@ const Chatbot = ({
                               </p>
                             </div>
                           )}
+                          {/* Show charts as they arrive during streaming */}
+                          {msg.charts && msg.charts.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                              {msg.charts.map((chart, idx) => (
+                                <div key={idx} className="rounded-lg overflow-hidden border border-[#2e3a4c]">
+                                  <img
+                                    src={`data:image/png;base64,${chart.image_data}`}
+                                    alt={chart.title || "Chart"}
+                                    className="w-full max-w-lg"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div>
@@ -913,6 +931,25 @@ const Chatbot = ({
                           <p className="whitespace-pre-wrap leading-relaxed text-sm">
                             {msg.content}
                           </p>
+                          {/* Inline charts */}
+                          {msg.charts && msg.charts.length > 0 && (
+                            <div className="mt-4 space-y-3">
+                              {msg.charts.map((chart, idx) => (
+                                <div key={idx} className="rounded-lg overflow-hidden border border-[#2e3a4c]">
+                                  {chart.title && (
+                                    <div className="px-3 py-1 bg-[#0f1419] text-xs text-gray-400 font-medium">
+                                      {chart.title}
+                                    </div>
+                                  )}
+                                  <img
+                                    src={`data:image/png;base64,${chart.image_data}`}
+                                    alt={chart.title || "Chart"}
+                                    className="w-full max-w-lg"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
