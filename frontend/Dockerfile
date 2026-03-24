@@ -1,11 +1,10 @@
-FROM node:20-slim
+FROM node:22-alpine
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-RUN npm install --force \
-    && npm cache clean --force 
+RUN npm install && npm cache clean --force
 
 COPY . .
 

@@ -339,8 +339,6 @@ def callback():
         audience=GOOGLE_CLIENT_ID
     )
 
-    # TODO: COMMENT OUT WHEN DEPLOY TO PROD
-    default_referrer = os.getenv("DEFAULT_REFERRER")
     default_referrer = "https://chat.anote.ai"
     if not default_referrer:
         default_referrer = "http://localhost:3000"
@@ -925,111 +923,6 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
 
     return jsonify(answer=answer)
 
-# Only for demo purposes
-chat_to_document_mapping = {}
-#DEMO_CHAT_ID = 99999
-DEMO_USER_EMAIL = "demo@example.com"
-chat_id = 0
-
-@app.route('/process-message-pdf-demo', methods=['POST'])
-def process_message_pdf_demo():
-    message = request.json.get('message')
-    query = message.strip()
-
-    global chat_id
-    user_email = DEMO_USER_EMAIL
-
-    print("CHAT ID IS", chat_id)
-
-    add_message_to_db(query, chat_id, 1)
-
-    sources = get_relevant_chunks(2, query, chat_id, user_email)
-    print('sources is', sources)
-    sources_str = " ".join([", ".join(str(elem) for elem in source) for source in sources])
-    print('sources_str is', sources_str)
-
-
-
-    completion = client.chat.completions.create(
-        model="llama2:latest",
-        messages=[
-            {"role": "user",
-             "content": f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. These are the sources from the text:{sources_str} And this is the question:{query}."}
-        ]
-    )
-    answer = str(completion.choices[0].message.content)
-
-    message_id = add_message_to_db(answer, chat_id, 0)
-
-    try:
-        add_sources_to_db(message_id, sources)
-    except:
-        print("no sources")
-
-    return jsonify(answer=answer)
-
-
-@app.route('/ingest-pdf-demo', methods=['POST'])
-def ingest_pdfs_demo():
-    global chat_id
-    user_email = DEMO_USER_EMAIL
-
-    #create_new_demo_chat(chat_id, user_email)
-
-    files = request.files.getlist('files[]')
-    MAX_CHUNK_SIZE = 1000
-
-    for file in files:
-        result = p.from_buffer(file)  # Ensure your PDF extraction works as expected
-        text = result["content"].strip()
-        filename = file.filename
-
-        # Assuming add_document_to_db and chunk_document.remote are implemented
-        doc_id, doesExist = add_document_to_db(text, filename, chat_id=chat_id)
-        if not doesExist:
-            chunk_document.remote(text, MAX_CHUNK_SIZE, doc_id)
-
-    # This mapping is now redundant since we're using a static demo_chat_id, but you could maintain it if you plan to extend functionality
-    chat_to_document_mapping[chat_id] = doc_id
-
-    return jsonify({"message": "Document processed successfully"}), 200
-
-# @app.route('/reset-chat-demo', methods=['POST'])
-# def reset_chat_demo():
-#     global chat_id
-#     user_email = DEMO_USER_EMAIL
-
-#     ensure_demo_user_exists(user_email)
-
-#     delete_chat_from_db(chat_id, user_email)
-
-#     #create_new_demo_chat(chat_id, user_email)
-#     chat_id = add_chat_to_db(user_email, 0, 0)
-
-#     #reset_uploaded_docs(chat_id, user_email)
-
-#     #reset_chat_db(chat_id, user_email)
-
-#     return jsonify({"Success": "Success"}), 200
-
-@app.route('/download-chat-history-demo', methods=['POST'])
-def download_chat_history_demo():
-    global chat_id
-    user_email = DEMO_USER_EMAIL
-
-    try:
-        chat_type = 0
-
-        messages = retrieve_message_from_db(user_email, chat_id, chat_type)
-
-        print("messages", messages)
-
-        paired_messages = pair_chat_messages(messages)
-        return chat_history_csv_response(paired_messages)
-    except Exception as e:
-        print("error is,", str(e))
-        return jsonify({"error": str(e)}), 500
-
 
 @app.route('/add-model-key', methods=['POST'])
 def add_model_key():
@@ -1046,34 +939,6 @@ def add_model_key():
 
     return "success"
 
-
-#Edgar
-@app.route('/temp-test', methods=['POST'])
-def temp_test():
-
-    anthropic = Anthropic(
-      api_key=os.getenv("ANTHROPIC_API_KEY")
-    )
-
-
-    query = "What are some of the risk factors from the company?"
-
-    sources = ["The Company’s business, reputation, results of operations, financial condition and stock price can be affected by a number of factors, whether currently known or unknown, including those described below. When any one or more of these risks materialize from time to time, the Company’s business, reputation, results of operations, financial condition and stock price can be materially and adversely affected. Because of the following factors, as well as other factors affecting the Company’s results of operations and financial condition, past financial performance should not be considered to be a reliable indicator of future performance, and investors should not use historical trends to anticipate results or trends in future periods. This discussion of risk factors contains forward-looking statements. This section should be read in conjunction with Part II, Item 7, “Management’s Discussion and Analysis of Financial Condition and Results of Operations” and the consolidated financial statements and accompanying notes in Part II, Item 8, “Financial Statements and Supplementary Data” of this Form 10-K.", "The Company’s operations and performance depend significantly on global and regional economic conditions and adverse economic conditions can materially adversely affect the Company’s business, results of operations and financial condition. The Company has international operations with sales outside the U.S. representing a majority of the Company’s total net sales. In addition, the Company’s global supply chain is large and complex and a majority of the Company’s supplier facilities, including manufacturing and assembly sites, are located outside the U.S. As a result, the Company’s operations and performance depend significantly on global and regional economic conditions."]
-
-    completion = anthropic.completions.create(
-      model="claude-2",
-      max_tokens_to_sample=700,
-      prompt = (
-        f"{HUMAN_PROMPT} "
-        f"You are a factual chatbot that answers questions about 10-K documents. You only answer with answers you find in the text, no outside information. "
-        f"please address the question: {query}. "
-        f"Consider the provided text as evidence: {sources[0]}{sources[1]}. "
-        f"{AI_PROMPT}")
-    )
-
-    print("anthropic result", completion.completion)
-
-    return 'success'
 
 
 
