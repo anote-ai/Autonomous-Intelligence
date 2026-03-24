@@ -12,6 +12,7 @@ from database.db import (
 from flask import Request, jsonify
 from flask.typing import ResponseReturnValue
 from services.audio_service import transcribe_audio
+from services.video_service import describe_video
 from services.vision_service import describe_image
 
 # ---------------------------------------------------------------------------
@@ -122,10 +123,16 @@ def IngestDocumentsHandler(
                 chunk_document_fn.remote(transcript, max_chunk_size, doc_id)
 
         else:
-            # video — binary-only stub until the frame-extraction PR (PR 4).
+            # Video: extract frames + audio track, generate a structured document
+            video_bytes = file.read()
+            print(f"Analysing video: {filename} ({len(video_bytes)} bytes)")
+            analysis = describe_video(video_bytes, filename=filename, mime_type=mime)
+            print(f"Video analysis ({len(analysis)} chars): {analysis[:120]}…")
             doc_id, does_exist = add_document(
-                None, filename, chat_id=chat_id, media_type=category, mime_type=mime
+                analysis, filename, chat_id=chat_id, media_type="video", mime_type=mime
             )
+            if not does_exist and analysis:
+                chunk_document_fn.remote(analysis, max_chunk_size, doc_id)
 
     return jsonify({"Success": "Document Uploaded"}), 200
 
