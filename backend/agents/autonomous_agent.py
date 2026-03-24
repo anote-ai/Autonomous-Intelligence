@@ -6,18 +6,22 @@ Architecture
 - Anthropic path: streaming API with real-time text/thinking tokens; extended
   thinking enabled only for claude-3-7+ models (bug fix vs v1)
 - OpenAI path: function-calling loop with streaming text
-- 6 tools: retrieve_documents, list_documents, get_chat_history,
-           run_python, search_web, fetch_url
+- 15 tools: retrieve_documents, retrieve_documents_multi, list_documents,
+            get_chat_history, run_python, search_web, fetch_url, create_note,
+            think, send_email, create_calendar_invite, extract_structured_data,
+            generate_chart, translate_text, call_webhook
+- Parallel tool execution via ThreadPoolExecutor
 
 Streaming events emitted (SSE-compatible dicts)
 -----------------------------------------------
   {"type": "start"}
-  {"type": "thinking",       "content": "..."}   ← extended-thinking block
-  {"type": "llm_reasoning",  "thought": "..."}   ← alias for old frontend path
-  {"type": "text_token",     "content": "..."}   ← streamed text token
-  {"type": "tool_start",     "tool_name": "...", "input": "..."}
-  {"type": "tool_end",       "tool_name": "...", "output": "..."}
-  {"type": "complete",       "answer": "...", "sources": [...], "thought": "..."}
+  {"type": "thinking",        "content": "..."}   ← extended-thinking block
+  {"type": "llm_reasoning",   "thought": "..."}   ← alias for old frontend path
+  {"type": "text_token",      "content": "..."}   ← streamed text token
+  {"type": "tool_start",      "tool_name": "...", "input": "..."}
+  {"type": "tool_end",        "tool_name": "...", "output": "..."}
+  {"type": "chart_generated", "image_data": "...", "title": "..."}
+  {"type": "complete",        "answer": "...", "sources": [...], "charts": [...], "thought": "..."}
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ import sys
 import tempfile
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Generator, Optional
 
 from agents.config import AgentConfig
@@ -201,37 +206,243 @@ _TOOL_SPECS: list[dict] = [
             "required": ["queries"],
         },
     },
+    {
+        "name": "think",
+        "description": (
+            "Write down your internal reasoning before taking action. "
+            "Use this to plan complex multi-step tasks, break down ambiguous requests, "
+            "reflect on partial results, or decide which tool to call next. "
+            "This thought is NOT shown to the user — it is your private scratchpad."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "thought": {
+                    "type": "string",
+                    "description": "Your internal reasoning, plan, or reflection.",
+                }
+            },
+            "required": ["thought"],
+        },
+    },
+    {
+        "name": "send_email",
+        "description": (
+            "Send an email to one or more recipients via SMTP. "
+            "Use when the user explicitly asks to send, compose, or draft an email. "
+            "Always echo the recipient, subject, and body before calling this tool."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "type": "string",
+                    "description": "Recipient email address (or comma-separated list).",
+                },
+                "subject": {"type": "string", "description": "Email subject line."},
+                "body": {
+                    "type": "string",
+                    "description": "Email body (plain text). Keep it concise and professional.",
+                },
+                "cc": {
+                    "type": "string",
+                    "description": "CC recipients, comma-separated (optional).",
+                },
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
+    {
+        "name": "create_calendar_invite",
+        "description": (
+            "Create a calendar invite (.ics) and a Google Calendar link. "
+            "Use when the user wants to schedule a meeting, event, or reminder. "
+            "Returns the Google Calendar URL and the raw ICS content."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Event title."},
+                "start_datetime": {
+                    "type": "string",
+                    "description": "Start in ISO 8601 format, e.g. 2025-04-15T14:00:00.",
+                },
+                "end_datetime": {
+                    "type": "string",
+                    "description": "End in ISO 8601 format.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Event description or agenda (optional).",
+                },
+                "location": {
+                    "type": "string",
+                    "description": "Location or video-call URL (optional).",
+                },
+                "attendees": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of attendee email addresses (optional).",
+                },
+            },
+            "required": ["title", "start_datetime", "end_datetime"],
+        },
+    },
+    {
+        "name": "extract_structured_data",
+        "description": (
+            "Extract structured JSON data from unstructured text using AI. "
+            "Use when the user wants to parse, normalize, or pull specific fields from "
+            "documents, emails, tables, or any raw text. Describe the desired schema."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "The raw text to extract data from.",
+                },
+                "schema_description": {
+                    "type": "string",
+                    "description": (
+                        "Describe the desired output, e.g.: "
+                        "'Extract: company name, revenue (number), date (ISO), and key risks as a list.'"
+                    ),
+                },
+            },
+            "required": ["text", "schema_description"],
+        },
+    },
+    {
+        "name": "generate_chart",
+        "description": (
+            "Generate a chart (bar, line, pie, scatter, or histogram) and display it inline. "
+            "Use when the user asks for a visualization or graph. "
+            "Provide the chart type, title, and data."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "chart_type": {
+                    "type": "string",
+                    "enum": ["bar", "line", "pie", "scatter", "histogram"],
+                    "description": "Type of chart.",
+                },
+                "title": {"type": "string", "description": "Chart title."},
+                "data": {
+                    "type": "object",
+                    "description": (
+                        "Chart data. "
+                        "bar/line: {labels:[...], values:[...]} or {labels:[...], datasets:[{label:'', values:[]}]}. "
+                        "pie: {labels:[...], values:[...]}. "
+                        "scatter: {x:[...], y:[...]}. "
+                        "histogram: {values:[...]}."
+                    ),
+                },
+                "x_label": {"type": "string", "description": "X-axis label (optional)."},
+                "y_label": {"type": "string", "description": "Y-axis label (optional)."},
+            },
+            "required": ["chart_type", "title", "data"],
+        },
+    },
+    {
+        "name": "translate_text",
+        "description": (
+            "Translate text into any target language. "
+            "Use when the user asks to translate content from documents or typed text. "
+            "Supports all major languages."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "The text to translate."},
+                "target_language": {
+                    "type": "string",
+                    "description": "Target language name or code, e.g. 'Spanish', 'fr', 'Japanese'.",
+                },
+                "source_language": {
+                    "type": "string",
+                    "description": "Source language (auto-detected if omitted).",
+                },
+            },
+            "required": ["text", "target_language"],
+        },
+    },
+    {
+        "name": "call_webhook",
+        "description": (
+            "Make an HTTP POST request to an external URL (webhook/API). "
+            "Use when the user wants to send data to Zapier, Make, Slack, or any REST endpoint. "
+            "Returns the HTTP status and response body."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Webhook URL (must start with https://)."},
+                "payload": {
+                    "type": "object",
+                    "description": "JSON payload to POST.",
+                },
+                "headers": {
+                    "type": "object",
+                    "description": "Optional HTTP headers, e.g. {'Authorization': 'Bearer token'}.",
+                },
+            },
+            "required": ["url", "payload"],
+        },
+    },
 ]
 
 _SYSTEM_PROMPT = """\
 You are Autonomous Intelligence — a highly capable AI agent that reasons carefully \
-and uses tools to deliver precise, well-sourced answers.
+and uses the right tools to deliver precise, well-sourced, actionable answers.
 
-Decision framework
-------------------
-STEP 1 — Orient:  What kind of question is this?
-  • Document-based  → call retrieve_documents (or retrieve_documents_multi for complex queries)
-  • "What files?"   → call list_documents
-  • Needs history   → call get_chat_history
-  • Current events  → call search_web, then fetch_url on the most relevant result
-  • Math/data       → call run_python
-  • Multi-faceted   → combine tools across multiple iterations
+━━━ TOOL ROUTING ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-STEP 2 — Retrieve: Pull all necessary information before composing the answer.
-  • For complex questions, call retrieve_documents_multi with 2–4 targeted queries.
-  • If web results look relevant, call fetch_url to read the full content.
-  • If you need data analysis, call run_python with pandas/numpy.
+Before acting, call `think` to plan your approach for any non-trivial request.
 
+INFORMATION RETRIEVAL
+  • Question about uploaded documents      → retrieve_documents (or retrieve_documents_multi for ≥2 angles)
+  • "What files do I have?"                → list_documents
+  • User references earlier conversation   → get_chat_history
+  • Current events / real-time data        → search_web → fetch_url (on top result)
+  • URL mentioned by user                  → fetch_url directly
+
+COMPUTATION & DATA
+  • Math, statistics, data manipulation    → run_python (numpy/pandas/matplotlib available)
+  • Generate a chart or visualization      → generate_chart (bar/line/pie/scatter/histogram)
+
+AI-POWERED PROCESSING
+  • Translate text to another language     → translate_text
+  • Parse/extract fields from raw text     → extract_structured_data
+
+ACTIONS & INTEGRATIONS
+  • User asks to send an email             → send_email (confirm recipient + subject first)
+  • Schedule a meeting or event            → create_calendar_invite
+  • Trigger an external service / webhook  → call_webhook
+  • Save a generated artifact for later    → create_note (immediately searchable)
+
+PARALLELISM: When multiple independent tools would help, call them simultaneously \
+in the same turn rather than sequentially.
+
+━━━ EXECUTION FRAMEWORK ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1 — Think: For complex tasks, call `think` first to write your plan.
+STEP 2 — Retrieve/Act: Use the appropriate tool(s). Prefer multi-query retrieval \
+for broad questions. Run data analysis in Python when calculations are needed.
 STEP 3 — Synthesize: Compose a clear, well-structured response.
-  • Quote exact passages and cite the filename in parentheses.
+  • Quote exact passages and cite the source filename in parentheses.
   • If information came from the web, cite the URL.
   • If documents don't contain the answer, say so explicitly, then answer from knowledge.
-  • Use markdown headers, bullet points, and code blocks where they help readability.
+  • Use markdown headers, bullet points, tables, and code blocks where helpful.
+STEP 4 — Persist (optional): If the user asked for a report, summary, or artifact, \
+call create_note so it is searchable later.
 
-STEP 4 — Persist (optional): If the user asked for a deliverable (summary, list, report),
-  call create_note to save it so they can query it later.
-
-Do not pad responses. Be thorough on content, concise on prose.
+Quality rules:
+  • Never hallucinate document content — always retrieve first.
+  • For email/calendar/webhook: echo the details to the user in your final answer.
+  • For charts: briefly describe what the chart shows after generating it.
+  • Do not pad responses. Be thorough on content, concise on prose.
 """
 
 # Max characters of accumulated tool outputs to keep in context before truncating
@@ -349,6 +560,7 @@ def _run_anthropic(
     messages: list[dict] = [{"role": "user", "content": user_content}]
 
     sources_found: list[dict] = []
+    charts_found: list[dict] = []
     final_answer = ""
     final_thought = ""
 
@@ -389,12 +601,14 @@ def _run_anthropic(
                         if cb.type == "tool_use":
                             current_block_id = cb.id
                             current_block_name = cb.name
-                            yield {
-                                "type": "tool_start",
-                                "tool_name": cb.name,
-                                "input": "",
-                                "timestamp": _ts(),
-                            }
+                            # Don't emit tool_start for internal `think` calls
+                            if cb.name != "think":
+                                yield {
+                                    "type": "tool_start",
+                                    "tool_name": cb.name,
+                                    "input": "",
+                                    "timestamp": _ts(),
+                                }
 
                     elif etype == "content_block_delta":
                         delta = event.delta
@@ -468,22 +682,47 @@ def _run_anthropic(
                 final_thought = "Reasoned and composed the final answer."
             break
 
-        # ── execute tool calls ─────────────────────────────────────────
+        # ── execute tool calls in parallel ─────────────────────────────
         messages.append({"role": "assistant", "content": response.content})
         tool_results = []
 
+        # Emit tool_start for all non-think tools before executing
+        non_think_calls = [tc for tc in tool_calls if tc["name"] != "think"]
+
+        with ThreadPoolExecutor(max_workers=min(len(tool_calls), 4)) as executor:
+            future_to_tc = {
+                executor.submit(_execute_tool, tc["name"], tc["input"], chat_id, user_email): tc
+                for tc in tool_calls
+            }
+            results_map: dict[str, tuple[str, list, list]] = {}
+            for future in as_completed(future_to_tc):
+                tc = future_to_tc[future]
+                results_map[tc["id"]] = future.result()
+
         for tc in tool_calls:
-            output, docs = _execute_tool(tc["name"], tc["input"], chat_id, user_email)
+            output, docs, charts = results_map[tc["id"]]
             sources_found.extend(docs)
+            charts_found.extend(charts)
             truncated = output[:_MAX_TOOL_OUTPUT_CHARS]
             if len(output) > _MAX_TOOL_OUTPUT_CHARS:
                 truncated += f"\n… [output truncated at {_MAX_TOOL_OUTPUT_CHARS} chars]"
-            yield {
-                "type": "tool_end",
-                "tool_name": tc["name"],
-                "output": output[:300] + "…" if len(output) > 300 else output,
-                "timestamp": _ts(),
-            }
+
+            # Emit chart events immediately
+            for chart in charts:
+                yield {
+                    "type": "chart_generated",
+                    "image_data": chart.get("image_data", ""),
+                    "title": chart.get("title", "Chart"),
+                    "timestamp": _ts(),
+                }
+
+            if tc["name"] != "think":
+                yield {
+                    "type": "tool_end",
+                    "tool_name": tc["name"],
+                    "output": output[:300] + "…" if len(output) > 300 else output,
+                    "timestamp": _ts(),
+                }
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": tc["id"],
@@ -498,7 +737,7 @@ def _run_anthropic(
         if not final_answer:
             final_answer = "I reached the maximum reasoning steps. Here is what I found so far."
 
-    yield from _finalize(final_answer, final_thought, sources_found, chat_id)
+    yield from _finalize(final_answer, final_thought, sources_found, charts_found, chat_id)
 
 
 # ---------------------------------------------------------------------------
@@ -524,6 +763,7 @@ def _run_openai(
     ]
 
     sources_found: list[dict] = []
+    charts_found: list[dict] = []
     final_answer = ""
     final_thought = ""
 
@@ -587,34 +827,60 @@ def _run_openai(
 
         # Build assistant message with tool_calls
         parsed_tool_calls = []
+        parsed_inputs: dict[str, dict] = {}
         for tc in tool_calls_raw:
             parsed_tool_calls.append({
                 "id": tc["id"],
                 "type": "function",
                 "function": {"name": tc["name"], "arguments": tc["arguments"]},
             })
+            try:
+                parsed_inputs[tc["id"]] = json.loads(tc["arguments"]) if tc["arguments"] else {}
+            except json.JSONDecodeError:
+                parsed_inputs[tc["id"]] = {}
         messages.append({"role": "assistant", "content": None, "tool_calls": parsed_tool_calls})
 
+        # Emit tool_start for non-think tools
         for tc in tool_calls_raw:
-            try:
-                inputs = json.loads(tc["arguments"]) if tc["arguments"] else {}
-            except json.JSONDecodeError:
-                inputs = {}
+            if tc["name"] != "think":
+                yield {
+                    "type": "tool_start",
+                    "tool_name": tc["name"],
+                    "input": tc["arguments"][:200],
+                    "timestamp": _ts(),
+                }
 
-            yield {
-                "type": "tool_start",
-                "tool_name": tc["name"],
-                "input": tc["arguments"][:200],
-                "timestamp": _ts(),
+        # Execute tools in parallel
+        with ThreadPoolExecutor(max_workers=min(len(tool_calls_raw), 4)) as executor:
+            future_to_tc = {
+                executor.submit(_execute_tool, tc["name"], parsed_inputs[tc["id"]], chat_id, user_email): tc
+                for tc in tool_calls_raw
             }
-            output, docs = _execute_tool(tc["name"], inputs, chat_id, user_email)
+            results_map_oai: dict[str, tuple[str, list, list]] = {}
+            for future in as_completed(future_to_tc):
+                tc = future_to_tc[future]
+                results_map_oai[tc["id"]] = future.result()
+
+        for tc in tool_calls_raw:
+            output, docs, charts = results_map_oai[tc["id"]]
             sources_found.extend(docs)
-            yield {
-                "type": "tool_end",
-                "tool_name": tc["name"],
-                "output": output[:300] + "…" if len(output) > 300 else output,
-                "timestamp": _ts(),
-            }
+            charts_found.extend(charts)
+
+            for chart in charts:
+                yield {
+                    "type": "chart_generated",
+                    "image_data": chart.get("image_data", ""),
+                    "title": chart.get("title", "Chart"),
+                    "timestamp": _ts(),
+                }
+
+            if tc["name"] != "think":
+                yield {
+                    "type": "tool_end",
+                    "tool_name": tc["name"],
+                    "output": output[:300] + "…" if len(output) > 300 else output,
+                    "timestamp": _ts(),
+                }
             truncated = output[:_MAX_TOOL_OUTPUT_CHARS]
             messages.append({
                 "role": "tool",
@@ -628,7 +894,7 @@ def _run_openai(
         if not final_answer:
             final_answer = "I reached the maximum reasoning steps. Here is what I found so far."
 
-    yield from _finalize(final_answer, final_thought, sources_found, chat_id)
+    yield from _finalize(final_answer, final_thought, sources_found, charts_found, chat_id)
 
 
 # ---------------------------------------------------------------------------
@@ -637,29 +903,50 @@ def _run_openai(
 
 def _execute_tool(
     name: str, inputs: dict, chat_id: int, user_email: str
-) -> tuple[str, list[dict]]:
+) -> tuple[str, list[dict], list[dict]]:
+    """Execute a tool and return (output_text, source_docs, charts)."""
     docs: list[dict] = []
+    charts: list[dict] = []
     try:
         if name == "retrieve_documents":
-            return _tool_retrieve(inputs, chat_id, user_email, docs)
+            text, docs = _tool_retrieve(inputs, chat_id, user_email, docs)
+            return text, docs, charts
         elif name == "list_documents":
-            return _tool_list_docs(chat_id, user_email), docs
+            return _tool_list_docs(chat_id, user_email), docs, charts
         elif name == "get_chat_history":
-            return _tool_chat_history(inputs, chat_id, user_email), docs
+            return _tool_chat_history(inputs, chat_id, user_email), docs, charts
         elif name == "run_python":
-            return _tool_run_python(inputs), docs
+            return _tool_run_python(inputs), docs, charts
         elif name == "search_web":
-            return _tool_search_web(inputs), docs
+            return _tool_search_web(inputs), docs, charts
         elif name == "fetch_url":
-            return _tool_fetch_url(inputs), docs
+            return _tool_fetch_url(inputs), docs, charts
         elif name == "create_note":
-            return _tool_create_note(inputs, chat_id), docs
+            return _tool_create_note(inputs, chat_id), docs, charts
         elif name == "retrieve_documents_multi":
-            return _tool_retrieve_multi(inputs, chat_id, user_email, docs)
+            text, docs = _tool_retrieve_multi(inputs, chat_id, user_email, docs)
+            return text, docs, charts
+        elif name == "think":
+            return _tool_think(inputs), docs, charts
+        elif name == "send_email":
+            return _tool_send_email(inputs), docs, charts
+        elif name == "create_calendar_invite":
+            return _tool_create_calendar_invite(inputs), docs, charts
+        elif name == "extract_structured_data":
+            return _tool_extract_structured_data(inputs), docs, charts
+        elif name == "generate_chart":
+            text, chart = _tool_generate_chart(inputs)
+            if chart:
+                charts.append(chart)
+            return text, docs, charts
+        elif name == "translate_text":
+            return _tool_translate_text(inputs), docs, charts
+        elif name == "call_webhook":
+            return _tool_call_webhook(inputs), docs, charts
         else:
-            return f"Unknown tool: {name}", docs
+            return f"Unknown tool: {name}", docs, charts
     except Exception as exc:
-        return f"Tool error ({name}): {exc}\n{traceback.format_exc()[:400]}", docs
+        return f"Tool error ({name}): {exc}\n{traceback.format_exc()[:400]}", docs, charts
 
 
 def _tool_retrieve(inputs: dict, chat_id: int, user_email: str, docs: list) -> tuple[str, list]:
@@ -882,6 +1169,301 @@ def _tool_retrieve_multi(
     )
 
 
+def _tool_think(inputs: dict) -> str:
+    """Internal reasoning scratchpad — returns acknowledgement to the model."""
+    thought = inputs.get("thought", "").strip()
+    if not thought:
+        return "No thought provided."
+    # Echo back so the model knows this was recorded
+    return f"[Thought recorded] {thought[:200]}"
+
+
+def _tool_send_email(inputs: dict) -> str:
+    """Send an email via SMTP using environment credentials."""
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    to_addr = inputs.get("to", "").strip()
+    subject = inputs.get("subject", "").strip()
+    body = inputs.get("body", "").strip()
+    cc_addr = inputs.get("cc", "").strip()
+
+    if not to_addr or not subject or not body:
+        return "Error: 'to', 'subject', and 'body' are all required."
+
+    mail_user = os.getenv("MAIL_USERNAME", "")
+    mail_pass = os.getenv("MAIL_PASSWORD", "")
+    mail_server = os.getenv("MAIL_SERVER", "smtp.gmail.com")
+    mail_port = int(os.getenv("MAIL_PORT", "587"))
+
+    if not mail_user or not mail_pass:
+        return (
+            "Email credentials not configured. "
+            "Set MAIL_USERNAME and MAIL_PASSWORD environment variables. "
+            f"[Would have sent to: {to_addr} | Subject: {subject}]"
+        )
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = mail_user
+    msg["To"] = to_addr
+    msg["Subject"] = subject
+    if cc_addr:
+        msg["Cc"] = cc_addr
+
+    msg.attach(MIMEText(body, "plain"))
+
+    recipients = [a.strip() for a in to_addr.split(",")]
+    if cc_addr:
+        recipients += [a.strip() for a in cc_addr.split(",")]
+
+    try:
+        with smtplib.SMTP(mail_server, mail_port) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(mail_user, mail_pass)
+            server.sendmail(mail_user, recipients, msg.as_string())
+        return f"Email sent successfully to {to_addr}. Subject: '{subject}'"
+    except Exception as exc:
+        return f"Failed to send email: {exc}"
+
+
+def _tool_create_calendar_invite(inputs: dict) -> str:
+    """Generate an ICS calendar invite and a Google Calendar URL."""
+    import urllib.parse
+    import uuid as _uuid
+
+    title = inputs.get("title", "Meeting").strip()
+    start_str = inputs.get("start_datetime", "").strip()
+    end_str = inputs.get("end_datetime", "").strip()
+    description = inputs.get("description", "").strip()
+    location = inputs.get("location", "").strip()
+    attendees = inputs.get("attendees") or []
+
+    if not start_str or not end_str:
+        return "Error: 'start_datetime' and 'end_datetime' are required (ISO 8601 format)."
+
+    # Normalize to compact UTC format for ICS: 20250415T140000Z
+    def _to_ics_dt(dt_str: str) -> str:
+        clean = dt_str.replace("-", "").replace(":", "").replace(" ", "T")
+        if "T" in clean:
+            date_part, time_part = clean.split("T", 1)
+            time_part = (time_part + "000000")[:6]
+            return f"{date_part}T{time_part}"
+        return clean
+
+    ics_start = _to_ics_dt(start_str)
+    ics_end = _to_ics_dt(end_str)
+    uid = str(_uuid.uuid4())
+
+    attendee_lines = "\n".join(f"ATTENDEE:mailto:{a}" for a in attendees if a)
+
+    ics_content = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Autonomous Intelligence//EN
+BEGIN:VEVENT
+UID:{uid}
+DTSTART:{ics_start}
+DTEND:{ics_end}
+SUMMARY:{title}
+DESCRIPTION:{description}
+LOCATION:{location}
+{attendee_lines}
+END:VEVENT
+END:VCALENDAR""".strip()
+
+    # Google Calendar URL
+    gc_params = {
+        "action": "TEMPLATE",
+        "text": title,
+        "dates": f"{ics_start}/{ics_end}",
+        "details": description,
+        "location": location,
+    }
+    gc_url = "https://calendar.google.com/calendar/render?" + urllib.parse.urlencode(gc_params)
+
+    return (
+        f"Calendar invite created for **{title}**\n"
+        f"Start: {start_str} | End: {end_str}\n"
+        f"Google Calendar link: {gc_url}\n\n"
+        f"ICS content (save as .ics to import):\n```\n{ics_content}\n```"
+    )
+
+
+def _tool_extract_structured_data(inputs: dict) -> str:
+    """Use an LLM to extract structured JSON from raw text."""
+    text = inputs.get("text", "").strip()
+    schema_description = inputs.get("schema_description", "").strip()
+
+    if not text or not schema_description:
+        return "Error: both 'text' and 'schema_description' are required."
+
+    prompt = (
+        f"Extract structured data from the text below.\n"
+        f"Schema to extract: {schema_description}\n\n"
+        f"Rules:\n"
+        f"- Return ONLY valid JSON (no explanation, no markdown fences).\n"
+        f"- Use null for missing values.\n"
+        f"- Keep string values concise.\n\n"
+        f"Text:\n{text[:4000]}"
+    )
+
+    try:
+        import openai as _openai
+        client = _openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1024,
+            temperature=0,
+        )
+        result = resp.choices[0].message.content or "{}"
+        # Validate it's JSON
+        parsed = json.loads(result)
+        return f"Extracted structured data:\n```json\n{json.dumps(parsed, indent=2)}\n```"
+    except json.JSONDecodeError:
+        return f"Extracted data (raw):\n{result}"
+    except Exception as exc:
+        return f"Extraction failed: {exc}"
+
+
+def _tool_generate_chart(inputs: dict) -> tuple[str, Optional[dict]]:
+    """Generate a matplotlib chart and return base64 PNG."""
+    try:
+        import base64
+        import io
+
+        import matplotlib
+        matplotlib.use("Agg")  # non-interactive backend
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        chart_type = inputs.get("chart_type", "bar").lower()
+        title = inputs.get("title", "Chart")
+        data = inputs.get("data") or {}
+        x_label = inputs.get("x_label", "")
+        y_label = inputs.get("y_label", "")
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+        fig.patch.set_facecolor("#1a1a2e")
+        ax.set_facecolor("#16213e")
+        ax.tick_params(colors="white")
+        ax.xaxis.label.set_color("white")
+        ax.yaxis.label.set_color("white")
+        ax.title.set_color("white")
+        for spine in ax.spines.values():
+            spine.set_edgecolor("#444")
+
+        if chart_type == "bar":
+            labels = data.get("labels", [])
+            if "datasets" in data:
+                for ds in data["datasets"]:
+                    ax.bar(labels, ds.get("values", []), label=ds.get("label", ""))
+                ax.legend(facecolor="#1a1a2e", labelcolor="white")
+            else:
+                values = data.get("values", [])
+                colors = plt.cm.Set2(np.linspace(0, 1, len(labels)))  # type: ignore[attr-defined]
+                ax.bar(labels, values, color=colors)
+
+        elif chart_type == "line":
+            labels = data.get("labels", list(range(len(data.get("values", [])))))
+            if "datasets" in data:
+                for ds in data["datasets"]:
+                    ax.plot(labels, ds.get("values", []), marker="o", label=ds.get("label", ""))
+                ax.legend(facecolor="#1a1a2e", labelcolor="white")
+            else:
+                ax.plot(labels, data.get("values", []), marker="o", color="#00d4ff")
+
+        elif chart_type == "pie":
+            labels = data.get("labels", [])
+            values = data.get("values", [])
+            ax.pie(values, labels=labels, autopct="%1.1f%%", startangle=140,
+                   textprops={"color": "white"})
+
+        elif chart_type == "scatter":
+            ax.scatter(data.get("x", []), data.get("y", []), color="#00d4ff", alpha=0.7)
+
+        elif chart_type == "histogram":
+            ax.hist(data.get("values", []), bins="auto", color="#00d4ff", edgecolor="#444")
+
+        ax.set_title(title, fontsize=14, pad=12)
+        if x_label:
+            ax.set_xlabel(x_label)
+        if y_label:
+            ax.set_ylabel(y_label)
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.close(fig)
+        buf.seek(0)
+        image_data = base64.b64encode(buf.read()).decode("utf-8")
+
+        chart_obj = {"image_data": image_data, "title": title}
+        return f"Chart '{title}' generated successfully.", chart_obj
+
+    except Exception as exc:
+        return f"Chart generation failed: {exc}", None
+
+
+def _tool_translate_text(inputs: dict) -> str:
+    """Translate text using the LLM."""
+    text = inputs.get("text", "").strip()
+    target_lang = inputs.get("target_language", "").strip()
+    source_lang = inputs.get("source_language", "").strip()
+
+    if not text or not target_lang:
+        return "Error: 'text' and 'target_language' are required."
+
+    src_clause = f" from {source_lang}" if source_lang else ""
+    prompt = (
+        f"Translate the following text{src_clause} into {target_lang}. "
+        f"Return ONLY the translated text, no explanations.\n\n"
+        f"{text[:4000]}"
+    )
+
+    try:
+        import openai as _openai
+        client = _openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=2048,
+            temperature=0,
+        )
+        translation = resp.choices[0].message.content or ""
+        return f"**Translation ({target_lang}):**\n\n{translation}"
+    except Exception as exc:
+        return f"Translation failed: {exc}"
+
+
+def _tool_call_webhook(inputs: dict) -> str:
+    """POST JSON payload to an external webhook URL."""
+    import requests
+
+    url = inputs.get("url", "").strip()
+    payload = inputs.get("payload") or {}
+    headers = inputs.get("headers") or {}
+
+    if not url:
+        return "Error: 'url' is required."
+    if not url.startswith(("http://", "https://")):
+        return "Error: URL must start with http:// or https://"
+
+    default_headers = {"Content-Type": "application/json"}
+    default_headers.update(headers)
+
+    try:
+        resp = requests.post(url, json=payload, headers=default_headers, timeout=15)
+        body = resp.text[:500] + "…" if len(resp.text) > 500 else resp.text
+        return (
+            f"Webhook called: {url}\n"
+            f"Status: {resp.status_code}\n"
+            f"Response: {body}"
+        )
+    except Exception as exc:
+        return f"Webhook call failed: {exc}"
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -974,6 +1556,7 @@ def _finalize(
     answer: str,
     thought: str,
     sources: list[dict],
+    charts: list[dict],
     chat_id: int,
 ) -> Generator[dict, None, None]:
     if not answer:
@@ -996,6 +1579,7 @@ def _finalize(
         "type": "complete",
         "answer": answer,
         "sources": unique_sources,
+        "charts": charts,
         "thought": thought,
         "timestamp": _ts(),
     }

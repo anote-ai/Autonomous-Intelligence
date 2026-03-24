@@ -7,6 +7,7 @@ export function formatChatMessages(rawMessages, chatId) {
     relevant_chunks: message.relevant_chunks,
     reasoning: message.reasoning || [],
     sources: message.sources || [],
+    charts: message.charts || [],
     timestamp: new Date(message.created).getTime(),
   }));
 }
@@ -126,9 +127,21 @@ export function updateMessageWithStreamData(message, eventData) {
       updatedMessage.currentStep = thinkingStep;
       break;
     }
+    case "chart_generated": {
+      const chart = {
+        image_data: eventData.image_data || "",
+        title: eventData.title || "Chart",
+      };
+      updatedMessage.charts = [...(updatedMessage.charts || []), chart];
+      break;
+    }
     case "complete": {
       updatedMessage.content = eventData.answer || updatedMessage.content || "";
       updatedMessage.sources = eventData.sources || [];
+      updatedMessage.charts = [
+        ...(updatedMessage.charts || []),
+        ...(eventData.charts || []),
+      ];
       updatedMessage.isThinking = false;
       updatedMessage.currentStep = null;
       updatedMessage.reasoning = [
