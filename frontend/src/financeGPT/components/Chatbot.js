@@ -16,7 +16,8 @@ import {
   createCheckoutSession,
   useUser,
 } from "../../redux/UserSlice";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { setChatMessages, selectCachedMessages } from "../../redux/ChatSlice";
 import FileUpload from "../../components/FileUpload";
 import fetcher from "../../http/RequestConfig";
 import ThinkingIndicator from "../chatbot/ThinkingIndicator";
@@ -45,6 +46,7 @@ const Chatbot = ({
   const pollingStartedRef = useRef(false);
   const { id } = useParams();
   const dispatch = useDispatch();
+  const cachedMessages = useSelector(selectCachedMessages(id));
   const location = useLocation();
   const numCredits = useNumCredits();
   const user = useUser();
@@ -651,6 +653,12 @@ const Chatbot = ({
           handleChatSelect(id);
         }
 
+        // Seed from Redux cache immediately so the user sees messages
+        // without a loading flash while the network request is in-flight.
+        if (cachedMessages?.length) {
+          setMessages(cachedMessages);
+        }
+
         try {
           const res = await fetcher("retrieve-messages-from-chat", {
             method: "POST",
@@ -711,7 +719,10 @@ const Chatbot = ({
           const formatted = formatChatMessages(data.messages, id);
 
           const fileSystemMessages = await fetchUploadedDocuments(id);
-          setMessages(sortMessagesByTimestamp([...formatted, ...fileSystemMessages]));
+          const sorted = sortMessagesByTimestamp([...formatted, ...fileSystemMessages]);
+          setMessages(sorted);
+          // Update the Redux cache so the next visit to this chat is instant.
+          dispatch(setChatMessages({ chatId: id, messages: sorted }));
         } catch (err) {
           console.error("Failed to load chat:", err);
         }
@@ -736,6 +747,8 @@ const Chatbot = ({
     selectedChatId,
     handleChatSelect,
     sendToAPI,
+    cachedMessages,
+    dispatch,
   ]);
 
   const handleInputKeyDown = (e) => {
