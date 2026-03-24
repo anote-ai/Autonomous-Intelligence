@@ -11,6 +11,7 @@ from database.db import (
 )
 from flask import Request, jsonify
 from flask.typing import ResponseReturnValue
+from services.vision_service import describe_image
 
 # ---------------------------------------------------------------------------
 # MIME-type helpers
@@ -93,10 +94,23 @@ def IngestDocumentsHandler(
             )
             if not does_exist:
                 chunk_document_fn.remote(text, max_chunk_size, doc_id)
+
+        elif category == "image":
+            # Vision-LLM path: generate a rich text description and index it
+            # so the image is fully searchable via RAG.
+            image_bytes = file.read()
+            print(f"Generating vision description for image: {filename} ({len(image_bytes)} bytes)")
+            description = describe_image(image_bytes, mime_type=mime)
+            print(f"Vision description ({len(description)} chars): {description[:120]}…")
+            doc_id, does_exist = add_document(
+                description, filename, chat_id=chat_id, media_type="image", mime_type=mime
+            )
+            if not does_exist and description:
+                chunk_document_fn.remote(description, max_chunk_size, doc_id)
+
         else:
-            # Binary media — store the record without text extraction.
-            # Transcription / frame extraction will be handled by dedicated
-            # async workers (to be wired in the video/audio processing tasks).
+            # video / audio — store the record without text for now.
+            # Dedicated transcription pipelines (PRs 3 & 4) will fill these in.
             doc_id, does_exist = add_document(
                 None, filename, chat_id=chat_id, media_type=category, mime_type=mime
             )
