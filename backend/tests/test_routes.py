@@ -633,6 +633,64 @@ def test_generate_and_get_api_keys_invalid_token(
     assert get_response.get_json() == {"error": "Invalid JWT"}
 
 
+def test_generate_api_key_returns_correct_shape(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
+) -> None:
+    """Verifies generateAPIKey returns the shape expected by UserSlice.js (id, key, created, name)."""
+    _authenticate(monkeypatch, app_module)
+    fake_key = {
+        "id": 42,
+        "key": "anote-abc123",
+        "created": "2024-01-01T00:00:00",
+        "last_used": None,
+        "name": "My Key",
+    }
+    monkeypatch.setattr("api_endpoints.generate_api_key.handler.user_has_credits", lambda email, min_credits=1: True)
+    monkeypatch.setattr("api_endpoints.generate_api_key.handler.generate_api_key", lambda email, key_name: fake_key)
+    response = client.post("/generateAPIKey", json={"name": "My Key"}, headers=auth_headers)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["id"] == 42
+    assert data["key"] == "anote-abc123"
+    assert data["name"] == "My Key"
+    assert "created" in data
+    assert "last_used" in data
+
+
+def test_generate_api_key_insufficient_credits(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
+) -> None:
+    _authenticate(monkeypatch, app_module)
+    monkeypatch.setattr("api_endpoints.generate_api_key.handler.user_has_credits", lambda email, min_credits=1: False)
+    response = client.post("/generateAPIKey", json={}, headers=auth_headers)
+    assert response.status_code == 403
+    assert "error" in response.get_json()
+
+
+def test_get_api_keys_returns_keys_list(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
+) -> None:
+    """Verifies getAPIKeys returns {"keys": [...]} shape expected by UserSlice.js getAPIKeys.fulfilled."""
+    _authenticate(monkeypatch, app_module)
+    fake_keys = {
+        "keys": [
+            {"id": 1, "key": "anote-key1", "created": "2024-01-01T00:00:00", "last_used": None, "name": "Key 1"},
+            {"id": 2, "key": "anote-key2", "created": "2024-02-01T00:00:00", "last_used": None, "name": "Key 2"},
+        ]
+    }
+    monkeypatch.setattr("api_endpoints.get_api_keys.handler.get_api_keys", lambda email: fake_keys)
+    response = client.get("/getAPIKeys", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert "keys" in data
+    assert len(data["keys"]) == 2
+    for key in data["keys"]:
+        assert "id" in key
+        assert "key" in key
+        assert "created" in key
+        assert "name" in key
+
+
 def test_checkout_portal_and_view_user_reject_invalid_auth(
     client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
 ) -> None:
