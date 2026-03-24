@@ -1,2 +1,4 @@
 .claude
 .DS_Store
+backend/client_secret.json
+backend/client_secret*.json
