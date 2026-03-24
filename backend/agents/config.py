@@ -35,6 +35,10 @@ class AgentConfig:
     MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(25 * 1024 * 1024)))
     # Max video file upload size (500 MB)
     MAX_VIDEO_BYTES = int(os.getenv("MAX_VIDEO_BYTES", str(500 * 1024 * 1024)))
+    # How often (in seconds) to extract a frame from a video for vision analysis
+    VIDEO_FRAME_INTERVAL_SECS = int(os.getenv("VIDEO_FRAME_INTERVAL_SECS", "30"))
+    # Maximum number of frames to analyse per video (cost/time guardrail)
+    VIDEO_MAX_FRAMES = int(os.getenv("VIDEO_MAX_FRAMES", "20"))
 
     # Document retrieval settings
     DEFAULT_CHUNK_RETRIEVAL_COUNT = int(os.getenv("DEFAULT_CHUNK_RETRIEVAL_COUNT", "6"))
@@ -64,6 +68,8 @@ class AgentConfig:
             "enable_multimodal": cls.ENABLE_MULTIMODAL,
             "openai_vision_model": cls.OPENAI_VISION_MODEL,
             "anthropic_vision_model": cls.ANTHROPIC_VISION_MODEL,
+            "video_frame_interval_secs": cls.VIDEO_FRAME_INTERVAL_SECS,
+            "video_max_frames": cls.VIDEO_MAX_FRAMES,
         }
     
     @classmethod
