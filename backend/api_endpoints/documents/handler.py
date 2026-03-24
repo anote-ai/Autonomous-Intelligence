@@ -12,11 +12,12 @@ from database.db import (
 from flask import Request, jsonify
 from flask.typing import ResponseReturnValue
 from services.audio_service import transcribe_audio
+from services.tabular_service import ingest_plaintext, ingest_tabular
 from services.video_service import describe_video
 from services.vision_service import describe_image
 
 # ---------------------------------------------------------------------------
-# MIME-type helpers
+# MIME-type classification
 # ---------------------------------------------------------------------------
 
 _IMAGE_MIMES = {
@@ -31,16 +32,50 @@ _AUDIO_MIMES = {
     "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav", "audio/webm",
     "audio/x-m4a", "audio/aac", "audio/flac",
 }
+# Spreadsheet formats that lose structure when run through Tika
+_TABULAR_MIMES = {
+    "text/csv",
+    "text/tab-separated-values",
+    "application/vnd.ms-excel",                                          # .xls
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", # .xlsx
+    "application/vnd.oasis.opendocument.spreadsheet",                    # .ods
+}
+# Plain-text formats — read directly, no Tika overhead
+_PLAINTEXT_MIMES = {
+    "text/plain",
+    "text/markdown",
+    "text/x-markdown",
+    "text/x-rst",
+    "text/x-python",
+    "text/javascript",
+    "text/html",
+    "text/xml",
+    "application/json",
+    "application/xml",
+}
 
-# Extension → MIME fallback when the browser doesn't send a Content-Type
+# Extension → MIME fallback when the browser omits or sends octet-stream
 _EXT_TO_MIME: dict[str, str] = {
+    # images
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
     "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
     "tiff": "image/tiff", "tif": "image/tiff",
+    # video
     "mp4": "video/mp4", "mov": "video/quicktime", "avi": "video/x-msvideo",
     "mkv": "video/x-matroska", "webm": "video/webm",
+    # audio
     "mp3": "audio/mpeg", "m4a": "audio/x-m4a", "ogg": "audio/ogg",
     "wav": "audio/wav", "aac": "audio/aac", "flac": "audio/flac",
+    # tabular
+    "csv": "text/csv", "tsv": "text/tab-separated-values",
+    "xls": "application/vnd.ms-excel",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "ods": "application/vnd.oasis.opendocument.spreadsheet",
+    # plaintext
+    "txt": "text/plain", "md": "text/markdown", "markdown": "text/markdown",
+    "rst": "text/x-rst", "py": "text/x-python", "js": "text/javascript",
+    "json": "application/json", "xml": "application/xml",
+    "html": "text/html", "htm": "text/html",
 }
 
 
@@ -53,8 +88,23 @@ def _resolve_mime(file) -> str:
     return _EXT_TO_MIME.get(ext, "application/octet-stream")
 
 
+def _text_subcategory(mime: str, filename: str) -> str:
+    """Within the broad 'text' category return a finer subcategory."""
+    if mime in _TABULAR_MIMES:
+        return "tabular"
+    if mime in _PLAINTEXT_MIMES:
+        return "plaintext"
+    # Extension-based fallback (MIME might be generic text/plain for .csv)
+    ext = (filename or "").rsplit(".", 1)[-1].lower()
+    if ext in ("csv", "tsv", "xls", "xlsx", "ods"):
+        return "tabular"
+    if ext in ("txt", "md", "markdown", "rst", "py", "js", "json", "xml", "html", "htm"):
+        return "plaintext"
+    return "document"  # PDF, DOCX, DOC, RTF → Tika
+
+
 def _media_category(mime: str) -> str:
-    """Map a MIME type to one of: 'text', 'image', 'video', 'audio'."""
+    """Map a MIME type to a top-level category."""
     if mime in _IMAGE_MIMES:
         return "image"
     if mime in _VIDEO_MIMES:
@@ -88,18 +138,42 @@ def IngestDocumentsHandler(
         category = _media_category(mime)
 
         if category == "text":
-            # Existing text-extraction path via Apache Tika
-            result = parser_module.from_buffer(file)
-            text = (result.get("content") or "").strip()
-            doc_id, does_exist = add_document(
-                text, filename, chat_id=chat_id, media_type="text", mime_type=mime
-            )
-            if not does_exist:
-                chunk_document_fn.remote(text, max_chunk_size, doc_id)
+            subcategory = _text_subcategory(mime, filename)
+
+            if subcategory == "tabular":
+                # Native CSV / Excel parsing — preserves column structure
+                raw = file.read()
+                print(f"Ingesting tabular file: {filename} ({len(raw)} bytes)")
+                text = ingest_tabular(raw, filename=filename, mime_type=mime)
+                print(f"Tabular text ({len(text)} chars): {text[:120]}…")
+                doc_id, does_exist = add_document(
+                    text, filename, chat_id=chat_id, media_type="text", mime_type=mime
+                )
+                if not does_exist:
+                    chunk_document_fn.remote(text, max_chunk_size, doc_id)
+
+            elif subcategory == "plaintext":
+                # Direct UTF-8 decode — faster and cleaner than Tika for raw text
+                raw = file.read()
+                print(f"Ingesting plain-text file: {filename} ({len(raw)} bytes)")
+                text = ingest_plaintext(raw, filename=filename)
+                doc_id, does_exist = add_document(
+                    text, filename, chat_id=chat_id, media_type="text", mime_type=mime
+                )
+                if not does_exist:
+                    chunk_document_fn.remote(text, max_chunk_size, doc_id)
+
+            else:
+                # PDF, DOCX, DOC, RTF, PPT … → Apache Tika (original path)
+                result = parser_module.from_buffer(file)
+                text = (result.get("content") or "").strip()
+                doc_id, does_exist = add_document(
+                    text, filename, chat_id=chat_id, media_type="text", mime_type=mime
+                )
+                if not does_exist:
+                    chunk_document_fn.remote(text, max_chunk_size, doc_id)
 
         elif category == "image":
-            # Vision-LLM path: generate a rich text description and index it
-            # so the image is fully searchable via RAG.
             image_bytes = file.read()
             print(f"Generating vision description for image: {filename} ({len(image_bytes)} bytes)")
             description = describe_image(image_bytes, mime_type=mime)
@@ -111,7 +185,6 @@ def IngestDocumentsHandler(
                 chunk_document_fn.remote(description, max_chunk_size, doc_id)
 
         elif category == "audio":
-            # Whisper transcription path: convert audio to text and index it.
             audio_bytes = file.read()
             print(f"Transcribing audio: {filename} ({len(audio_bytes)} bytes)")
             transcript = transcribe_audio(audio_bytes, filename=filename)
@@ -122,8 +195,7 @@ def IngestDocumentsHandler(
             if not does_exist and transcript:
                 chunk_document_fn.remote(transcript, max_chunk_size, doc_id)
 
-        else:
-            # Video: extract frames + audio track, generate a structured document
+        else:  # video
             video_bytes = file.read()
             print(f"Analysing video: {filename} ({len(video_bytes)} bytes)")
             analysis = describe_video(video_bytes, filename=filename, mime_type=mime)
