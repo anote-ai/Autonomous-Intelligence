@@ -1,3 +1,5 @@
 {
-  "docker.languageserver.diagnostics.vulnerabilities": "ignore"
+  "docker.lsp.experimental.vulnerabilityScanning": false,
+  "docker.lsp.experimental.scout.criticalHighVulnerabilities": false,
+  "docker.lsp.experimental.scout.vulnerabilities": false
 }
