@@ -12,6 +12,58 @@ from database.db import (
 from flask import Request, jsonify
 from flask.typing import ResponseReturnValue
 
+# ---------------------------------------------------------------------------
+# MIME-type helpers
+# ---------------------------------------------------------------------------
+
+_IMAGE_MIMES = {
+    "image/jpeg", "image/png", "image/gif", "image/webp",
+    "image/bmp", "image/tiff", "image/svg+xml",
+}
+_VIDEO_MIMES = {
+    "video/mp4", "video/quicktime", "video/x-msvideo", "video/x-matroska",
+    "video/webm", "video/mpeg", "video/ogg",
+}
+_AUDIO_MIMES = {
+    "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav", "audio/webm",
+    "audio/x-m4a", "audio/aac", "audio/flac",
+}
+
+# Extension → MIME fallback when the browser doesn't send a Content-Type
+_EXT_TO_MIME: dict[str, str] = {
+    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+    "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
+    "tiff": "image/tiff", "tif": "image/tiff",
+    "mp4": "video/mp4", "mov": "video/quicktime", "avi": "video/x-msvideo",
+    "mkv": "video/x-matroska", "webm": "video/webm",
+    "mp3": "audio/mpeg", "m4a": "audio/x-m4a", "ogg": "audio/ogg",
+    "wav": "audio/wav", "aac": "audio/aac", "flac": "audio/flac",
+}
+
+
+def _resolve_mime(file) -> str:
+    """Return the best-guess MIME type for an uploaded FileStorage object."""
+    mime = (file.content_type or "").split(";")[0].strip().lower()
+    if mime and mime != "application/octet-stream":
+        return mime
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    return _EXT_TO_MIME.get(ext, "application/octet-stream")
+
+
+def _media_category(mime: str) -> str:
+    """Map a MIME type to one of: 'text', 'image', 'video', 'audio'."""
+    if mime in _IMAGE_MIMES:
+        return "image"
+    if mime in _VIDEO_MIMES:
+        return "video"
+    if mime in _AUDIO_MIMES:
+        return "audio"
+    return "text"
+
+
+# ---------------------------------------------------------------------------
+# Handlers
+# ---------------------------------------------------------------------------
 
 def IngestDocumentsHandler(
     request: Request,
@@ -28,12 +80,26 @@ def IngestDocumentsHandler(
 
     print("before files loop time is", datetime.now() - start_time)
     for file in files:
-        result = parser_module.from_buffer(file)
-        text = result["content"].strip()
         filename = file.filename
-        doc_id, does_exist = add_document(text, filename, chat_id=chat_id)
-        if not does_exist:
-            chunk_document_fn.remote(text, max_chunk_size, doc_id)
+        mime = _resolve_mime(file)
+        category = _media_category(mime)
+
+        if category == "text":
+            # Existing text-extraction path via Apache Tika
+            result = parser_module.from_buffer(file)
+            text = (result.get("content") or "").strip()
+            doc_id, does_exist = add_document(
+                text, filename, chat_id=chat_id, media_type="text", mime_type=mime
+            )
+            if not does_exist:
+                chunk_document_fn.remote(text, max_chunk_size, doc_id)
+        else:
+            # Binary media — store the record without text extraction.
+            # Transcription / frame extraction will be handled by dedicated
+            # async workers (to be wired in the video/audio processing tasks).
+            doc_id, does_exist = add_document(
+                None, filename, chat_id=chat_id, media_type=category, mime_type=mime
+            )
 
     return jsonify({"Success": "Document Uploaded"}), 200
 

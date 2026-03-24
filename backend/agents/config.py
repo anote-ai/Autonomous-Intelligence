@@ -3,30 +3,47 @@ from typing import Dict, Any
 
 class AgentConfig:
     """Configuration settings for the reactive agent system"""
-    
+
     # Agent behavior settings
     ENABLE_AGENTS = os.getenv("ENABLE_AGENTS", "true").lower() == "true"
     AGENT_FALLBACK_ENABLED = os.getenv("AGENT_FALLBACK_ENABLED", "true").lower() == "true"
     ENABLE_GENERAL_KNOWLEDGE = os.getenv("ENABLE_GENERAL_KNOWLEDGE", "true").lower() == "true"
     ENABLE_MULTI_AGENT_SYSTEM = os.getenv("ENABLE_MULTI_AGENT_SYSTEM", "true").lower() == "true"
-    
+
     # MCP Server settings
     MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000")
     MCP_SERVER_TIMEOUT = int(os.getenv("MCP_SERVER_TIMEOUT", "30"))
-    
+
     # Agent model settings
     DEFAULT_AGENT_MODEL_TYPE = int(os.getenv("DEFAULT_AGENT_MODEL_TYPE", "0"))  # 0=OpenAI, 1=Anthropic
     AGENT_TEMPERATURE = float(os.getenv("AGENT_TEMPERATURE", "0.1"))
     AGENT_MAX_ITERATIONS = int(os.getenv("AGENT_MAX_ITERATIONS", "5"))
-    
+
+    # Model identifiers
+    # Text-only models (legacy / low-cost paths)
+    OPENAI_TEXT_MODEL = os.getenv("OPENAI_TEXT_MODEL", "gpt-4o")
+    ANTHROPIC_TEXT_MODEL = os.getenv("ANTHROPIC_TEXT_MODEL", "claude-3-5-sonnet-20241022")
+    # Vision-capable models used when the query contains image/video attachments
+    OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4o")
+    ANTHROPIC_VISION_MODEL = os.getenv("ANTHROPIC_VISION_MODEL", "claude-3-5-sonnet-20241022")
+
+    # Multimodal feature flags
+    ENABLE_MULTIMODAL = os.getenv("ENABLE_MULTIMODAL", "true").lower() == "true"
+    # Max image size (bytes) accepted for inline vision calls (20 MB)
+    MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(20 * 1024 * 1024)))
+    # Max audio file size for Whisper transcription (25 MB — Whisper API limit)
+    MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(25 * 1024 * 1024)))
+    # Max video file upload size (500 MB)
+    MAX_VIDEO_BYTES = int(os.getenv("MAX_VIDEO_BYTES", str(500 * 1024 * 1024)))
+
     # Document retrieval settings
     DEFAULT_CHUNK_RETRIEVAL_COUNT = int(os.getenv("DEFAULT_CHUNK_RETRIEVAL_COUNT", "6"))
     MAX_CHUNK_RETRIEVAL_COUNT = int(os.getenv("MAX_CHUNK_RETRIEVAL_COUNT", "10"))
-    
+
     # Logging and debugging
     ENABLE_AGENT_VERBOSE = os.getenv("ENABLE_AGENT_VERBOSE", "true").lower() == "true"
     LOG_AGENT_REASONING = os.getenv("LOG_AGENT_REASONING", "false").lower() == "true"
-    
+
     @classmethod
     def get_agent_config(cls) -> Dict[str, Any]:
         """Get all agent configuration as a dictionary"""
@@ -43,7 +60,10 @@ class AgentConfig:
             "default_chunk_count": cls.DEFAULT_CHUNK_RETRIEVAL_COUNT,
             "max_chunk_count": cls.MAX_CHUNK_RETRIEVAL_COUNT,
             "verbose": cls.ENABLE_AGENT_VERBOSE,
-            "log_reasoning": cls.LOG_AGENT_REASONING
+            "log_reasoning": cls.LOG_AGENT_REASONING,
+            "enable_multimodal": cls.ENABLE_MULTIMODAL,
+            "openai_vision_model": cls.OPENAI_VISION_MODEL,
+            "anthropic_vision_model": cls.ANTHROPIC_VISION_MODEL,
         }
     
     @classmethod
