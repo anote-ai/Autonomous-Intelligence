@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import Chatbot from "./Chatbot";
-import fetcher from "../../http/RequestConfig";
 import Sidebar from "../Sidebar";
 import { useChatHistory } from "../useChatHistory";
+import { useChatbotApi } from "../useChatbotApi";
 
 function HomeChatbot({
   isGuestMode = false,
@@ -13,6 +13,7 @@ function HomeChatbot({
   const [errorMessage, setErrorMessage] = useState("");
   const isPrivate = 0;
   const currTask = 0;
+  const { createChat } = useChatbotApi();
   const { chats, refreshChats, renameChatById, deleteChatById } =
     useChatHistory({
       enabled: !isGuestMode,
@@ -38,17 +39,7 @@ function HomeChatbot({
 
   const createNewChat = async () => {
     try {
-      // Then create the chat
-      const response = await fetcher("create-new-chat", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ chat_type: currTask, model_type: isPrivate }),
-      });
-
-      const response_data = await response.json();
+      const response_data = await createChat(currTask, isPrivate);
 
       // Check if the response contains an error
       if (response_data.error) {

@@ -19,7 +19,6 @@ import {
 import { useDispatch, useSelector } from "react-redux";
 import { setChatMessages, selectCachedMessages } from "../../redux/ChatSlice";
 import FileUpload from "../../components/FileUpload";
-import fetcher from "../../http/RequestConfig";
 import ThinkingIndicator from "../chatbot/ThinkingIndicator";
 import {
   createUploadedDocumentMessages,
@@ -27,6 +26,7 @@ import {
   sortMessagesByTimestamp,
   updateMessageWithStreamData,
 } from "../chatbot/messageUtils";
+import { useChatbotApi } from "../useChatbotApi";
 
 // Development-only debug logging helper
 const isDev = process.env.NODE_ENV === "development";
@@ -55,6 +55,13 @@ const Chatbot = ({
   const dispatch = useDispatch();
   const cachedMessages = useSelector(selectCachedMessages(id));
   const location = useLocation();
+  const {
+    inferChatName: inferChatNameRequest,
+    processChatMessage,
+    retrieveCurrentDocs,
+    retrieveMessages,
+    uploadDocuments,
+  } = useChatbotApi();
   const numCredits = useNumCredits();
   const user = useUser();
   const [chatNameGenerated, setChatNameGenerated] = useState(false);
@@ -123,14 +130,8 @@ const Chatbot = ({
       formData.append("chat_id", chatId);
 
       // Upload files using your existing fetcher to ingest-pdf endpoint
-      const response = await fetcher(uploadPath, {
-        method: "POST",
-        body: formData,
-        // Don't set Content-Type header for FormData, let browser set it
-      });
-
-      if (response.ok) {
-        const result = await response.json();
+      const result = await uploadDocuments(uploadPath, formData);
+      if (result) {
         console.log("Upload successful:", result);
 
         // Add uploaded files to the state for display
@@ -165,34 +166,22 @@ const Chatbot = ({
 
         // Don't show alert since we're showing it in chat
         // alert(`Successfully uploaded ${selectedFiles.length} file(s) to chat`);
-      } else {
-        const errorData = await response.json();
-        console.error("Upload failed:", errorData);
-        alert(errorData.error || "Upload failed. Please try again.");
       }
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Upload failed. Please check your connection and try again.");
+      alert(error?.message || "Upload failed. Please check your connection and try again.");
     }
   };
 
   const inferChatName = useCallback(async (text, answer, chatId) => {
     const combinedText = `${text} ${answer}`;
     try {
-      const response = await fetcher("infer-chat-name", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ messages: combinedText, chat_id: chatId }),
-      });
-      await response.json();
+      await inferChatNameRequest(combinedText, chatId);
       onChatsChanged?.();
     } catch (err) {
       console.error("Chat name inference failed", err);
     }
-  }, [onChatsChanged]);
+  }, [inferChatNameRequest, onChatsChanged]);
 
   const pollForMessages = useCallback((chatId, maxAttempts = 3) => {
     let attempts = 0;
@@ -200,16 +189,7 @@ const Chatbot = ({
     const poll = async () => {
       attempts++;
       try {
-        const res = await fetcher("retrieve-messages-from-chat", {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ chat_id: chatId, chat_type: 0 }),
-        });
-
-        const data = await res.json();
+        const data = await retrieveMessages("retrieve-messages-from-chat", chatId, 0);
         if (data.messages && data.messages.length > 0) {
           const formatted = formatChatMessages(data.messages, chatId);
           setMessages(formatted);
@@ -253,33 +233,21 @@ const Chatbot = ({
     };
 
     pollingTimeoutRef.current = setTimeout(poll, 2000);
-  }, []);
+  }, [retrieveMessages]);
 
   // Function to fetch uploaded documents for a chat and create system messages
   const fetchUploadedDocuments = useCallback(async (chatId) => {
     try {
-        const response = await fetcher(retrieveDocsPath, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ chat_id: chatId }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log("Backend doc_info response:", result.doc_info);
-        if (result.doc_info && result.doc_info.length > 0) {
-          // Create system messages for uploaded files
-          return createUploadedDocumentMessages(result.doc_info, chatId);
-        }
+      const result = await retrieveCurrentDocs(retrieveDocsPath, chatId);
+      console.log("Backend doc_info response:", result.doc_info);
+      if (result.doc_info && result.doc_info.length > 0) {
+        return createUploadedDocumentMessages(result.doc_info, chatId);
       }
     } catch (error) {
       console.error("Error fetching uploaded documents:", error);
     }
     return [];
-  }, [retrieveDocsPath]);
+  }, [retrieveCurrentDocs, retrieveDocsPath]);
 
   const handleSendMessage = async (event) => {
     event.preventDefault();
@@ -591,18 +559,17 @@ const Chatbot = ({
         });
       }
 
-      const res = await fetcher(processMessagePath, {
-        method: "POST",
-        isGuest: isGuestChat,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await processChatMessage(
+        processMessagePath,
+        {
           message: text,
           chat_id: isGuestChat ? null : Number(chatId),
           model_type: isPrivate,
           model_key: "",
           is_guest: isGuestChat,
-        }),
-      });
+        },
+        { isGuest: isGuestChat }
+      );
 
       if (isDev) {
         console.log("API response status:", res.status);
@@ -653,7 +620,7 @@ const Chatbot = ({
         )
       );
     }
-  }, [handleSSEStreamingResponse, isPrivate, processMessagePath, streamResponses, user]);
+  }, [handleSSEStreamingResponse, isPrivate, processChatMessage, processMessagePath, streamResponses, user]);
 
   // Function to toggle reasoning expansion
   const toggleReasoningExpansion = (messageId) => {
@@ -686,16 +653,7 @@ const Chatbot = ({
         }
 
         try {
-          const res = await fetcher(retrieveMessagesPath, {
-            method: "POST",
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ chat_id: activeChatId, chat_type: 0 }),
-          });
-
-          const data = await res.json();
+          const data = await retrieveMessages(retrieveMessagesPath, activeChatId, 0);
 
           console.log("res", data);
           setChatNameGenerated(true);
@@ -770,6 +728,7 @@ const Chatbot = ({
     id,
     location.state?.message,
     fetchUploadedDocuments,
+    retrieveMessages,
     retrieveMessagesPath,
     selectedChatId,
     handleChatSelect,
