@@ -5,40 +5,20 @@ import time
 import uuid
 from datetime import datetime, timedelta
 
-import mysql.connector
 from dateutil.relativedelta import relativedelta
 from flask import jsonify
 
 from constants.global_constants import (
     chatgptLimit,
-    dbHost,
-    dbName,
-    dbPassword,
-    dbUser,
     kPasswordResetExpirationTime,
     kSessionTokenExpirationTime,
     planToCredits,
 )
 from db_enums import PaidUserStatus
+from database.db_pool import get_db_connection
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-def get_db_connection():
-    if ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
-        db_connect = mysql.connector.connect(
-                user='root',
-                unix_socket='/tmp/mysql.sock',
-                database="agents",
-        )
-    else:
-        db_connect = mysql.connector.connect(
-            host=dbHost,
-            user=dbUser,
-            password=dbPassword,
-            database=dbName,
-        )
-    return db_connect, db_connect.cursor(dictionary=True)
 
 
 def create_7_day_free_trial(user_id):

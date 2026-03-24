@@ -1,4 +1,5 @@
 import {
+  getAPIKeys,
   deleteAPIKey,
   generateAPIKey,
   initialState,
@@ -60,6 +61,40 @@ describe("UserSlice API key state", () => {
       id: 9,
       key: "new-key",
       name: "Test Key",
+    });
+  });
+
+  it("getAPIKeys.fulfilled normalizes returned keys into byId and allIds", () => {
+    const populatedState = {
+      ...initialState,
+      entities: {
+        ...initialState.entities,
+        apiKeys: {
+          byId: {
+            99: { id: 99, key: "stale-key" },
+          },
+          allIds: [99],
+        },
+      },
+    };
+
+    const nextState = userSlice.reducer(
+      populatedState,
+      getAPIKeys.fulfilled(
+        {
+          keys: [
+            { id: 2, key: "second-key", name: "Second" },
+            { id: 1, key: "first-key", name: "First" },
+          ],
+        },
+        "request-id"
+      )
+    );
+
+    expect(nextState.entities.apiKeys.allIds).toEqual([2, 1]);
+    expect(nextState.entities.apiKeys.byId).toEqual({
+      1: { id: 1, key: "first-key", name: "First" },
+      2: { id: 2, key: "second-key", name: "Second" },
     });
   });
 
