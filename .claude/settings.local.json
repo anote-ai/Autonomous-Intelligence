@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude init:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh label:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)",
+      "Bash(git rm:*)",
+      "Bash(xargs ls:*)",
+      "Bash(git checkout:*)",
+      "Bash(sed -n '11,40p' backend/agents/reactive_agent.py)",
+      "Bash(sed -n '11,30p' backend/agents/multi_agent_system.py)",
+      "Bash(sed -n '15,35p' backend/mcp/mcp_server.py)",
+      "Bash(npm install:*)"
+    ]
+  }
+}

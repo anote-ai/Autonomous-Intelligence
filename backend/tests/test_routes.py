@@ -459,44 +459,12 @@ def test_process_message_pdf_invalid_token(client: Any, app_module: Any, monkeyp
     assert response.get_json() == {"error": "Invalid JWT"}
 
 
-def test_demo_routes_work(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(app_module, "retrieve_message_from_db", lambda *args: [
-        {"sent_from_user": 1, "message_text": "Q", "relevant_chunks": None},
-        {"sent_from_user": 0, "message_text": "A", "relevant_chunks": None},
-    ])
-    process_response = client.post("/process-message-pdf-demo", json={"message": "hello"})
-    assert process_response.status_code == 200
-    assert process_response.get_json() == {"answer": "openai answer"}
-
-    ingest_response = client.post(
-        "/ingest-pdf-demo",
-        data={"files[]": (io.BytesIO(b"pdf data"), "sample.pdf")},
-    )
-    assert ingest_response.status_code == 200
-    assert ingest_response.get_json() == {"message": "Document processed successfully"}
-
-    download_response = client.post("/download-chat-history-demo", json={})
-    assert download_response.status_code == 200
-    assert download_response.mimetype == "text/csv"
-
-
-def test_demo_download_route_error_branch(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(app_module, "retrieve_message_from_db", lambda *args: None)
-    response = client.post("/download-chat-history-demo", json={})
-    assert response.status_code == 500
-    assert response.get_json()["error"] == "messages must not be None"
-
-
-def test_add_model_key_and_temp_test(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]) -> None:
+def test_add_model_key(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]) -> None:
     _authenticate(monkeypatch, app_module)
     monkeypatch.setattr(app_module, "add_model_key_to_db", lambda *args: None)
     add_key_response = client.post("/add-model-key", json={"chat_id": 1, "model_key": "custom"}, headers=auth_headers)
     assert add_key_response.status_code == 200
     assert add_key_response.get_data(as_text=True) == "success"
-
-    temp_response = client.post("/temp-test", json={})
-    assert temp_response.status_code == 200
-    assert temp_response.get_data(as_text=True) == "success"
 
 
 def test_add_model_key_invalid_token(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]) -> None:

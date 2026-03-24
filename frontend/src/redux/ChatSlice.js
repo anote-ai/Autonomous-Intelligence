@@ -86,7 +86,6 @@ const initialState = {
   chats: [],
   loading: false,
   error: null,
-  lastFetchTime: null,
 };
 
 // Chat slice
@@ -115,7 +114,6 @@ export const chatSlice = createSlice({
       .addCase(fetchAllChats.fulfilled, (state, action) => {
         state.loading = false;
         state.chats = action.payload || [];
-        state.lastFetchTime = Date.now();
         state.error = null;
       })
       .addCase(fetchAllChats.rejected, (state, action) => {
@@ -162,7 +160,6 @@ export const selectAllChats = (state) => state.chatReducer?.chats || [];
 export const selectChatsLoading = (state) =>
   state.chatReducer?.loading || false;
 export const selectChatsError = (state) => state.chatReducer?.error;
-export const selectLastFetchTime = (state) => state.chatReducer?.lastFetchTime;
 
 // Export reducer
 export default chatSlice.reducer;
