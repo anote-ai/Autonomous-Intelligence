@@ -8,6 +8,9 @@ import {
   faExclamationTriangle,
   faChevronDown,
   faChevronUp,
+  faShare,
+  faCopy,
+  faCheck,
 } from "@fortawesome/free-solid-svg-icons";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
@@ -60,6 +63,10 @@ const Chatbot = ({
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const shouldShowUpgradeModal = () => {
     return user && numCredits === 0 && messages.length > 0 && !showUpgradeModal; // Only if not already shown
@@ -186,6 +193,33 @@ const Chatbot = ({
       console.error("Chat name inference failed", err);
     }
   }, [onChatsChanged]);
+
+  const handleShare = async () => {
+    const chatId = id || selectedChatId;
+    if (!chatId) return;
+    setShareLoading(true);
+    setShowShareModal(true);
+    try {
+      const res = await fetcher(`generate-playbook/${chatId}`, { method: "GET" });
+      const data = await res.json();
+      const slug = data.url; // e.g. "/playbook/abc-123"
+      const fullUrl = `${window.location.origin}${slug}`;
+      setShareUrl(fullUrl);
+    } catch (err) {
+      console.error("Failed to generate share URL:", err);
+      setShareUrl("");
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleCopyShareUrl = () => {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    });
+  };
 
   const pollForMessages = useCallback((chatId, maxAttempts = 3) => {
     let attempts = 0;
@@ -972,6 +1006,18 @@ const Chatbot = ({
               <FontAwesomeIcon icon={faFile} className="text-lg" />
             </button>
 
+            {/* Share button — only for authenticated users with an active chat */}
+            {user && (id || selectedChatId) && messages.length > 0 && (
+              <button
+                type="button"
+                onClick={handleShare}
+                className="flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 bg-gray-600 hover:bg-gray-500 text-white"
+                title="Share this chat as a playbook"
+              >
+                <FontAwesomeIcon icon={faShare} className="text-lg" />
+              </button>
+            )}
+
             {/* Center - Input */}
             <div className="flex-1">
               <div className="relative">
@@ -1016,6 +1062,60 @@ const Chatbot = ({
           </div>
         </div>
       </div>
+      {/* Share / Playbook Modal */}
+      {showShareModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowShareModal(false); }}
+          onKeyDown={(e) => { if (e.key === "Escape") setShowShareModal(false); }}
+        >
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-lg shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                <FontAwesomeIcon icon={faShare} className="text-[#defe47]" />
+                Share Playbook
+              </h2>
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {shareLoading ? (
+              <div className="flex items-center justify-center py-8 text-gray-400">
+                <div className="w-5 h-5 border-2 border-gray-400 border-t-[#defe47] rounded-full animate-spin mr-3" />
+                Generating shareable link…
+              </div>
+            ) : shareUrl ? (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-300">
+                  Anyone with this link can view a read-only snapshot of this chat
+                  and import it into their own workspace.
+                </p>
+                <div className="flex items-center gap-2 bg-gray-900 border border-gray-600 rounded-lg p-3">
+                  <span className="flex-1 text-sm text-gray-200 truncate select-all">{shareUrl}</span>
+                  <button
+                    onClick={handleCopyShareUrl}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-[#defe47] text-black text-sm font-medium rounded-md hover:bg-yellow-300 transition-colors flex-shrink-0"
+                  >
+                    <FontAwesomeIcon icon={shareCopied ? faCheck : faCopy} className="text-xs" />
+                    {shareCopied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-red-400 py-4 text-center">
+                Failed to generate share link. Please try again.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* File Upload Modal */}
       {showFileUpload && (
         <div
