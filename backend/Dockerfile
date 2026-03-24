@@ -5,6 +5,7 @@ FROM python:3.9-slim
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     default-jdk \
     pkg-config \
     default-libmysqlclient-dev \

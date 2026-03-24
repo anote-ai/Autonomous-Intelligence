@@ -18,7 +18,7 @@ function LoginComponent(props) {
       props.setStatusMessage("Must enter a password");
     } else {
       dispatch(login({ email: email, password: password })).then((response) => {
-        if (response.payload["status"] == "OK") {
+        if (response.payload["status"] === "OK") {
           if ("token" in response.payload) {
             localStorage.setItem("sessionToken", response.payload["token"]);
             window.location.reload();

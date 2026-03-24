@@ -11,7 +11,7 @@ function PasswordReset(props) {
     props.setStatusMessage("");
     if (!password) {
       props.setStatusMessage("Must enter a password");
-    } else if (password != repeatPassword) {
+    } else if (password !== repeatPassword) {
       props.setStatusMessage("Passwords much match");
     } else {
       dispatch(
@@ -21,7 +21,7 @@ function PasswordReset(props) {
           password: password,
         })
       ).then((response) => {
-        if (response.payload["status"] == "OK") {
+        if (response.payload["status"] === "OK") {
           if ("token" in response.payload) {
             localStorage.setItem("sessionToken", response.payload["token"]);
             window.location.reload();

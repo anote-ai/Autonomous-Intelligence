@@ -1,26 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
-import { createcompany, companies} from "../../../../constants/RouteConstants";
+import { createcompany } from "../../../../constants/RouteConstants";
 
 const Companies = () => {
-  const [companies, setCompanies] = useState([]);
+  const [companyList, setCompanyList] = useState([]);
   const urlObject = new URL(window.location.origin);
 
-  //check log in status
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
   const accessToken = localStorage.getItem("accessToken");
   const sessionToken = localStorage.getItem("sessionToken");
-  if (accessToken || sessionToken) {
-    if (!isLoggedIn) {
-      setIsLoggedIn(true);
-    }
-  } else {
-    if (isLoggedIn) {
-      setIsLoggedIn(false);
-    }
-  }
-  var showRestrictedRouteRequiringUserSession = isLoggedIn;
+  const isLoggedIn = Boolean(accessToken || sessionToken);
 
   var hostname = urlObject.hostname;
   if (hostname.startsWith("www.")) {
@@ -35,8 +24,8 @@ const Companies = () => {
   var startPath = urlObject.toString();
   useEffect(() => {
     axios.get("/api/companies", { withCredentials: true })
-      .then(res => setCompanies(res.data))
-      .catch(err => console.error("Error fetching companies:", err));
+      .then((res) => setCompanyList(res.data))
+      .catch((err) => console.error("Error fetching companies:", err));
 
     if (isLoggedIn && accessToken) {
       axios.get("/api/user/companies", {
@@ -69,7 +58,7 @@ const Companies = () => {
           <h2 className="text-2xl font-semibold mb-6 text-center">Our Company Chatbots</h2>
 
           <div className="w-full max-w-md h-60 overflow-y-auto border border-gray-600 rounded-md p-4 space-y-4">
-          {companies.map((company) => (
+          {companyList.map((company) => (
               <Link
                 key={company.id}
                 to={company.path}
@@ -87,7 +76,7 @@ const Companies = () => {
             Create an intelligent chatbot for your company, no coding necessary.
           </p>
 
-          {showRestrictedRouteRequiringUserSession && (
+          {isLoggedIn && (
           <div className="w-full max-w-md border border-gray-600 rounded-md mb-6 p-4">
             <h3 className="text-lg font-semibold mb-2 text-left">Your Existing Chatbots</h3>
             <table className="w-full text-sm text-left text-gray-300">
@@ -113,9 +102,9 @@ const Companies = () => {
           </div>
         )}
 
-        {showRestrictedRouteRequiringUserSession ? (
+        {isLoggedIn ? (
           <a
-            href={companies}
+            href={createcompany}
             className="btn-black px-6 py-2 border border-white rounded hover:bg-white hover:text-black transition"
           >
             Get Started

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { logout, useNumCredits } from "../redux/UserSlice";
 import { useDispatch } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -16,39 +16,18 @@ import { faCoins } from "@fortawesome/free-solid-svg-icons";
 import { useUser } from "../redux/UserSlice";
 import LoginModal from "./LoginModal";
 
-export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
-  const [showLoginModal, setShowLoginModal] = useState();
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  let user = useUser();
+export function MainNav({ isLoggedIn, onAuthChange, isSidebarCollapsed }) {
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const user = useUser();
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  let numCredits = useNumCredits();
-  let imageUrl = null;
-  if (user && "profile_pic_url" in user) {
-    imageUrl = user["profile_pic_url"];
-  }
-
-  console.log("image", imageUrl);
-
-  // Listen for sidebar state changes
-  useEffect(() => {
-    const handleSidebarStateChange = (event) => {
-      setIsSidebarCollapsed(event.detail.isCollapsed);
-    };
-
-    window.addEventListener("sidebarStateChange", handleSidebarStateChange);
-    return () => {
-      window.removeEventListener(
-        "sidebarStateChange",
-        handleSidebarStateChange
-      );
-    };
-  }, []);
+  const numCredits = useNumCredits();
+  const imageUrl = user?.profile_pic_url || "";
 
   function handleLogout() {
     dispatch(logout()).then(() => {
       navigate("/");
-      setIsLoggedInParent(false);
+      onAuthChange?.();
     });
   }
   const location = useLocation();
@@ -70,11 +49,11 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
     >
       {showLoginModal && (
         <LoginModal
-          onClose={() => setShowLoginModal((p) => !p)}
+          onClose={() => setShowLoginModal(false)}
           isOpen={showLoginModal}
         />
       )}
-      <div className={"flex items-center gap-2"}>
+      <div className="flex items-center gap-2">
         <button className="flex" onClick={() => navigate("/")}>
           <img
             alt="pancea logo"
@@ -97,14 +76,14 @@ export function MainNav({ isLoggedIn, setIsLoggedInParent }) {
           Guest
         </span> : ""}
       </div>
-      <button
-        onClick={() => setShowLoginModal(true)}
-        className={`py-2 ${
-          isLoggedIn && "hidden"
-        } px-4 bg-gradient-to-r from-accent to-accent-light text-white rounded-lg font-medium hover:opacity-90 transition-opacity`}
-      >
-        Log In
-      </button>
+        <button
+          onClick={() => setShowLoginModal(true)}
+          className={`py-2 ${
+            isLoggedIn && "hidden"
+          } px-4 bg-gradient-to-r from-accent to-accent-light text-white rounded-lg font-medium hover:opacity-90 transition-opacity`}
+        >
+          Log In
+        </button>
       <div className={`${!isLoggedIn && "hidden"} flex`}>
         <Dropdown
           theme={{

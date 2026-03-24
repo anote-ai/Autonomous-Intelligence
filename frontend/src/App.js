@@ -1,11 +1,11 @@
-import Dashboard from "./Dashboard";
-import { BrowserRouter as Router} from "react-router-dom";
+import { BrowserRouter as Router } from "react-router-dom";
+import AppShell from "./app/AppShell";
 
 function App() {
   return (
-      <Router>
-        <Dashboard />
-      </Router>
+    <Router>
+      <AppShell />
+    </Router>
   );
 }
 

@@ -1,6 +1,5 @@
 import ChatHistory from "./components/ChatHistory";
 import { Link } from "react-router-dom";
-import { useState, useEffect } from "react";
 
 // Example SVG icons (replace with your own or use a library like react-icons)
 const icons = {
@@ -17,37 +16,15 @@ const icons = {
   ),
 };
 
-const Sidebar = ({ handleChatSelect, handleToggleSidebar }) => {
-  const [isCollapsed, setIsCollapsed] = useState(true);
-
-  // Listen for sidebar collapse events
-  useEffect(() => {
-    const handleSidebarToggle = () => {
-      setIsCollapsed((prev) => !prev);
-    };
-
-    window.addEventListener("toggleSidebar", handleSidebarToggle);
-    return () => {
-      window.removeEventListener("toggleSidebar", handleSidebarToggle);
-    };
-  }, []);
-
-  // Emit sidebar state changes
-  useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("sidebarStateChange", {
-        detail: { isCollapsed },
-      })
-    );
-  }, [isCollapsed]);
-
-  const handleToggle = () => {
-    setIsCollapsed((prev) => {
-      const newValue = !prev;
-      handleToggleSidebar(newValue);
-      return newValue;
-    });
-  };
+const Sidebar = ({
+  handleChatSelect,
+  isCollapsed,
+  onToggle,
+  chats,
+  onRefreshChats,
+  onRenameChat,
+  onDeleteChat,
+}) => {
   return (
     <aside
       className={`md:flex flex-col z-50 h-screen text-white md:p-2 md:py-5 justify-between shadow-lg ${
@@ -63,7 +40,7 @@ const Sidebar = ({ handleChatSelect, handleToggleSidebar }) => {
             <img alt="pancea logo" width={30} height={30} src="/logonew.png" />
           )}
           <button
-            onClick={handleToggle}
+            onClick={onToggle}
             data-slot="sidebar-trigger"
             className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive cursor-pointer hover:text-accent-foreground dark:hover:bg-accent/50 size-7 -ml-1"
             data-sidebar="trigger"
@@ -91,7 +68,13 @@ const Sidebar = ({ handleChatSelect, handleToggleSidebar }) => {
             <Link to="/">
               <SidebarItem icon={icons.newChat} label="New chat" />
             </Link>
-            <ChatHistory handleChatSelect={handleChatSelect} />
+            <ChatHistory
+              chats={chats}
+              handleChatSelect={handleChatSelect}
+              onRefreshChats={onRefreshChats}
+              onRenameChat={onRenameChat}
+              onDeleteChat={onDeleteChat}
+            />
           </>
         )}
       </div>

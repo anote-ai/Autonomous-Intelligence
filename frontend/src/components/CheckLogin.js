@@ -1,95 +1,51 @@
-import React from "react";
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useLocation } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import HomeChatbot from "../financeGPT/components/Home";
 import LoginModal from "./LoginModal";
 
-function CheckLogin(props) {
+function CheckLogin({ isLoggedIn, onAuthChange, onSidebarCollapsedChange }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
   const [showLogin, setShowLogin] = useState(false);
   const [productHash, setProductHash] = useState("");
   const [freeTrialCode, setFreeTrialCode] = useState("");
 
-  const accessToken = localStorage.getItem("accessToken");
-  const sessionToken = localStorage.getItem("sessionToken");
-  console.log("get access token");
-  console.log(accessToken);
-  
-  // Update login state based on tokens
   useEffect(() => {
-    if (accessToken || sessionToken) {
-      if (!isLoggedIn) {
-        setIsLoggedIn(true);
-      }
-    } else {
-      if (isLoggedIn) {
-        setIsLoggedIn(false);
-      }
-    }
-  }, [accessToken, sessionToken, isLoggedIn]);
-
-
-  // Listen for the custom event to show login
-  useEffect(() => {
-    const handleShowLogin = () => {
-      setShowLogin(true);
-    };
-
-    window.addEventListener('showLogin', handleShowLogin);
-    return () => {
-      window.removeEventListener('showLogin', handleShowLogin);
-    };
-  }, []);
-
-  var mainView = [];
-  if (!isLoggedIn) {
-    // Always show guest mode for non-logged-in users, with modal for login
-    mainView = <HomeChatbot isGuestMode={true} onRequestLogin={() => setShowLogin(true)} setIsLoggedInParent={props.setIsLoggedInParent} />;
-  } else if (!props.showRestrictedRouteRequiringPayments) {
-    //mainView = <PaymentsComponent />;
-    mainView = <HomeChatbot isGuestMode={false} setIsLoggedInParent={props.setIsLoggedInParent} />;
-  }
-
-  useEffect(() => {
-    const accessToken = new URLSearchParams(location.search).get("accessToken");
-    const refreshToken = new URLSearchParams(location.search).get(
-      "refreshToken"
-    );
-    const productHashStr = new URLSearchParams(location.search).get(
-      "product_hash"
-    );
+    const params = new URLSearchParams(location.search);
+    const accessToken = params.get("accessToken");
+    const refreshToken = params.get("refreshToken");
+    const productHashStr = params.get("product_hash");
 
     if (productHashStr) {
       setProductHash(productHashStr);
+      if (!isLoggedIn) {
+        setShowLogin(true);
+      }
     }
-    const freeTrialCodeStr = new URLSearchParams(location.search).get(
-      "free_trial_code"
-    );
+    const freeTrialCodeStr = params.get("free_trial_code");
 
     if (freeTrialCodeStr) {
       setFreeTrialCode(freeTrialCodeStr);
+      if (!isLoggedIn) {
+        setShowLogin(true);
+      }
     }
 
-    console.log("accessToken checklogin");
-    console.log(accessToken);
-    console.log(refreshToken);
-    // Save the tokens in local storage if they exist
     if (accessToken && refreshToken) {
-      console.log("save access token");
       localStorage.setItem("accessToken", accessToken);
       localStorage.setItem("refreshToken", refreshToken);
-      props.setIsLoggedInParent(true);
-      navigate("/");
+      onAuthChange?.();
+      navigate("/", { replace: true });
     }
-  }, [location]);
+  }, [isLoggedIn, location.search, navigate, onAuthChange]);
 
   return (
     <div>
-      {mainView}
-      <LoginModal 
+      <HomeChatbot
+        isGuestMode={!isLoggedIn}
+        onSidebarCollapsedChange={onSidebarCollapsedChange}
+      />
+      <LoginModal
         isOpen={showLogin}
         onClose={() => setShowLogin(false)}
         productHash={productHash}

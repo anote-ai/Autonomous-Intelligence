@@ -1,18 +1,28 @@
+import json
 import os
-import mysql.connector
-from flask import jsonify
-from datetime import datetime, timedelta
-from constants.global_constants import kSessionTokenExpirationTime, kPasswordResetExpirationTime, planToCredits
-from db_enums import PaidUserStatus
-from dateutil.relativedelta import relativedelta
-from constants.global_constants import chatgptLimit
-from constants.global_constants import dbName, dbHost, dbUser, dbPassword
 import secrets
+import time
+import uuid
+from datetime import datetime, timedelta
+
+import mysql.connector
+from dateutil.relativedelta import relativedelta
+from flask import jsonify
+
+from constants.global_constants import (
+    chatgptLimit,
+    dbHost,
+    dbName,
+    dbPassword,
+    dbUser,
+    kPasswordResetExpirationTime,
+    kSessionTokenExpirationTime,
+    planToCredits,
+)
+from db_enums import PaidUserStatus
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-import mysql.connector
 
 def get_db_connection():
     if ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
@@ -731,3 +741,750 @@ def get_api_keys(email):
     return {
         "keys": keys
     }
+
+
+def add_chat(user_email, chat_type, model_type):
+    conn, cursor = get_db_connection()
+    cursor.execute("SELECT id FROM users WHERE email = %s", [user_email])
+    user_id = cursor.fetchone()["id"]
+
+    cursor.execute(
+        "INSERT INTO chats (user_id, model_type, associated_task) VALUES (%s, %s, %s)",
+        (user_id, model_type, chat_type),
+    )
+    chat_id = cursor.lastrowid
+    cursor.execute("UPDATE chats SET chat_name = %s WHERE id = %s", (f"Chat {chat_id}", chat_id))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return chat_id
+
+
+def update_chat_name(user_email, chat_id, new_name):
+    conn, cursor = get_db_connection()
+    query = """
+    UPDATE chats
+    JOIN users ON chats.user_id = users.id
+    SET chats.chat_name = %s
+    WHERE chats.id = %s AND users.email = %s;
+    """
+    cursor.execute(query, (new_name, chat_id, user_email))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def retrieve_chats(user_email):
+    conn, cursor = get_db_connection()
+    query = """
+        SELECT chats.id, chats.model_type, chats.chat_name, chats.associated_task, chats.custom_model_key
+        FROM chats
+        JOIN users ON chats.user_id = users.id
+        WHERE users.email = %s;
+    """
+    try:
+        cursor.execute(query, (user_email,))
+        chat_info = cursor.fetchall()
+        return [dict(row) for row in chat_info] if hasattr(cursor, "description") else chat_info
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def find_most_recent_chat(user_email):
+    conn, cursor = get_db_connection()
+    query = """
+        SELECT chats.id, chats.chat_name
+        FROM chats
+        JOIN users ON chats.user_id = users.id
+        WHERE users.email = %s
+        ORDER BY chats.created DESC
+        LIMIT 1;
+    """
+    cursor.execute(query, [user_email])
+    chat_info = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return chat_info
+
+
+def retrieve_messages(user_email, chat_id, chat_type):
+    conn, cursor = get_db_connection()
+    query = """
+        SELECT messages.created, chats.id, messages.id, messages.reasoning, messages.message_text, messages.sent_from_user, messages.relevant_chunks
+        FROM messages
+        JOIN chats ON messages.chat_id = chats.id
+        JOIN users ON chats.user_id = users.id
+        WHERE chats.id = %s AND users.email = %s AND chats.associated_task = %s;
+    """
+    cursor.execute(query, (chat_id, user_email, chat_type))
+    messages = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if messages:
+        processed_messages = []
+        for msg in messages:
+          msg_dict = dict(msg)
+          if msg_dict.get("reasoning"):
+              try:
+                  reasoning_data = json.loads(msg_dict["reasoning"])
+                  if isinstance(reasoning_data, list):
+                      msg_dict["reasoning"] = reasoning_data
+                  elif isinstance(reasoning_data, dict):
+                      msg_dict["reasoning"] = [reasoning_data]
+                  elif isinstance(reasoning_data, str):
+                      msg_dict["reasoning"] = [{
+                          "id": f'step-{msg_dict["id"]}',
+                          "type": "llm_reasoning",
+                          "thought": reasoning_data,
+                          "message": "AI Reasoning",
+                          "timestamp": int(time.time() * 1000),
+                      }]
+                  else:
+                      msg_dict["reasoning"] = []
+
+                  if msg_dict.get("reasoning") and msg_dict.get("sent_from_user") == 0:
+                      final_thought = None
+                      for step in reversed(msg_dict["reasoning"]):
+                          if step.get("thought"):
+                              final_thought = step["thought"]
+                              break
+                      if not final_thought and msg_dict.get("message_text"):
+                          final_thought = (
+                              msg_dict["message_text"][:100] + "..."
+                              if len(msg_dict["message_text"]) > 100
+                              else msg_dict["message_text"]
+                          )
+                      msg_dict["reasoning"].append({
+                          "id": f'step-complete-{msg_dict["id"]}',
+                          "type": "complete",
+                          "thought": final_thought,
+                          "message": "Response complete",
+                          "timestamp": int(time.time() * 1000),
+                      })
+              except (json.JSONDecodeError, TypeError):
+                  msg_dict["reasoning"] = []
+          else:
+              msg_dict["reasoning"] = []
+          processed_messages.append(msg_dict)
+        return processed_messages
+
+    return None if messages is None else messages
+
+
+def delete_chat(chat_id, user_email):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        DELETE chunks
+        FROM chunks
+        INNER JOIN documents ON chunks.document_id = documents.id
+        INNER JOIN chats ON documents.chat_id = chats.id
+        INNER JOIN users ON chats.user_id = users.id
+        WHERE chats.id = %s AND users.email = %s;
+        """,
+        (chat_id, user_email),
+    )
+    cursor.execute(
+        """
+        DELETE documents
+        FROM documents
+        INNER JOIN chats ON documents.chat_id = chats.id
+        INNER JOIN users ON chats.user_id = users.id
+        WHERE chats.id = %s AND users.email = %s;
+        """,
+        (chat_id, user_email),
+    )
+    cursor.execute(
+        """
+        DELETE messages
+        FROM messages
+        INNER JOIN chats ON messages.chat_id = chats.id
+        INNER JOIN users ON chats.user_id = users.id
+        WHERE chats.id = %s AND users.email = %s;
+        """,
+        (chat_id, user_email),
+    )
+    cursor.execute(
+        """
+        DELETE chats
+        FROM chats
+        INNER JOIN users ON chats.user_id = users.id
+        WHERE chats.id = %s AND users.email = %s;
+        """,
+        (chat_id, user_email),
+    )
+    conn.commit()
+    deleted = cursor.rowcount > 0
+    cursor.close()
+    conn.close()
+    return "Successfully deleted" if deleted else "Could not delete"
+
+
+def reset_chat(chat_id, user_email):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        DELETE messages
+        FROM messages
+        INNER JOIN chats ON messages.chat_id = chats.id
+        INNER JOIN users ON chats.user_id = users.id
+        WHERE chats.id = %s AND users.email = %s;
+        """,
+        (chat_id, user_email),
+    )
+    conn.commit()
+    deleted = cursor.rowcount > 0
+    cursor.close()
+    conn.close()
+    return "Successfully deleted" if deleted else "Could not delete"
+
+
+def reset_uploaded_docs(chat_id, user_email):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        DELETE chunks
+        FROM chunks
+        INNER JOIN documents ON chunks.document_id = documents.id
+        INNER JOIN chats ON documents.chat_id = chats.id
+        INNER JOIN users ON chats.user_id = users.id
+        WHERE chats.id = %s AND users.email = %s;
+        """,
+        (chat_id, user_email),
+    )
+    cursor.execute(
+        """
+        DELETE documents
+        FROM documents
+        INNER JOIN chats ON documents.chat_id = chats.id
+        INNER JOIN users ON chats.user_id = users.id
+        WHERE chats.id = %s AND users.email = %s;
+        """,
+        (chat_id, user_email),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def change_chat_mode(chat_mode_to_change_to, chat_id, user_email):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        UPDATE chats
+        JOIN users ON chats.user_id = users.id
+        SET chats.model_type = %s
+        WHERE chats.id = %s AND users.email = %s;
+        """,
+        (chat_mode_to_change_to, chat_id, user_email),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def add_document(text, document_name, chat_id=None):
+    if chat_id == 0:
+        return None, False
+
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute(
+            """
+            SELECT id, document_text
+            FROM documents
+            WHERE document_name = %s
+            AND chat_id = %s
+            """,
+            (document_name, chat_id),
+        )
+        existing_doc = cursor.fetchone()
+        if existing_doc:
+            existing_doc_id, _ = existing_doc
+            return existing_doc_id, True
+
+        storage_key = "temp"
+        cursor.execute(
+            """
+            INSERT INTO documents (document_text, document_name, storage_key, chat_id)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (text, document_name, storage_key, chat_id),
+        )
+        doc_id = cursor.lastrowid
+        conn.commit()
+        return doc_id, False
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def add_message(text, chat_id, is_user, reasoning=None):
+    if chat_id == 0:
+        return None
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        "INSERT INTO messages (message_text, chat_id, reasoning, sent_from_user) VALUES (%s,%s,%s, %s)",
+        (text, chat_id, reasoning, is_user),
+    )
+    message_id = cursor.lastrowid
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return message_id
+
+
+def add_chunks_with_page_numbers(chunk_data):
+    conn, cursor = get_db_connection()
+    cursor.executemany(
+        """
+        INSERT INTO chunks (start_index, end_index, document_id, embedding_vector, page_number)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        chunk_data,
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def add_chunks(chunk_data):
+    conn, cursor = get_db_connection()
+    cursor.executemany(
+        """
+        INSERT INTO chunks (start_index, end_index, document_id, embedding_vector)
+        VALUES (%s, %s, %s, %s)
+        """,
+        chunk_data,
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def retrieve_docs(chat_id, user_email):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        SELECT documents.document_name, documents.id
+        FROM documents
+        JOIN chats ON documents.chat_id = chats.id
+        JOIN users ON chats.user_id = users.id
+        WHERE chats.id = %s AND users.email = %s;
+        """,
+        (chat_id, user_email),
+    )
+    docs = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return docs
+
+
+def delete_doc(doc_id, user_email):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        SELECT d.id
+        FROM documents d
+        JOIN chats c ON d.chat_id = c.id
+        JOIN users u ON c.user_id = u.id
+        WHERE u.email = %s AND d.id = %s
+        """,
+        (user_email, doc_id),
+    )
+    verification_result = cursor.fetchone()
+    if verification_result:
+        cursor.execute("DELETE FROM chunks WHERE document_id = %s", (doc_id,))
+        cursor.execute("DELETE FROM documents WHERE id = %s", (doc_id,))
+        conn.commit()
+    cursor.close()
+    conn.close()
+    return "success"
+
+
+def add_model_key(model_key, chat_id, user_email):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        UPDATE chats
+        JOIN users ON chats.user_id = users.id
+        SET chats.custom_model_key = %s
+        WHERE chats.id = %s AND users.email = %s;
+        """,
+        (model_key, chat_id, user_email),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def create_chat_shareable_url(chat_id):
+    conn, cursor = get_db_connection()
+    share_uuid = str(uuid.uuid4())
+    cursor.execute(
+        "INSERT INTO chat_shares (chat_id, share_uuid) VALUES (%s, %s)",
+        (chat_id, share_uuid),
+    )
+    chat_share_id = cursor.lastrowid
+
+    cursor.execute(
+        """
+        SELECT sent_from_user, message_text, created
+        FROM messages
+        WHERE chat_id = %s
+        ORDER BY created ASC
+        """,
+        (chat_id,),
+    )
+    messages = cursor.fetchall()
+    for message in messages:
+        role = "user" if message["sent_from_user"] else "chatbot"
+        cursor.execute(
+            """
+            INSERT INTO chat_share_messages (chat_share_id, role, message_text, created)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (chat_share_id, role, message["message_text"], message["created"]),
+        )
+
+    cursor.execute(
+        """
+        SELECT id, document_name, document_text, storage_key, created
+        FROM documents
+        WHERE chat_id = %s
+        """,
+        (chat_id,),
+    )
+    docs = cursor.fetchall()
+    for doc in docs:
+        cursor.execute(
+            """
+            INSERT INTO chat_share_documents (
+                chat_share_id, document_name, document_text, storage_key, created
+            ) VALUES (%s, %s, %s, %s, %s)
+            """,
+            (
+                chat_share_id,
+                doc["document_name"],
+                doc["document_text"],
+                doc["storage_key"],
+                doc["created"],
+            ),
+        )
+        chat_share_doc_id = cursor.lastrowid
+        cursor.execute(
+            """
+            SELECT start_index, end_index, embedding_vector, page_number
+            FROM chunks
+            WHERE document_id = %s
+            """,
+            (doc["id"],),
+        )
+        chunks = cursor.fetchall()
+        for chunk in chunks:
+            cursor.execute(
+                """
+                INSERT INTO chat_share_chunks (
+                    chat_share_document_id, start_index, end_index, embedding_vector, page_number
+                ) VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    chat_share_doc_id,
+                    chunk["start_index"],
+                    chunk["end_index"],
+                    chunk["embedding_vector"],
+                    chunk["page_number"],
+                ),
+            )
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return f"/playbook/{share_uuid}"
+
+
+def access_shareable_chat(share_uuid, user_id=1):
+    conn, cursor = get_db_connection()
+    cursor.execute("SELECT * FROM chat_shares WHERE share_uuid = %s", (share_uuid,))
+    share = cursor.fetchone()
+    if not share:
+        cursor.close()
+        conn.close()
+        return None
+
+    cursor.execute(
+        """
+        INSERT INTO chats (user_id, model_type, chat_name, associated_task)
+        VALUES (%s, %s, %s, %s)
+        """,
+        (user_id, 0, "Imported from share", 0),
+    )
+    new_chat_id = cursor.lastrowid
+
+    cursor.execute(
+        """
+        SELECT role, message_text
+        FROM chat_share_messages
+        WHERE chat_share_id = %s
+        ORDER BY created ASC
+        """,
+        (share["id"],),
+    )
+    messages = cursor.fetchall()
+    for message in messages:
+        sent_from_user = 1 if message["role"] == "user" else 0
+        cursor.execute(
+            """
+            INSERT INTO messages (chat_id, message_text, sent_from_user)
+            VALUES (%s, %s, %s)
+            """,
+            (new_chat_id, message["message_text"], sent_from_user),
+        )
+
+    cursor.execute(
+        """
+        SELECT id, document_name, document_text, storage_key
+        FROM chat_share_documents
+        WHERE chat_share_id = %s
+        """,
+        (share["id"],),
+    )
+    docs = cursor.fetchall()
+    for doc in docs:
+        cursor.execute(
+            """
+            INSERT INTO documents (chat_id, document_name, document_text, storage_key)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (new_chat_id, doc["document_name"], doc["document_text"], doc["storage_key"]),
+        )
+        new_doc_id = cursor.lastrowid
+        cursor.execute(
+            """
+            SELECT start_index, end_index, embedding_vector, page_number
+            FROM chat_share_chunks
+            WHERE chat_share_document_id = %s
+            """,
+            (doc["id"],),
+        )
+        chunks = cursor.fetchall()
+        for chunk in chunks:
+            cursor.execute(
+                """
+                INSERT INTO chunks (
+                    document_id, start_index, end_index, embedding_vector, page_number
+                ) VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    new_doc_id,
+                    chunk["start_index"],
+                    chunk["end_index"],
+                    chunk["embedding_vector"],
+                    chunk["page_number"],
+                ),
+            )
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return new_chat_id
+
+
+def retrieve_messages_from_share_uuid(share_uuid):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        SELECT csm.role, csm.message_text, csm.created
+        FROM chat_shares cs
+        JOIN chat_share_messages csm ON cs.id = csm.chat_share_id
+        WHERE cs.share_uuid = %s
+        ORDER BY csm.created ASC
+        """,
+        (share_uuid,),
+    )
+    messages = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return messages
+
+
+def get_document_content(document_id, email):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        SELECT d.document_text, d.document_name, d.id
+        FROM documents d
+        JOIN chats c ON d.chat_id = c.id
+        JOIN users u ON c.user_id = u.id
+        WHERE d.id = %s AND u.email = %s
+        """,
+        (document_id, email),
+    )
+    document = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not document:
+        return None
+    return {
+        "id": document["id"],
+        "document_name": document["document_name"],
+        "document_text": document["document_text"],
+    }
+
+
+def _combine_sources(sources):
+    combined_sources = ""
+    for source in sources:
+        if len(source) < 2:
+            continue
+        chunk_text, document_name = source[0], source[1]
+        combined_sources += f"Document: {document_name}: {chunk_text}\n\n"
+    return combined_sources
+
+
+def add_sources_to_message(message_id, sources):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        "UPDATE messages SET relevant_chunks = %s WHERE id = %s",
+        (_combine_sources(sources), message_id),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def add_sources_to_prompt(prompt_id, sources):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        "UPDATE prompts SET relevant_chunks = %s WHERE id = %s",
+        (_combine_sources(sources), prompt_id),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def add_prompt(prompt_text):
+    conn, cursor = get_db_connection()
+    cursor.execute("INSERT INTO prompts (prompt_text) VALUES (%s)", (prompt_text,))
+    prompt_id = cursor.lastrowid
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return prompt_id
+
+
+def add_prompt_answer(answer, citation_id):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        "INSERT INTO prompt_answers (citation_id, answer_text) VALUES (%s, %s)",
+        (citation_id, answer),
+    )
+    answer_id = cursor.lastrowid
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return answer_id
+
+
+def _ensure_named_user_exists(user_email, person_name, credits):
+    conn, cursor = get_db_connection()
+    cursor.execute("SELECT id FROM users WHERE email = %s", (user_email,))
+    result = cursor.fetchone()
+    if result:
+        cursor.close()
+        conn.close()
+        return result["id"]
+
+    cursor.execute(
+        """
+        INSERT INTO users (email, person_name, profile_pic_url, credits)
+        VALUES (%s, %s, 'url_to_default_image', %s)
+        """,
+        (user_email, person_name, credits),
+    )
+    user_id = cursor.lastrowid
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return user_id
+
+
+def ensure_demo_user_exists(user_email):
+    return _ensure_named_user_exists(user_email, "Demo User", 0)
+
+
+def ensure_sdk_user_exists(user_email):
+    return _ensure_named_user_exists(user_email, "SDK User", 0)
+
+
+def get_message_info(answer_id, user_email):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        SELECT m.*, c.id as chunk_id, c.start_index, c.end_index, c.page_number
+        FROM messages m
+        JOIN chats ct ON m.chat_id = ct.id
+        JOIN users u ON ct.user_id = u.id
+        LEFT JOIN chunks c ON FIND_IN_SET(c.id, m.relevant_chunks) > 0
+        WHERE m.id = %s AND u.email = %s
+        """,
+        (answer_id, user_email),
+    )
+    answer_data = cursor.fetchall()
+    if not answer_data:
+        cursor.close()
+        conn.close()
+        return None, None
+
+    answer = answer_data[0]
+    cursor.execute(
+        """
+        SELECT m.*
+        FROM messages m
+        WHERE m.id < %s AND m.chat_id = %s AND m.sent_from_user = 1
+        ORDER BY m.id DESC
+        LIMIT 1
+        """,
+        (answer_id, answer["chat_id"]),
+    )
+    question = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return question, answer
+
+
+def get_chat_chunks(user_email, chat_id):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        """
+        SELECT c.start_index, c.end_index, c.embedding_vector, c.document_id, d.document_name, d.document_text
+        FROM chunks c
+        JOIN documents d ON c.document_id = d.id
+        JOIN chats ch ON d.chat_id = ch.id
+        JOIN users u ON ch.user_id = u.id
+        WHERE u.email = %s AND ch.id = %s
+        """,
+        (user_email, chat_id),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return rows
+
+
+def get_chat_info(chat_id):
+    conn, cursor = get_db_connection()
+    cursor.execute(
+        "SELECT model_type, chat_name, associated_task FROM chats WHERE id = %s",
+        (chat_id,),
+    )
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if result:
+        return result["model_type"], result["associated_task"], result["chat_name"]
+    return None, None, None

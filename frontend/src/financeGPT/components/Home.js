@@ -2,16 +2,21 @@ import React, { useState, useEffect } from "react";
 import Chatbot from "./Chatbot";
 import fetcher from "../../http/RequestConfig";
 import Sidebar from "../Sidebar";
-function HomeChatbot({ isGuestMode = false }) {
+import { useChatHistory } from "../useChatHistory";
+
+function HomeChatbot({
+  isGuestMode = false,
+  onSidebarCollapsedChange = () => {},
+}) {
   const [selectedChatId, setSelectedChatId] = useState(isGuestMode ? 0 : null);
-  const [forceUpdate, setForceUpdate] = useState(0);
-  const [isPrivate, setIsPrivate] = useState(0);
-  const [currChatName, setCurrChatName] = useState("");
-  const [currTask, setcurrTask] = useState(0); //0 is file upload, 1 EDGAR, 2 mySQL db; have 0 be the default
-  const [activeMessageIndex, setActiveMessageIndex] = useState(null);
-  const [menu, setMenu] = useState(false);
-  const [chats, setChats] = useState([]);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const isPrivate = 0;
+  const currTask = 0;
+  const { chats, refreshChats, renameChatById, deleteChatById } =
+    useChatHistory({
+      enabled: !isGuestMode,
+    });
 
   const showError = (message) => {
     setErrorMessage(message);
@@ -19,18 +24,16 @@ function HomeChatbot({ isGuestMode = false }) {
     setTimeout(() => setErrorMessage(""), 5000);
   };
 
-  const handleMenu = () => {
-    setMenu((prev) => !prev);
-  };
-  const [confirmedModelKey] = useState("");
-
   const handleChatSelect = (chatId) => {
-    console.log("select");
     setSelectedChatId(chatId);
   };
 
-  const handleForceUpdate = () => {
-    setForceUpdate((prev) => prev + 1);
+  const handleSidebarToggle = () => {
+    setIsSidebarCollapsed((prev) => {
+      const nextState = !prev;
+      onSidebarCollapsedChange(nextState);
+      return nextState;
+    });
   };
 
   const createNewChat = async () => {
@@ -55,6 +58,7 @@ function HomeChatbot({ isGuestMode = false }) {
       }
 
       handleChatSelect(response_data.chat_id);
+      refreshChats();
       return response_data.chat_id;
     } catch (error) {
       // Only log errors that aren't silent network errors
@@ -72,43 +76,12 @@ function HomeChatbot({ isGuestMode = false }) {
   };
 
   useEffect(() => {
+    setSelectedChatId(isGuestMode ? 0 : null);
+
     if (isGuestMode) {
-      // For guest mode, don't retrieve chats from server
-      return;
+      onSidebarCollapsedChange(true);
     }
-
-    const retrieveAllChats = async () => {
-      console.log("i am in retrieve chats");
-      try {
-        const response = await fetcher("retrieve-all-chats", {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ chat_type: 0 }),
-        });
-
-        const response_data = await response.json();
-        setChats(response_data.chat_info);
-        console.log("retriving data", response_data);
-      } catch (error) {
-        // Only log errors that aren't silent network errors
-        if (!error.silent) {
-          console.error("Error fetching chats:", error);
-        }
-        // If it's a network error (backend down), don't show error UI
-        // Just keep the existing state and let the user know backend is offline
-        if (error.type !== "NETWORK_ERROR") {
-          // Handle other types of errors if needed
-          if (!error.silent) {
-            console.error("Non-network error:", error);
-          }
-        }
-      }
-    };
-    retrieveAllChats();
-  }, [forceUpdate, isGuestMode]);
+  }, [isGuestMode, onSidebarCollapsedChange]);
 
   return (
     <div className="h-screen flex flex-col bg-primary">
@@ -131,8 +104,13 @@ function HomeChatbot({ isGuestMode = false }) {
         {/* Sidebar for chat history - show when menu is true and not in guest mode */}
         {!isGuestMode && (
           <Sidebar
-            handleToggleSidebar={handleMenu}
             handleChatSelect={handleChatSelect}
+            isCollapsed={isSidebarCollapsed}
+            onToggle={handleSidebarToggle}
+            chats={chats}
+            onRefreshChats={refreshChats}
+            onRenameChat={renameChatById}
+            onDeleteChat={deleteChatById}
           />
         )}
         {/* Chat area */}
@@ -141,18 +119,10 @@ function HomeChatbot({ isGuestMode = false }) {
             chat_type={currTask}
             selectedChatId={selectedChatId}
             handleChatSelect={handleChatSelect}
-            handleMenu={handleMenu}
-            chats={chats}
             createNewChat={createNewChat}
-            menu={menu}
-            handleForceUpdate={handleForceUpdate}
-            forceUpdate={forceUpdate}
             isPrivate={isPrivate}
-            confirmedModelKey={confirmedModelKey}
-            setCurrChatName={setCurrChatName}
-            activeMessageIndex={activeMessageIndex}
-            setActiveMessageIndex={setActiveMessageIndex}
             isGuestMode={isGuestMode}
+            onChatsChanged={refreshChats}
           />
         </div>
       </div>

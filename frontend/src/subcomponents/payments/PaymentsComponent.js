@@ -3,21 +3,20 @@ import { useDispatch } from "react-redux";
 import { useUser, viewUser } from "../../redux/UserSlice";
 import Pricing from "./Pricing";
 import { PaidUserStatus } from "../../constants/DbEnums";
-import { Button } from "flowbite-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight, faArrowLeft } from "@fortawesome/free-solid-svg-icons";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
 
 function paidUserToStr(paidUserStatus) {
-  if (paidUserStatus == PaidUserStatus.FREE_TIER) {
+  if (paidUserStatus === PaidUserStatus.FREE_TIER) {
     return "Free Tier";
-  } else if (paidUserStatus == PaidUserStatus.BASIC_TIER) {
+  } else if (paidUserStatus === PaidUserStatus.BASIC_TIER) {
     return "Basic Tier";
-  } else if (paidUserStatus == PaidUserStatus.STANDARD_TIER) {
+  } else if (paidUserStatus === PaidUserStatus.STANDARD_TIER) {
     return "Standard Tier";
-  } else if (paidUserStatus == PaidUserStatus.PREMIUM_TIER) {
+  } else if (paidUserStatus === PaidUserStatus.PREMIUM_TIER) {
     return "Premium Tier";
-  } else if (paidUserStatus == PaidUserStatus.ENTERPRISE_TIER) {
+  } else if (paidUserStatus === PaidUserStatus.ENTERPRISE_TIER) {
     return "Enterprise Tier";
   }
   return "Free Tier";
@@ -42,18 +41,22 @@ const PaymentsComponent = () => {
   }
 
   var nextCreditRefreshStr = "";
-  if (user && "credits_refresh" in user && paidUserStatus != PaidUserStatus.FREE_TIER) {
+  if (
+    user &&
+    "credits_refresh" in user &&
+    paidUserStatus !== PaidUserStatus.FREE_TIER
+  ) {
     nextCreditRefreshStr = user["credits_refresh"];
   }
 
   var isCancelable = true;
-  if ((endDate != "" && endDate != null) && (nextPlan == null)) {
+  if ((endDate !== "" && endDate !== null) && nextPlan === null) {
     isCancelable = false;
   }
 
   useEffect(() => {
     dispatch(viewUser());
-  }, []);
+  }, [dispatch]);
 
   var currentPlanStr = paidUserToStr(paidUserStatus);
   var newPlanStartsStr = "";
@@ -63,7 +66,7 @@ const PaymentsComponent = () => {
   let currentPlanIndexOverride = paidUserStatus - 1;
 
   var isDefaultFreeTrial = false;
-  if (user && "is_free_trial" in user && user["is_free_trial"] && (nextPlan == null)) {
+  if (user && "is_free_trial" in user && user["is_free_trial"] && nextPlan === null) {
     isDefaultFreeTrial = true;
     currentPlanStr = "Free Tier";
   }
@@ -77,15 +80,15 @@ const PaymentsComponent = () => {
             <span className="font-semibold">Current Plan : </span>
             {currentPlanStr}
           </span>
-          {(nextCreditRefreshStr != "" && nextCreditRefreshStr != null) && <span>
+          {nextCreditRefreshStr !== "" && nextCreditRefreshStr !== null && <span>
             <span className="font-semibold">Next Credit Refresh: </span>
             {nextCreditRefreshStr}
           </span>}
-          {(endDate != "" && endDate != null) && <span>
+          {endDate !== "" && endDate !== null && <span>
             <span className="font-semibold">Plan Expires: </span>
             {endDate}
           </span>}
-          {newPlanStartsStr != "" && <span>
+          {newPlanStartsStr !== "" && <span>
             {newPlanStartsStr}
           </span>}
         </div>
@@ -96,7 +99,7 @@ const PaymentsComponent = () => {
           <button
             onClick={() => {
               console.log("navigate");
-              navigate('/');
+              navigate("/");
             }}
             className="mr-2 font-semibold btn-yellow "
           >

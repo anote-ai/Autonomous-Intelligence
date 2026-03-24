@@ -228,19 +228,21 @@ export function useNumCredits() {
   });
 }
 
+export function selectAPIKeys(state) {
+  const apiKeysState = state?.userReducer?.entities?.apiKeys;
+  const allIds = Array.isArray(apiKeysState?.allIds) ? apiKeysState.allIds : [];
+  const byId =
+    apiKeysState?.byId && typeof apiKeysState.byId === "object"
+      ? apiKeysState.byId
+      : {};
+
+  return allIds
+    .map((id) => byId[id])
+    .filter((apiKey) => typeof apiKey !== "undefined");
+}
+
 export function useAPIKeys() {
-  return useSelector((state) => {
-    var apiKeys = [];
-    try {
-      state.userReducer.entities.apiKeys.allIds.forEach((id) => {
-        var apiKey = state.userReducer.entities.apiKeys.byId[id];
-        apiKeys.push(apiKey);
-      });
-    } catch (error) {
-      console.error("Failed to load API keys:", error);
-    }
-    return apiKeys;
-  });
+  return useSelector(selectAPIKeys);
 }
 
 export function useAccessTokenIsSet() {
@@ -276,6 +278,24 @@ function clearApiKeys(state) {
   }
   state.entities.apiKeys.allIds = [];
   state.entities.apiKeys.byId = {};
+}
+
+function ensureApiKeysState(state) {
+  if (!state.entities) {
+    state.entities = {};
+  }
+
+  if (!state.entities.apiKeys) {
+    state.entities.apiKeys = { byId: {}, allIds: [] };
+  }
+
+  if (!state.entities.apiKeys.byId) {
+    state.entities.apiKeys.byId = {};
+  }
+
+  if (!Array.isArray(state.entities.apiKeys.allIds)) {
+    state.entities.apiKeys.allIds = [];
+  }
 }
 
 export const initialState = {
@@ -371,11 +391,13 @@ export const userSlice = createSlice({
         });
       })
       .addCase(generateAPIKey.fulfilled, (state, action) => {
+        ensureApiKeysState(state);
         var payload = action.payload;
         state.entities.apiKeys.allIds.push(payload["id"]);
         state.entities.apiKeys.byId[payload["id"]] = payload;
       })
       .addCase(deleteAPIKey.fulfilled, (state, action) => {
+        ensureApiKeysState(state);
         var id = action.payload;
         const index = state.entities.apiKeys.allIds.indexOf(id);
         if (index > -1) {
