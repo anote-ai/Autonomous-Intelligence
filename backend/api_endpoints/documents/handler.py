@@ -11,6 +11,7 @@ from database.db import (
 )
 from flask import Request, jsonify
 from flask.typing import ResponseReturnValue
+from services.audio_service import transcribe_audio
 from services.vision_service import describe_image
 
 # ---------------------------------------------------------------------------
@@ -108,9 +109,20 @@ def IngestDocumentsHandler(
             if not does_exist and description:
                 chunk_document_fn.remote(description, max_chunk_size, doc_id)
 
+        elif category == "audio":
+            # Whisper transcription path: convert audio to text and index it.
+            audio_bytes = file.read()
+            print(f"Transcribing audio: {filename} ({len(audio_bytes)} bytes)")
+            transcript = transcribe_audio(audio_bytes, filename=filename)
+            print(f"Transcript ({len(transcript)} chars): {transcript[:120]}…")
+            doc_id, does_exist = add_document(
+                transcript, filename, chat_id=chat_id, media_type="audio", mime_type=mime
+            )
+            if not does_exist and transcript:
+                chunk_document_fn.remote(transcript, max_chunk_size, doc_id)
+
         else:
-            # video / audio — store the record without text for now.
-            # Dedicated transcription pipelines (PRs 3 & 4) will fill these in.
+            # video — binary-only stub until the frame-extraction PR (PR 4).
             doc_id, does_exist = add_document(
                 None, filename, chat_id=chat_id, media_type=category, mime_type=mime
             )
