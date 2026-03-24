@@ -105,8 +105,10 @@ CREATE TABLE chat_share_documents (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
     chat_share_id INTEGER NOT NULL,
     document_name VARCHAR(255) NOT NULL,
-    document_text LONGTEXT NOT NULL,
+    document_text LONGTEXT,
     storage_key TEXT NOT NULL,
+    media_type ENUM('text', 'image', 'video', 'audio') NOT NULL DEFAULT 'text',
+    mime_type VARCHAR(255),
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (chat_share_id) REFERENCES chat_shares(id)
 );
@@ -133,13 +135,28 @@ CREATE TABLE messages (
     FOREIGN KEY (chat_id) REFERENCES chats(id)
 );
 
+-- Stores media files attached to user messages (images, audio clips, video clips)
+CREATE TABLE message_attachments (
+    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    message_id INTEGER NOT NULL,
+    media_type ENUM('image', 'audio', 'video') NOT NULL,
+    mime_type VARCHAR(255) NOT NULL,
+    storage_key TEXT NOT NULL,       -- path or object-store key
+    original_filename VARCHAR(255),
+    FOREIGN KEY (message_id) REFERENCES messages(id)
+);
+
 CREATE TABLE documents (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     chat_id INTEGER,
     storage_key TEXT NOT NULL,
     document_name VARCHAR(255) NOT NULL,
-    document_text LONGTEXT NOT NULL,
+    -- NULL for binary-only media (image / video / audio) where text is derived separately
+    document_text LONGTEXT,
+    media_type ENUM('text', 'image', 'video', 'audio') NOT NULL DEFAULT 'text',
+    mime_type VARCHAR(255),
     FOREIGN KEY (chat_id) REFERENCES chats(id)
 );
 
@@ -198,6 +215,7 @@ CREATE TABLE user_company_chatbots (
 
 
 CREATE UNIQUE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_message_attachments_message_id ON message_attachments(message_id);
 CREATE INDEX idx_chats_user_id ON chats(user_id);
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
 CREATE INDEX idx_messages_sent_from_user ON messages(sent_from_user);
