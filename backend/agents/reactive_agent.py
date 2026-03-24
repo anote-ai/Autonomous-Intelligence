@@ -1,10 +1,12 @@
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain.tools import BaseTool
+from langchain_core.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from typing import Dict, List, Any, Optional, Generator
 import os
+import re
 import time
 from pydantic import Field
 import json
@@ -476,6 +478,48 @@ class ReactiveDocumentAgent:
                 streaming=True,
             )
     
+    def _describe_images(self, attachments: List[Dict[str, Any]]) -> str:
+        """Call the vision LLM once per image attachment and return a combined
+        description string that can be prepended to the user's query.
+
+        Each attachment dict must have:
+            "data"      – base64-encoded image bytes
+            "mime_type" – e.g. "image/png"
+
+        Only image attachments are handled here; video/audio are skipped and
+        should be processed by their dedicated pipelines.
+        """
+        image_attachments = [a for a in attachments if a.get("media_type") == "image"]
+        if not image_attachments:
+            return ""
+
+        vision_llm = self._initialize_llm(vision=True)
+        descriptions = []
+
+        for idx, att in enumerate(image_attachments, start=1):
+            data_b64 = att.get("data", "")
+            mime = att.get("mime_type", "image/jpeg")
+
+            if self.model_type == 0:  # OpenAI — uses image_url with data URI
+                content = [
+                    {"type": "text", "text": "Describe this image in detail for use in a document Q&A context."},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data_b64}"}},
+                ]
+            else:  # Anthropic — uses source block
+                content = [
+                    {"type": "image", "source": {"type": "base64", "media_type": mime, "data": data_b64}},
+                    {"type": "text", "text": "Describe this image in detail for use in a document Q&A context."},
+                ]
+
+            try:
+                response = vision_llm.invoke([HumanMessage(content=content)])
+                desc = response.content if hasattr(response, "content") else str(response)
+                descriptions.append(f"[Image {idx}: {desc.strip()}]")
+            except Exception as e:
+                descriptions.append(f"[Image {idx}: could not be described — {e}]")
+
+        return "\n".join(descriptions)
+
     def _create_agent(self, chat_id: int, user_email: str) -> AgentExecutor:
         tools = [
             DocumentRetrievalTool(chat_id, user_email),
@@ -590,9 +634,16 @@ class ReactiveDocumentAgent:
         if has_media:
             self.llm = self._initialize_llm(vision=True)
 
+        # Describe any inline images and fold the descriptions into the query
+        enriched_query = query
+        if has_media:
+            image_context = self._describe_images(media_attachments)
+            if image_context:
+                enriched_query = f"{query}\n\n{image_context}".strip()
+
         # Use multi-agent system if enabled
         if self.use_multi_agent and self.multi_agent_system:
-            yield from self.multi_agent_system.process_query_stream(query, chat_id, user_email)
+            yield from self.multi_agent_system.process_query_stream(enriched_query, chat_id, user_email)
             return
 
         # Fallback to original single-agent system
@@ -600,27 +651,29 @@ class ReactiveDocumentAgent:
             # Create agent for this specific chat context
             agent_executor = self._create_agent(chat_id, user_email)
 
-            # Add user message to database
+            # Add user message to database (store original query, not enriched version)
             if user_email:
                 add_message_to_db(query, chat_id, 1)
             
-            # Yield initial status
+            # Yield initial status — also tell the frontend if images were enriched
             yield {
                 "type": "start",
                 "message": "Processing your query...",
+                "has_images": has_media,
                 "timestamp": self._get_timestamp()
             }
             
             # Track intermediate steps and current answer
             intermediate_steps = []
             current_answer = ""
-            
+
             # Create a list to collect streaming events
             streaming_events = []
-            
+
             # Track the final reasoning steps as built by frontend logic
             final_reasoning_steps = []
-            
+
+
             # Create a callback to capture and immediately yield streaming events
             def stream_callback(event):
                 streaming_events.append(event)
@@ -632,7 +685,7 @@ class ReactiveDocumentAgent:
                 callback_handler = StreamingAgentCallbackHandler(stream_callback)
                 
                 response = agent_executor.invoke(
-                    {"input": query},
+                    {"input": enriched_query},
                     config={"callbacks": [callback_handler]}
                 )
                 
