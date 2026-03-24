@@ -21,6 +21,7 @@ const Sidebar = ({
   isCollapsed,
   onToggle,
   chats,
+  chatsLoading = false,
   onRefreshChats,
   onRenameChat,
   onDeleteChat,
@@ -70,6 +71,7 @@ const Sidebar = ({
             </Link>
             <ChatHistory
               chats={chats}
+              loading={chatsLoading}
               handleChatSelect={handleChatSelect}
               onRefreshChats={onRefreshChats}
               onRenameChat={onRenameChat}
