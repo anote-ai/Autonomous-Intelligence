@@ -633,6 +633,45 @@ def test_generate_and_get_api_keys_invalid_token(
     assert get_response.get_json() == {"error": "Invalid JWT"}
 
 
+def test_demo_chat_routes_use_demo_user(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(app_module, "ensure_demo_user_exists", lambda email: 1)
+    monkeypatch.setattr(app_module, "RetrieveMessagesHandler", lambda request, user_email: app_module.jsonify(user_email=user_email))
+    monkeypatch.setattr(app_module, "RetrieveCurrentDocsHandler", lambda request, user_email: app_module.jsonify(user_email=user_email))
+
+    messages_response = client.post("/retrieve-messages-from-chat-demo", json={"chat_id": 7, "chat_type": 0})
+    assert messages_response.status_code == 200
+    assert messages_response.get_json() == {"user_email": "anon@anote.ai"}
+
+    docs_response = client.post("/retrieve-current-docs-demo", json={"chat_id": 7})
+    assert docs_response.status_code == 200
+    assert docs_response.get_json() == {"user_email": "anon@anote.ai"}
+
+
+def test_process_message_pdf_demo_uses_fallback_with_demo_user(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(app_module, "ensure_demo_user_exists", lambda email: 1)
+    monkeypatch.setattr(
+        app_module,
+        "_process_message_pdf_fallback",
+        lambda message, chat_id, model_type, model_key, user_email, is_guest=False: app_module.jsonify(
+            message=message,
+            chat_id=chat_id,
+            user_email=user_email,
+            is_guest=is_guest,
+        ),
+    )
+
+    response = client.post("/process-message-pdf-demo", json={"message": "hello", "chat_id": 11, "model_type": 0})
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "message": "hello",
+        "chat_id": 11,
+        "user_email": "anon@anote.ai",
+        "is_guest": False,
+    }
+
+
 def test_generate_api_key_returns_correct_shape(
     client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
 ) -> None:

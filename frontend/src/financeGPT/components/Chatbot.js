@@ -39,6 +39,13 @@ const Chatbot = ({
   onChatsChanged,
   onUploadComplete,
   selectedChatId,
+  processMessagePath = "process-message-pdf",
+  uploadPath = "ingest-pdf",
+  retrieveMessagesPath = "retrieve-messages-from-chat",
+  retrieveDocsPath = "retrieve-current-docs",
+  enableChatNameInference = true,
+  emptyStateTitle = "What can I help you with?",
+  streamResponses = true,
 }) => {
   const [message, setMessage] = useState("");
   const inputRef = useRef(null);
@@ -116,7 +123,7 @@ const Chatbot = ({
       formData.append("chat_id", chatId);
 
       // Upload files using your existing fetcher to ingest-pdf endpoint
-      const response = await fetcher("ingest-pdf", {
+      const response = await fetcher(uploadPath, {
         method: "POST",
         body: formData,
         // Don't set Content-Type header for FormData, let browser set it
@@ -251,7 +258,7 @@ const Chatbot = ({
   // Function to fetch uploaded documents for a chat and create system messages
   const fetchUploadedDocuments = useCallback(async (chatId) => {
     try {
-      const response = await fetcher("retrieve-current-docs", {
+        const response = await fetcher(retrieveDocsPath, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -272,7 +279,7 @@ const Chatbot = ({
       console.error("Error fetching uploaded documents:", error);
     }
     return [];
-  }, []);
+  }, [retrieveDocsPath]);
 
   const handleSendMessage = async (event) => {
     event.preventDefault();
@@ -298,12 +305,9 @@ const Chatbot = ({
     const currentMessage = message.trim();
     setMessage("");
 
-    let targetChatId = id;
+    let targetChatId = id || selectedChatId;
 
-    const isNewChat =
-      !id ||
-      window.location.pathname === "/" ||
-      window.location.pathname === "/chat";
+    const isNewChat = !targetChatId;
 
     if (isNewChat) {
       try {
@@ -521,7 +525,8 @@ const Chatbot = ({
                   eventData.type === "step-complete") &&
                 eventData.answer &&
                 !chatNameGenerated &&
-                !isGuestChat
+                !isGuestChat &&
+                enableChatNameInference
               ) {
                 await inferChatName(originalText, eventData.answer, chatId);
                 setChatNameGenerated(true);
@@ -569,7 +574,7 @@ const Chatbot = ({
         )
       );
     }
-  }, [chatNameGenerated, inferChatName, onChatsChanged]);
+  }, [chatNameGenerated, enableChatNameInference, inferChatName, onChatsChanged]);
 
   const sendToAPI = useCallback(async (text, chatId, thinkingId) => {
     try {
@@ -586,7 +591,7 @@ const Chatbot = ({
         });
       }
 
-      const res = await fetcher("process-message-pdf", {
+      const res = await fetcher(processMessagePath, {
         method: "POST",
         isGuest: isGuestChat,
         headers: { "Content-Type": "application/json" },
@@ -606,7 +611,26 @@ const Chatbot = ({
         throw new Error(`HTTP error! status: ${res.status}`);
       }
 
-      await handleSSEStreamingResponse(res, thinkingId, text, chatId);
+      if (streamResponses) {
+        await handleSSEStreamingResponse(res, thinkingId, text, chatId);
+      } else {
+        const data = await res.json();
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === thinkingId
+              ? {
+                  ...msg,
+                  content:
+                    data.answer ||
+                    "Sorry, I couldn't generate a response. Please try again.",
+                  isThinking: false,
+                  sources: data.sources || [],
+                  reasoning: data.reasoning || [],
+                }
+              : msg
+          )
+        );
+      }
 
       if (!isGuestChat) {
         localStorage.removeItem(`pending-message-${chatId}`);
@@ -629,7 +653,7 @@ const Chatbot = ({
         )
       );
     }
-  }, [handleSSEStreamingResponse, isPrivate, user]);
+  }, [handleSSEStreamingResponse, isPrivate, processMessagePath, streamResponses, user]);
 
   // Function to toggle reasoning expansion
   const toggleReasoningExpansion = (messageId) => {
@@ -647,10 +671,12 @@ const Chatbot = ({
 
     pollingStartedRef.current = false;
 
-    if (id) {
+    const activeChatId = id || selectedChatId;
+
+    if (activeChatId) {
       const loadChat = async () => {
-        if (!selectedChatId) {
-          handleChatSelect(id);
+        if (handleChatSelect && activeChatId !== selectedChatId) {
+          handleChatSelect(activeChatId);
         }
 
         // Seed from Redux cache immediately so the user sees messages
@@ -660,13 +686,13 @@ const Chatbot = ({
         }
 
         try {
-          const res = await fetcher("retrieve-messages-from-chat", {
+          const res = await fetcher(retrieveMessagesPath, {
             method: "POST",
             headers: {
               Accept: "application/json",
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ chat_id: id, chat_type: 0 }),
+            body: JSON.stringify({ chat_id: activeChatId, chat_type: 0 }),
           });
 
           const data = await res.json();
@@ -677,7 +703,7 @@ const Chatbot = ({
           if (!data.messages?.length) {
             const pending =
               location.state?.message ||
-              localStorage.getItem(`pending-message-${id}`);
+              localStorage.getItem(`pending-message-${activeChatId}`);
             if (pending) {
               console.log(
                 "[handleLoadChat] Loading pending message after new chat creation:",
@@ -685,14 +711,14 @@ const Chatbot = ({
               );
               const userMsg = {
                 id: "user-content",
-                chat_id: id,
+                chat_id: activeChatId,
                 role: "user",
                 content: pending,
                 timestamp: Date.now(),
               };
               const thinkingMsg = {
                 id: `thinking-${Date.now()}`,
-                chat_id: id,
+                chat_id: activeChatId,
                 role: "assistant",
                 content: "",
                 isThinking: true,
@@ -703,11 +729,11 @@ const Chatbot = ({
               setMessages([userMsg, thinkingMsg]);
               if (location.state?.message) {
                 localStorage.setItem(
-                  `pending-message-${id}`,
+                  `pending-message-${activeChatId}`,
                   location.state.message
                 );
               }
-              await sendToAPI(pending, id, thinkingMsg.id);
+              await sendToAPI(pending, activeChatId, thinkingMsg.id);
               return;
             }
 
@@ -715,14 +741,14 @@ const Chatbot = ({
             return;
           }
 
-          localStorage.removeItem(`pending-message-${id}`);
-          const formatted = formatChatMessages(data.messages, id);
+          localStorage.removeItem(`pending-message-${activeChatId}`);
+          const formatted = formatChatMessages(data.messages, activeChatId);
 
-          const fileSystemMessages = await fetchUploadedDocuments(id);
+          const fileSystemMessages = await fetchUploadedDocuments(activeChatId);
           const sorted = sortMessagesByTimestamp([...formatted, ...fileSystemMessages]);
           setMessages(sorted);
           // Update the Redux cache so the next visit to this chat is instant.
-          dispatch(setChatMessages({ chatId: id, messages: sorted }));
+          dispatch(setChatMessages({ chatId: activeChatId, messages: sorted }));
         } catch (err) {
           console.error("Failed to load chat:", err);
         }
@@ -744,6 +770,7 @@ const Chatbot = ({
     id,
     location.state?.message,
     fetchUploadedDocuments,
+    retrieveMessagesPath,
     selectedChatId,
     handleChatSelect,
     sendToAPI,
@@ -934,7 +961,7 @@ const Chatbot = ({
         {/* Welcome message */}
         {messages.length === 0 && (
           <div className="w-full text-white animate-typing overflow-hidden whitespace-nowrap flex items-center justify-center font-bold text-2xl mb-4">
-            What can I help you with?
+            {emptyStateTitle}
           </div>
         )}
 

@@ -61,6 +61,7 @@ from database.db import (
     access_shareable_chat,
     create_user_if_does_not_exist,
     create_chat_shareable_url,
+    ensure_demo_user_exists,
     ensure_sdk_user_exists as ensure_SDK_user_exists,
     get_chat_info,
     get_message_info,
@@ -118,6 +119,7 @@ load_dotenv(override=True)
 
 # Backward-compatible alias while callers migrate off the legacy misspelling.
 access_sharable_chat = access_shareable_chat
+DEMO_USER_EMAIL = "anon@anote.ai"
 
 app = Flask(__name__)
 app.register_blueprint(gpt4_blueprint)
@@ -613,6 +615,12 @@ def retrieve_messages_from_chat():
 
     return RetrieveMessagesHandler(request, user_email)
 
+
+@app.route('/retrieve-messages-from-chat-demo', methods=['POST'])
+def retrieve_messages_from_chat_demo():
+    ensure_demo_user_exists(DEMO_USER_EMAIL)
+    return RetrieveMessagesHandler(request, DEMO_USER_EMAIL)
+
 @app.route('/retrieve-shared-messages-from-chat', methods=['POST'])
 def get_playbook_messages():
     chat_type = 0
@@ -693,6 +701,26 @@ def ingest_pdfs():
     return IngestDocumentsHandler(request, user_email, p, chunk_document)
 
 
+@app.route('/ingest-pdf-demo', methods=['POST'])
+def ingest_pdfs_demo():
+    ensure_demo_user_exists(DEMO_USER_EMAIL)
+    chat_id = request.form.getlist("chat_id")[0] if request.form.getlist("chat_id") else None
+    if not chat_id:
+        chat_id = add_chat_to_db(DEMO_USER_EMAIL, 0, 0)
+
+    files = request.files.getlist("files[]")
+    max_chunk_size = 1000
+    for file in files:
+        result = p.from_buffer(file)
+        text = result["content"].strip()
+        filename = file.filename
+        doc_id, does_exist = add_document_to_db(text, filename, chat_id=chat_id)
+        if not does_exist:
+            chunk_document.remote(text, max_chunk_size, doc_id)
+
+    return jsonify({"Success": "Document Uploaded", "chat_id": chat_id}), 200
+
+
     #return text, filename
 
 @app.route('/retrieve-current-docs', methods=['POST'])
@@ -702,6 +730,12 @@ def retrieve_current_docs():
     except InvalidTokenError:
         return jsonify({"error": "Invalid JWT"}), 401
     return RetrieveCurrentDocsHandler(request, user_email)
+
+
+@app.route('/retrieve-current-docs-demo', methods=['POST'])
+def retrieve_current_docs_demo():
+    ensure_demo_user_exists(DEMO_USER_EMAIL)
+    return RetrieveCurrentDocsHandler(request, DEMO_USER_EMAIL)
 
 @app.route('/delete-doc', methods=['POST'])
 def delete_doc():
@@ -834,6 +868,16 @@ def process_message_pdf():  # pragma: no cover
     else:
         # Agents disabled, use original implementation
         return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
+
+
+@app.route('/process-message-pdf-demo', methods=['POST'])
+def process_message_pdf_demo():  # pragma: no cover
+    ensure_demo_user_exists(DEMO_USER_EMAIL)
+    message = request.json.get('message')
+    chat_id = request.json.get('chat_id')
+    model_type = request.json.get('model_type', 0)
+    model_key = request.json.get('model_key', "")
+    return _process_message_pdf_fallback(message, chat_id, model_type, model_key, DEMO_USER_EMAIL, False)
 
 def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email, is_guest=False):  # pragma: no cover
     """Fallback implementation using the original direct LLM approach without the ReActive Agent"""
