@@ -1,19 +1,23 @@
-"""Autonomous document agent using native provider tool_use + extended thinking.
+"""Autonomous document agent — native tool_use + streaming + extended thinking.
 
-The agent runs a proper agentic loop:
-  1. Build a message with the user query (+ any media descriptions)
-  2. Call the LLM with tool definitions and optional extended thinking
-  3. Execute any tool_use blocks, collect results
-  4. Feed tool results back and repeat until the model produces a final answer
-  5. Persist the AI message + sources and yield a completion event
+Architecture
+------------
+- True agentic loop: reason → pick tool → execute → observe → repeat
+- Anthropic path: streaming API with real-time text/thinking tokens; extended
+  thinking enabled only for claude-3-7+ models (bug fix vs v1)
+- OpenAI path: function-calling loop with streaming text
+- 6 tools: retrieve_documents, list_documents, get_chat_history,
+           run_python, search_web, fetch_url
 
-Supported providers
--------------------
-- Anthropic (model_type=1): native tool_use, extended thinking on claude-3-7+
-- OpenAI (model_type=0): function-calling agentic loop via openai SDK
-
-Streaming: yields dicts compatible with the existing SSE protocol so the
-frontend requires no changes.
+Streaming events emitted (SSE-compatible dicts)
+-----------------------------------------------
+  {"type": "start"}
+  {"type": "thinking",       "content": "..."}   ← extended-thinking block
+  {"type": "llm_reasoning",  "thought": "..."}   ← alias for old frontend path
+  {"type": "text_token",     "content": "..."}   ← streamed text token
+  {"type": "tool_start",     "tool_name": "...", "input": "..."}
+  {"type": "tool_end",       "tool_name": "...", "output": "..."}
+  {"type": "complete",       "answer": "...", "sources": [...], "thought": "..."}
 """
 
 from __future__ import annotations
@@ -37,28 +41,27 @@ from api_endpoints.financeGPT.chatbot_endpoints import (
 )
 
 # ---------------------------------------------------------------------------
-# Shared tool schema (provider-agnostic)
+# Tool registry — one canonical definition, converted per-provider below
 # ---------------------------------------------------------------------------
 
-_TOOL_SPECS = [
+_TOOL_SPECS: list[dict] = [
     {
         "name": "retrieve_documents",
         "description": (
             "Semantic search over the user's uploaded documents. "
-            "Use this whenever the query could be answered by the documents. "
-            "Returns the most relevant chunks with their source file names. "
-            "Always prefer this over general knowledge when documents are available."
+            "ALWAYS call this first before answering any factual question. "
+            "Returns the most relevant text chunks with their source filenames."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query to find relevant document chunks.",
+                    "description": "Natural-language search query.",
                 },
                 "k": {
                     "type": "integer",
-                    "description": "Number of chunks to retrieve (1–10, default 6).",
+                    "description": "Number of chunks to retrieve (1–10). Default 6.",
                     "default": 6,
                 },
             },
@@ -67,25 +70,24 @@ _TOOL_SPECS = [
     },
     {
         "name": "list_documents",
-        "description": "List all documents the user has uploaded in this chat session.",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
+        "description": (
+            "List every document the user has uploaded in this chat session. "
+            "Call this when the user asks what files are available."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []},
     },
     {
         "name": "get_chat_history",
         "description": (
             "Retrieve recent messages from this conversation. "
-            "Useful for understanding what has already been discussed."
+            "Call this only when the query explicitly references earlier context."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "limit": {
                     "type": "integer",
-                    "description": "Number of recent message pairs to fetch (default 5).",
+                    "description": "Number of recent message pairs (default 5).",
                     "default": 5,
                 }
             },
@@ -96,71 +98,110 @@ _TOOL_SPECS = [
         "name": "run_python",
         "description": (
             "Execute a Python code snippet and return its stdout/stderr. "
-            "Use for data analysis, calculations, or any task where running "
-            "real code gives a more reliable answer than pure reasoning. "
-            "Standard library, numpy, pandas, and matplotlib are available."
+            "Use for data analysis, calculations, chart/table generation, or any "
+            "task where running real code is more reliable than reasoning. "
+            "Standard library + numpy, pandas, matplotlib are available."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "code": {
                     "type": "string",
-                    "description": "Python code to execute. Use print() to output results.",
+                    "description": "Python code to execute. Use print() to surface results.",
                 }
             },
             "required": ["code"],
         },
     },
+    {
+        "name": "search_web",
+        "description": (
+            "Search the internet for up-to-date information. "
+            "Use when the user asks about current events, recent data, or facts "
+            "that are unlikely to be in the uploaded documents."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query string.",
+                },
+                "num_results": {
+                    "type": "integer",
+                    "description": "Number of results to return (1–10, default 5).",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "fetch_url",
+        "description": (
+            "Fetch the readable text content of a web page. "
+            "Use to read articles, documentation, or any public URL the user mentions."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "Full URL to fetch (https://...).",
+                }
+            },
+            "required": ["url"],
+        },
+    },
 ]
 
 _SYSTEM_PROMPT = """\
-You are Autonomous Intelligence — a powerful AI agent that reasons step-by-step \
-and uses tools to give precise, well-grounded answers.
+You are Autonomous Intelligence — a highly capable AI agent that reasons carefully \
+and uses tools to give precise, grounded answers.
 
-Guidelines:
-- Always start by checking what documents are available before answering.
-- Use retrieve_documents to ground your answer in the user's documents.
-- Use list_documents to see what files are uploaded.
-- Use get_chat_history only when the query references earlier conversation.
-- Use run_python for calculations, data analysis, or tasks where code is \
-  more reliable than text reasoning.
-- Cite document sources (filename) when quoting from documents.
-- If documents do not contain the answer, say so and answer from general \
-  knowledge.
-- Be thorough but concise. Do not pad with filler text.
+Core principles:
+1. THINK before you act. Identify what information you need.
+2. Always call retrieve_documents first when a document-based question is asked.
+3. Call list_documents if you're unsure what files are available.
+4. Use search_web for current events or facts not in documents.
+5. Use fetch_url to read any URL the user mentions or that appeared in search results.
+6. Use run_python for: data analysis, math, sorting/filtering data, chart generation.
+7. Cite your sources: when quoting documents, mention the filename.
+8. If documents don't contain the answer, say so and answer from general knowledge.
+9. Be thorough but direct. No filler or padding.
+10. If a task requires multiple steps (e.g. search → read → summarize), do them all.
 """
+
+# Max characters of accumulated tool outputs to keep in context before truncating
+_MAX_TOOL_OUTPUT_CHARS = 8000
 
 
 # ---------------------------------------------------------------------------
-# Anthropic tool format
+# Provider-specific tool formats
 # ---------------------------------------------------------------------------
 
 def _anthropic_tools() -> list[dict]:
     return [
         {
-            "name": spec["name"],
-            "description": spec["description"],
-            "input_schema": spec["parameters"],
+            "name": s["name"],
+            "description": s["description"],
+            "input_schema": s["parameters"],
         }
-        for spec in _TOOL_SPECS
+        for s in _TOOL_SPECS
     ]
 
-
-# ---------------------------------------------------------------------------
-# OpenAI tool format
-# ---------------------------------------------------------------------------
 
 def _openai_tools() -> list[dict]:
     return [
         {
             "type": "function",
             "function": {
-                "name": spec["name"],
-                "description": spec["description"],
-                "parameters": spec["parameters"],
+                "name": s["name"],
+                "description": s["description"],
+                "parameters": s["parameters"],
             },
         }
-        for spec in _TOOL_SPECS
+        for s in _TOOL_SPECS
     ]
 
 
@@ -169,15 +210,11 @@ def _openai_tools() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 class AutonomousDocumentAgent:
-    """Autonomous agent that loops over tool calls until the model is done."""
+    """Autonomous tool-calling agent with true agentic loop."""
 
     def __init__(self, model_type: int = 0, model_key: str = ""):
         self.model_type = model_type
         self.model_key = model_key
-
-    # ------------------------------------------------------------------
-    # Public entry points
-    # ------------------------------------------------------------------
 
     def process_query_stream(
         self,
@@ -186,23 +223,17 @@ class AutonomousDocumentAgent:
         user_email: str,
         media_attachments: Optional[list] = None,
     ) -> Generator[dict, None, None]:
-        """Yield SSE-compatible event dicts for an authenticated user query."""
         yield from self._run(
             query=query,
             chat_id=chat_id,
             user_email=user_email,
-            is_guest=False,
             media_attachments=media_attachments or [],
         )
 
     def process_query_stream_guest(self, query: str) -> Generator[dict, None, None]:
-        """Minimal streaming for guest users (no document access)."""
         yield {"type": "start", "message": "Processing your query...", "timestamp": _ts()}
         try:
-            if self.model_type == 1:
-                answer = _guest_anthropic(query, self.model_key)
-            else:
-                answer = _guest_openai(query, self.model_key)
+            answer = _guest_answer(query, self.model_type, self.model_key)
         except Exception as exc:
             answer = f"I'm sorry, I encountered an error: {exc}"
         yield {
@@ -214,7 +245,7 @@ class AutonomousDocumentAgent:
         }
 
     # ------------------------------------------------------------------
-    # Core agentic loop dispatcher
+    # Core dispatcher
     # ------------------------------------------------------------------
 
     def _run(
@@ -222,253 +253,320 @@ class AutonomousDocumentAgent:
         query: str,
         chat_id: int,
         user_email: str,
-        is_guest: bool,
         media_attachments: list,
     ) -> Generator[dict, None, None]:
         yield {"type": "start", "message": "Processing your query...", "timestamp": _ts()}
-
-        # Persist user message
         add_message_to_db(query, chat_id, 1)
 
         if self.model_type == 1:
-            yield from self._run_anthropic(query, chat_id, user_email, media_attachments)
+            yield from _run_anthropic(query, chat_id, user_email, media_attachments, self.model_key)
         else:
-            yield from self._run_openai(query, chat_id, user_email, media_attachments)
+            yield from _run_openai(query, chat_id, user_email, media_attachments, self.model_key)
 
-    # ------------------------------------------------------------------
-    # Anthropic agentic loop
-    # ------------------------------------------------------------------
 
-    def _run_anthropic(
-        self,
-        query: str,
-        chat_id: int,
-        user_email: str,
-        media_attachments: list,
-    ) -> Generator[dict, None, None]:
-        from anthropic import Anthropic
+# ---------------------------------------------------------------------------
+# Anthropic agentic loop (streaming)
+# ---------------------------------------------------------------------------
 
-        api_key = self.model_key or os.getenv("ANTHROPIC_API_KEY")
-        client = Anthropic(api_key=api_key)
-        model = os.getenv("ANTHROPIC_AGENT_MODEL", AgentConfig.ANTHROPIC_VISION_MODEL)
+def _run_anthropic(
+    query: str,
+    chat_id: int,
+    user_email: str,
+    media_attachments: list,
+    model_key: str,
+) -> Generator[dict, None, None]:
+    from anthropic import Anthropic
 
-        # Build initial user content
-        user_content = _build_user_content_anthropic(query, media_attachments)
-        messages: list[dict] = [{"role": "user", "content": user_content}]
+    client = Anthropic(api_key=model_key or os.getenv("ANTHROPIC_API_KEY"))
+    model = os.getenv("ANTHROPIC_AGENT_MODEL", AgentConfig.ANTHROPIC_VISION_MODEL)
 
-        sources_found: list[dict] = []
-        final_answer = ""
-        final_thought = ""
+    # Extended thinking: ONLY claude-3-7 supports it (not claude-3-5!)
+    use_thinking = "claude-3-7" in model
 
-        for iteration in range(AgentConfig.AGENT_MAX_ITERATIONS):
-            # Build API kwargs
-            api_kwargs: dict[str, Any] = {
-                "model": model,
-                "max_tokens": 4096,
-                "system": _SYSTEM_PROMPT,
-                "tools": _anthropic_tools(),
-                "messages": messages,
-            }
-            # Extended thinking for claude-3-7+ models
-            supports_thinking = "claude-3-7" in model or "claude-3-5" in model
-            if supports_thinking:
+    user_content = _build_user_content_anthropic(query, media_attachments)
+    messages: list[dict] = [{"role": "user", "content": user_content}]
+
+    sources_found: list[dict] = []
+    final_answer = ""
+    final_thought = ""
+
+    for _iteration in range(AgentConfig.AGENT_MAX_ITERATIONS):
+        api_kwargs: dict[str, Any] = {
+            "model": model,
+            "max_tokens": 10000 if use_thinking else 4096,
+            "system": _SYSTEM_PROMPT,
+            "tools": _anthropic_tools(),
+            "messages": messages,
+        }
+        if use_thinking:
+            api_kwargs["thinking"] = {"type": "enabled", "budget_tokens": 6000}
+            api_kwargs["betas"] = ["interleaved-thinking-2025-05-14"]
+
+        # ── streaming call ─────────────────────────────────────────────
+        tool_calls: list[dict] = []
+        iter_answer = ""
+        iter_thought = ""
+
+        try:
+            with client.messages.stream(**api_kwargs) as stream:
+                current_block_type: Optional[str] = None
+                current_block_id: Optional[str] = None
+                current_block_name: Optional[str] = None
+                current_input_json = ""
+                current_thinking = ""
+
+                for event in stream:
+                    etype = event.type
+
+                    if etype == "content_block_start":
+                        cb = event.content_block
+                        current_block_type = cb.type
+                        current_input_json = ""
+                        current_thinking = ""
+
+                        if cb.type == "tool_use":
+                            current_block_id = cb.id
+                            current_block_name = cb.name
+                            yield {
+                                "type": "tool_start",
+                                "tool_name": cb.name,
+                                "input": "",
+                                "timestamp": _ts(),
+                            }
+
+                    elif etype == "content_block_delta":
+                        delta = event.delta
+                        dtype = delta.type
+
+                        if dtype == "text_delta":
+                            iter_answer += delta.text
+                            yield {"type": "text_token", "content": delta.text, "timestamp": _ts()}
+
+                        elif dtype == "thinking_delta":
+                            current_thinking += delta.thinking
+                            yield {"type": "thinking", "content": delta.thinking, "timestamp": _ts()}
+
+                        elif dtype == "input_json_delta":
+                            current_input_json += delta.partial_json
+
+                    elif etype == "content_block_stop":
+                        if current_block_type == "tool_use":
+                            try:
+                                parsed_input = json.loads(current_input_json) if current_input_json else {}
+                            except json.JSONDecodeError:
+                                parsed_input = {}
+                            tool_calls.append({
+                                "id": current_block_id,
+                                "name": current_block_name,
+                                "input": parsed_input,
+                            })
+
+                        elif current_block_type == "thinking" and current_thinking:
+                            iter_thought = current_thinking
+                            yield {
+                                "type": "llm_reasoning",
+                                "thought": current_thinking[:300],
+                                "raw_output": current_thinking[:500],
+                                "timestamp": _ts(),
+                            }
+
+                        current_block_type = None
+                        current_input_json = ""
+                        current_thinking = ""
+
+                response = stream.get_final_message()
+
+        except Exception as exc:
+            # If thinking caused the error, retry once without it
+            if use_thinking:
+                use_thinking = False
+                del api_kwargs["thinking"]
+                if "betas" in api_kwargs:
+                    del api_kwargs["betas"]
+                api_kwargs["max_tokens"] = 4096
                 try:
-                    api_kwargs["thinking"] = {
-                        "type": "enabled",
-                        "budget_tokens": 8000,
-                    }
-                    api_kwargs["max_tokens"] = 12000
-                except Exception:
-                    pass
-
-            try:
-                response = client.messages.create(**api_kwargs)
-            except Exception as exc:
-                # Retry without thinking if it caused the error
-                if "thinking" in api_kwargs:
-                    del api_kwargs["thinking"]
-                    api_kwargs["max_tokens"] = 4096
-                    try:
-                        response = client.messages.create(**api_kwargs)
-                    except Exception as exc2:
-                        yield {"type": "error", "message": str(exc2), "timestamp": _ts()}
-                        final_answer = f"Error: {exc2}"
-                        break
-                else:
-                    yield {"type": "error", "message": str(exc), "timestamp": _ts()}
-                    final_answer = f"Error: {exc}"
+                    response = client.messages.create(**api_kwargs)
+                    tool_calls, iter_answer, iter_thought = _parse_response_blocks(response)
+                except Exception as exc2:
+                    yield {"type": "error", "message": str(exc2), "timestamp": _ts()}
+                    final_answer = f"Error: {exc2}"
                     break
-
-            # Stream thinking and text blocks
-            has_tool_calls = False
-            tool_calls: list[dict] = []
-
-            for block in response.content:
-                btype = getattr(block, "type", None)
-                if btype == "thinking":
-                    thought_text = getattr(block, "thinking", "")
-                    final_thought = thought_text[:600]
-                    yield {
-                        "type": "thinking",
-                        "content": thought_text,
-                        "timestamp": _ts(),
-                    }
-                    yield {
-                        "type": "llm_reasoning",
-                        "thought": thought_text[:300],
-                        "raw_output": thought_text[:500],
-                        "timestamp": _ts(),
-                    }
-                elif btype == "text":
-                    final_answer += getattr(block, "text", "")
-                elif btype == "tool_use":
-                    has_tool_calls = True
-                    tool_calls.append({
-                        "id": block.id,
-                        "name": block.name,
-                        "input": block.input,
-                    })
-
-            if not has_tool_calls:
-                if not final_thought:
-                    final_thought = "Reasoned and composed the final answer."
-                break
-
-            # Append assistant turn and execute tools
-            messages.append({"role": "assistant", "content": response.content})
-            tool_results = []
-
-            for tc in tool_calls:
-                yield {
-                    "type": "tool_start",
-                    "tool_name": tc["name"],
-                    "input": str(tc["input"])[:200],
-                    "timestamp": _ts(),
-                }
-                output, docs = _execute_tool(tc["name"], tc["input"], chat_id, user_email)
-                sources_found.extend(docs)
-                yield {
-                    "type": "tool_end",
-                    "tool_name": tc["name"],
-                    "output": output[:300] + "…" if len(output) > 300 else output,
-                    "timestamp": _ts(),
-                }
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc["id"],
-                    "content": output,
-                })
-
-            messages.append({"role": "user", "content": tool_results})
-
-        else:
-            if not final_answer:
-                final_answer = (
-                    "I reached the maximum reasoning steps. Here is what I found."
-                )
-
-        yield from _finalize(final_answer, final_thought, sources_found, chat_id)
-
-    # ------------------------------------------------------------------
-    # OpenAI agentic loop
-    # ------------------------------------------------------------------
-
-    def _run_openai(
-        self,
-        query: str,
-        chat_id: int,
-        user_email: str,
-        media_attachments: list,
-    ) -> Generator[dict, None, None]:
-        import openai as _openai
-
-        api_key = self.model_key or os.getenv("OPENAI_API_KEY")
-        client = _openai.OpenAI(api_key=api_key)
-        model = os.getenv("OPENAI_AGENT_MODEL", AgentConfig.OPENAI_VISION_MODEL)
-
-        # Build initial user content
-        user_text = _build_user_content_openai(query, media_attachments)
-        messages: list[dict] = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": user_text},
-        ]
-
-        sources_found: list[dict] = []
-        final_answer = ""
-        final_thought = ""
-
-        for iteration in range(AgentConfig.AGENT_MAX_ITERATIONS):
-            try:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    tools=_openai_tools(),
-                    tool_choice="auto",
-                    max_tokens=4096,
-                )
-            except Exception as exc:
+            else:
                 yield {"type": "error", "message": str(exc), "timestamp": _ts()}
                 final_answer = f"Error: {exc}"
                 break
 
-            choice = response.choices[0]
-            msg = choice.message
+        final_answer += iter_answer
+        if iter_thought:
+            final_thought = iter_thought
 
-            # Stream any reasoning (not available for all OpenAI models)
-            if hasattr(msg, "reasoning") and msg.reasoning:
-                final_thought = msg.reasoning[:600]
-                yield {
-                    "type": "llm_reasoning",
-                    "thought": msg.reasoning[:300],
-                    "raw_output": msg.reasoning[:500],
-                    "timestamp": _ts(),
-                }
+        # ── no tool calls → model is done ─────────────────────────────
+        if not tool_calls:
+            if not final_thought:
+                final_thought = "Reasoned and composed the final answer."
+            break
 
-            tool_calls = getattr(msg, "tool_calls", None) or []
+        # ── execute tool calls ─────────────────────────────────────────
+        messages.append({"role": "assistant", "content": response.content})
+        tool_results = []
 
-            if not tool_calls:
-                final_answer = msg.content or ""
-                if not final_thought:
-                    final_thought = "Reasoned and composed the final answer."
-                break
+        for tc in tool_calls:
+            output, docs = _execute_tool(tc["name"], tc["input"], chat_id, user_email)
+            sources_found.extend(docs)
+            truncated = output[:_MAX_TOOL_OUTPUT_CHARS]
+            if len(output) > _MAX_TOOL_OUTPUT_CHARS:
+                truncated += f"\n… [output truncated at {_MAX_TOOL_OUTPUT_CHARS} chars]"
+            yield {
+                "type": "tool_end",
+                "tool_name": tc["name"],
+                "output": output[:300] + "…" if len(output) > 300 else output,
+                "timestamp": _ts(),
+            }
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tc["id"],
+                "content": truncated,
+            })
 
-            # Append assistant turn
-            messages.append(msg)
+        messages.append({"role": "user", "content": tool_results})
+        # Prune old tool results to keep context window manageable
+        messages = _prune_messages(messages)
 
-            for tc in tool_calls:
-                fn = tc.function
-                try:
-                    inputs = json.loads(fn.arguments)
-                except json.JSONDecodeError:
-                    inputs = {}
+    else:
+        if not final_answer:
+            final_answer = "I reached the maximum reasoning steps. Here is what I found so far."
 
-                yield {
-                    "type": "tool_start",
-                    "tool_name": fn.name,
-                    "input": fn.arguments[:200],
-                    "timestamp": _ts(),
-                }
-                output, docs = _execute_tool(fn.name, inputs, chat_id, user_email)
-                sources_found.extend(docs)
-                yield {
-                    "type": "tool_end",
-                    "tool_name": fn.name,
-                    "output": output[:300] + "…" if len(output) > 300 else output,
-                    "timestamp": _ts(),
-                }
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": output,
-                })
+    yield from _finalize(final_answer, final_thought, sources_found, chat_id)
 
-        else:
-            if not final_answer:
-                final_answer = (
-                    "I reached the maximum reasoning steps. Here is what I found."
-                )
 
-        yield from _finalize(final_answer, final_thought, sources_found, chat_id)
+# ---------------------------------------------------------------------------
+# OpenAI agentic loop
+# ---------------------------------------------------------------------------
+
+def _run_openai(
+    query: str,
+    chat_id: int,
+    user_email: str,
+    media_attachments: list,
+    model_key: str,
+) -> Generator[dict, None, None]:
+    import openai as _openai
+
+    client = _openai.OpenAI(api_key=model_key or os.getenv("OPENAI_API_KEY"))
+    model = os.getenv("OPENAI_AGENT_MODEL", AgentConfig.OPENAI_VISION_MODEL)
+
+    user_text = _build_user_content_openai(query, media_attachments)
+    messages: list[dict] = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": user_text},
+    ]
+
+    sources_found: list[dict] = []
+    final_answer = ""
+    final_thought = ""
+
+    for _iteration in range(AgentConfig.AGENT_MAX_ITERATIONS):
+        # Stream text tokens
+        iter_answer = ""
+        tool_calls_raw: list[dict] = []
+
+        try:
+            with client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=_openai_tools(),
+                tool_choice="auto",
+                max_tokens=4096,
+                stream=True,
+            ) as stream:
+                current_tool_calls: dict[int, dict] = {}
+
+                for chunk in stream:
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    if delta is None:
+                        continue
+
+                    # Stream text
+                    if delta.content:
+                        iter_answer += delta.content
+                        yield {"type": "text_token", "content": delta.content, "timestamp": _ts()}
+
+                    # Accumulate tool call chunks
+                    if delta.tool_calls:
+                        for tc_chunk in delta.tool_calls:
+                            idx = tc_chunk.index
+                            if idx not in current_tool_calls:
+                                current_tool_calls[idx] = {
+                                    "id": tc_chunk.id or "",
+                                    "name": "",
+                                    "arguments": "",
+                                }
+                            if tc_chunk.function:
+                                if tc_chunk.function.name:
+                                    current_tool_calls[idx]["name"] += tc_chunk.function.name
+                                if tc_chunk.function.arguments:
+                                    current_tool_calls[idx]["arguments"] += tc_chunk.function.arguments
+                            if tc_chunk.id:
+                                current_tool_calls[idx]["id"] = tc_chunk.id
+
+                tool_calls_raw = list(current_tool_calls.values())
+
+        except Exception as exc:
+            yield {"type": "error", "message": str(exc), "timestamp": _ts()}
+            final_answer = f"Error: {exc}"
+            break
+
+        final_answer += iter_answer
+
+        if not tool_calls_raw:
+            if not final_thought:
+                final_thought = "Reasoned and composed the final answer."
+            break
+
+        # Build assistant message with tool_calls
+        parsed_tool_calls = []
+        for tc in tool_calls_raw:
+            parsed_tool_calls.append({
+                "id": tc["id"],
+                "type": "function",
+                "function": {"name": tc["name"], "arguments": tc["arguments"]},
+            })
+        messages.append({"role": "assistant", "content": None, "tool_calls": parsed_tool_calls})
+
+        for tc in tool_calls_raw:
+            try:
+                inputs = json.loads(tc["arguments"]) if tc["arguments"] else {}
+            except json.JSONDecodeError:
+                inputs = {}
+
+            yield {
+                "type": "tool_start",
+                "tool_name": tc["name"],
+                "input": tc["arguments"][:200],
+                "timestamp": _ts(),
+            }
+            output, docs = _execute_tool(tc["name"], inputs, chat_id, user_email)
+            sources_found.extend(docs)
+            yield {
+                "type": "tool_end",
+                "tool_name": tc["name"],
+                "output": output[:300] + "…" if len(output) > 300 else output,
+                "timestamp": _ts(),
+            }
+            truncated = output[:_MAX_TOOL_OUTPUT_CHARS]
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc["id"],
+                "content": truncated,
+            })
+
+        messages = _prune_messages(messages)
+
+    else:
+        if not final_answer:
+            final_answer = "I reached the maximum reasoning steps. Here is what I found so far."
+
+    yield from _finalize(final_answer, final_thought, sources_found, chat_id)
 
 
 # ---------------------------------------------------------------------------
@@ -478,115 +576,229 @@ class AutonomousDocumentAgent:
 def _execute_tool(
     name: str, inputs: dict, chat_id: int, user_email: str
 ) -> tuple[str, list[dict]]:
-    """Run a named tool and return (output_string, list_of_source_dicts)."""
     docs: list[dict] = []
     try:
         if name == "retrieve_documents":
-            query = inputs.get("query", "")
-            k = min(int(inputs.get("k", 6)), 10)
-            chunks = get_relevant_chunks(k, query, chat_id, user_email)
-            if not chunks:
-                return "No relevant document chunks found.", docs
-            parts = []
-            for chunk_text, doc_name in chunks:
-                parts.append(f"**Source: {doc_name}**\n{chunk_text.strip()}")
-                docs.append({"chunk_text": chunk_text, "document_name": doc_name})
-            return "\n\n---\n\n".join(parts), docs
-
+            return _tool_retrieve(inputs, chat_id, user_email, docs)
         elif name == "list_documents":
-            doc_list = retrieve_docs_from_db(chat_id, user_email)
-            if not doc_list:
-                return "No documents uploaded in this chat.", docs
-            lines = [f"- {d['document_name']} (ID: {d['id']})" for d in doc_list]
-            return "Uploaded documents:\n" + "\n".join(lines), docs
-
+            return _tool_list_docs(chat_id, user_email), docs
         elif name == "get_chat_history":
-            limit = int(inputs.get("limit", 5))
-            messages = retrieve_message_from_db(user_email, chat_id, 0)
-            if not messages:
-                return "No chat history.", docs
-            recent = messages[-(limit * 2):]
-            lines = []
-            for m in recent:
-                role = "User" if m["sent_from_user"] == 1 else "Assistant"
-                lines.append(f"{role}: {m['message_text']}")
-            return "\n".join(lines), docs
-
+            return _tool_chat_history(inputs, chat_id, user_email), docs
         elif name == "run_python":
-            code = inputs.get("code", "").strip()
-            if not code:
-                return "No code provided.", docs
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".py", delete=False, encoding="utf-8"
-            ) as tmp:
-                tmp.write(code)
-                tmp_path = tmp.name
-            try:
-                result = subprocess.run(
-                    [sys.executable, tmp_path],
-                    capture_output=True, text=True, timeout=30,
-                )
-                out = result.stdout
-                if result.stderr:
-                    out += f"\n[stderr]\n{result.stderr}"
-                return out.strip() or "(no output)", docs
-            except subprocess.TimeoutExpired:
-                return "[Error] Code execution timed out after 30 seconds.", docs
-            except Exception as exc:
-                return f"[Error] {exc}", docs
-            finally:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-
+            return _tool_run_python(inputs), docs
+        elif name == "search_web":
+            return _tool_search_web(inputs), docs
+        elif name == "fetch_url":
+            return _tool_fetch_url(inputs), docs
         else:
             return f"Unknown tool: {name}", docs
-
     except Exception as exc:
-        return f"Tool error ({name}): {exc}\n{traceback.format_exc()[:500]}", docs
+        return f"Tool error ({name}): {exc}\n{traceback.format_exc()[:400]}", docs
 
 
-# ---------------------------------------------------------------------------
-# Finalization helper
-# ---------------------------------------------------------------------------
+def _tool_retrieve(inputs: dict, chat_id: int, user_email: str, docs: list) -> tuple[str, list]:
+    query = inputs.get("query", "")
+    k = min(int(inputs.get("k", 6)), 10)
+    chunks = get_relevant_chunks(k, query, chat_id, user_email)
+    if not chunks:
+        return "No relevant document chunks found for this query.", docs
+    parts = []
+    for chunk_text, doc_name in chunks:
+        parts.append(f"**Source: {doc_name}**\n{chunk_text.strip()}")
+        docs.append({"chunk_text": chunk_text, "document_name": doc_name})
+    return "\n\n---\n\n".join(parts), docs
 
-def _finalize(
-    answer: str,
-    thought: str,
-    sources: list[dict],
-    chat_id: int,
-) -> Generator[dict, None, None]:
-    """Persist AI message + sources, then yield the completion event."""
-    if not answer:
-        answer = "I was unable to generate a response. Please try again."
-    if not thought:
-        thought = "Reasoned and composed the final answer."
 
-    msg_id = add_message_to_db(answer, chat_id, 0)
-    if sources and msg_id:
+def _tool_list_docs(chat_id: int, user_email: str) -> str:
+    doc_list = retrieve_docs_from_db(chat_id, user_email)
+    if not doc_list:
+        return "No documents uploaded in this chat."
+    lines = [f"- {d['document_name']} (ID: {d['id']})" for d in doc_list]
+    return "Uploaded documents:\n" + "\n".join(lines)
+
+
+def _tool_chat_history(inputs: dict, chat_id: int, user_email: str) -> str:
+    limit = max(1, min(int(inputs.get("limit", 5)), 20))
+    messages = retrieve_message_from_db(user_email, chat_id, 0)
+    if not messages:
+        return "No chat history."
+    recent = messages[-(limit * 2):]
+    lines = []
+    for m in recent:
+        role = "User" if m["sent_from_user"] == 1 else "Assistant"
+        lines.append(f"{role}: {m['message_text'][:500]}")
+    return "\n".join(lines)
+
+
+def _tool_run_python(inputs: dict) -> str:
+    code = inputs.get("code", "").strip()
+    if not code:
+        return "No code provided."
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(code)
+        tmp_path = tmp.name
+    try:
+        result = subprocess.run(
+            [sys.executable, tmp_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        out = result.stdout
+        if result.stderr:
+            out += f"\n[stderr]\n{result.stderr}"
+        return out.strip() or "(no output)"
+    except subprocess.TimeoutExpired:
+        return "[Error] Code execution timed out (30s limit)."
+    except Exception as exc:
+        return f"[Error] {exc}"
+    finally:
         try:
-            add_sources_to_db(
-                msg_id,
-                [(s["chunk_text"], s["document_name"]) for s in sources],
-            )
-        except Exception:
+            os.unlink(tmp_path)
+        except OSError:
             pass
 
-    unique_sources = _deduplicate_sources(sources)
 
-    yield {
-        "type": "complete",
-        "answer": answer,
-        "sources": unique_sources,
-        "thought": thought,
-        "timestamp": _ts(),
+def _tool_search_web(inputs: dict) -> str:
+    """Search the web using DuckDuckGo HTML search (no API key needed)."""
+    import re
+    import urllib.parse
+
+    import requests
+    from bs4 import BeautifulSoup
+
+    query = inputs.get("query", "").strip()
+    num = min(int(inputs.get("num_results", 5)), 10)
+    if not query:
+        return "No query provided."
+
+    url = "https://html.duckduckgo.com/html/"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
     }
+    try:
+        resp = requests.post(url, data={"q": query}, headers=headers, timeout=10)
+        resp.raise_for_status()
+    except Exception as exc:
+        return f"[Web search failed: {exc}]"
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    results = []
+    for result in soup.select(".result__body")[:num]:
+        title_el = result.select_one(".result__title a")
+        snippet_el = result.select_one(".result__snippet")
+        link_el = result.select_one(".result__url")
+
+        title = title_el.get_text(strip=True) if title_el else "No title"
+        snippet = snippet_el.get_text(strip=True) if snippet_el else "No description"
+        href = title_el.get("href", "") if title_el else ""
+
+        # DuckDuckGo wraps links; extract the real URL from the uddg param
+        if "uddg=" in href:
+            match = re.search(r"uddg=([^&]+)", href)
+            if match:
+                href = urllib.parse.unquote(match.group(1))
+
+        results.append(f"**{title}**\n{snippet}\nURL: {href}")
+
+    if not results:
+        return f"No web results found for: {query}"
+
+    return f"Web search results for '{query}':\n\n" + "\n\n---\n\n".join(results)
+
+
+def _tool_fetch_url(inputs: dict) -> str:
+    """Fetch and extract readable text from a URL."""
+    import requests
+    from bs4 import BeautifulSoup
+
+    url = inputs.get("url", "").strip()
+    if not url:
+        return "No URL provided."
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+    except Exception as exc:
+        return f"[Failed to fetch URL: {exc}]"
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    # Remove boilerplate
+    for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+        tag.decompose()
+
+    # Try <article> first, fall back to <main>, then <body>
+    content = soup.find("article") or soup.find("main") or soup.find("body")
+    if not content:
+        return "[Could not extract readable content from this URL.]"
+
+    text = content.get_text(separator="\n", strip=True)
+    # Collapse excessive blank lines
+    lines = [l for l in text.splitlines() if l.strip()]
+    clean = "\n".join(lines)
+
+    # Limit output size
+    if len(clean) > 6000:
+        clean = clean[:6000] + "\n… [content truncated]"
+
+    return f"Content from {url}:\n\n{clean}"
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _parse_response_blocks(response) -> tuple[list[dict], str, str]:
+    """Parse a non-streaming response into (tool_calls, text, thought)."""
+    tool_calls = []
+    text = ""
+    thought = ""
+    for block in response.content:
+        btype = getattr(block, "type", None)
+        if btype == "tool_use":
+            tool_calls.append({"id": block.id, "name": block.name, "input": block.input})
+        elif btype == "text":
+            text += getattr(block, "text", "")
+        elif btype == "thinking":
+            thought = getattr(block, "thinking", "")[:600]
+    return tool_calls, text, thought
+
+
+def _prune_messages(messages: list[dict]) -> list[dict]:
+    """Trim old tool_result messages to prevent context window overflow.
+
+    Keeps the first user message, all assistant turns, and the last 3 rounds
+    of tool results. This prevents runaway context growth on long agent loops.
+    """
+    if len(messages) <= 6:
+        return messages
+
+    # Always keep the initial user message
+    first = messages[0]
+    rest = messages[1:]
+
+    # Keep only the last 4 assistant+tool-result pairs
+    # Each round = 2 messages (assistant with tool_use, user with tool_result)
+    keep_rounds = 4
+    if len(rest) > keep_rounds * 2:
+        rest = rest[-(keep_rounds * 2):]
+
+    return [first] + rest
+
 
 def _build_user_content_anthropic(query: str, media_attachments: list) -> list:
     if not media_attachments:
@@ -607,13 +819,11 @@ def _build_user_content_anthropic(query: str, media_attachments: list) -> list:
                 descriptions.append(f"[Image could not be described: {exc}]")
 
     if descriptions:
-        enriched = "\n\n".join(descriptions) + "\n\n" + query
-        return [{"type": "text", "text": enriched}]
+        return [{"type": "text", "text": "\n\n".join(descriptions) + "\n\n" + query}]
     return [{"type": "text", "text": query}]
 
 
 def _build_user_content_openai(query: str, media_attachments: list) -> str:
-    """Build a plain text user message for OpenAI (describe images inline)."""
     if not media_attachments:
         return query
 
@@ -636,6 +846,37 @@ def _build_user_content_openai(query: str, media_attachments: list) -> str:
     return query
 
 
+def _finalize(
+    answer: str,
+    thought: str,
+    sources: list[dict],
+    chat_id: int,
+) -> Generator[dict, None, None]:
+    if not answer:
+        answer = "I was unable to generate a response. Please try again."
+    if not thought:
+        thought = "Reasoned and composed the final answer."
+
+    msg_id = add_message_to_db(answer, chat_id, 0)
+    if sources and msg_id:
+        try:
+            add_sources_to_db(
+                msg_id,
+                [(s["chunk_text"], s["document_name"]) for s in sources],
+            )
+        except Exception:
+            pass
+
+    unique_sources = _deduplicate_sources(sources)
+    yield {
+        "type": "complete",
+        "answer": answer,
+        "sources": unique_sources,
+        "thought": thought,
+        "timestamp": _ts(),
+    }
+
+
 def _deduplicate_sources(sources: list[dict]) -> list[dict]:
     seen: set[str] = set()
     out = []
@@ -643,54 +884,36 @@ def _deduplicate_sources(sources: list[dict]) -> list[dict]:
         key = s["document_name"]
         if key not in seen:
             seen.add(key)
-            out.append({
-                "document_name": s["document_name"],
-                "chunk_text": s["chunk_text"],
-            })
+            out.append({"document_name": s["document_name"], "chunk_text": s["chunk_text"]})
     return out
+
+
+def _guest_answer(query: str, model_type: int, model_key: str) -> str:
+    system = (
+        "You are a helpful AI assistant in guest mode. "
+        "Answer using general knowledge. "
+        "For document analysis and full features, a user account is required."
+    )
+    if model_type == 1:
+        from anthropic import Anthropic
+        client = Anthropic(api_key=model_key or os.getenv("ANTHROPIC_API_KEY"))
+        resp = client.messages.create(
+            model=os.getenv("ANTHROPIC_AGENT_MODEL", AgentConfig.ANTHROPIC_VISION_MODEL),
+            max_tokens=1024,
+            system=system,
+            messages=[{"role": "user", "content": query}],
+        )
+        return "".join(b.text for b in resp.content if hasattr(b, "text"))
+    else:
+        import openai as _openai
+        client = _openai.OpenAI(api_key=model_key or os.getenv("OPENAI_API_KEY"))
+        resp = client.chat.completions.create(
+            model=os.getenv("OPENAI_AGENT_MODEL", AgentConfig.OPENAI_VISION_MODEL),
+            max_tokens=1024,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": query}],
+        )
+        return resp.choices[0].message.content or ""
 
 
 def _ts() -> str:
     return str(int(time.time() * 1000))
-
-
-def _guest_anthropic(query: str, model_key: str) -> str:
-    from anthropic import Anthropic
-
-    api_key = model_key or os.getenv("ANTHROPIC_API_KEY")
-    client = Anthropic(api_key=api_key)
-    response = client.messages.create(
-        model=os.getenv("ANTHROPIC_AGENT_MODEL", AgentConfig.ANTHROPIC_VISION_MODEL),
-        max_tokens=1024,
-        system=(
-            "You are a helpful AI assistant in guest mode. "
-            "Answer using general knowledge. "
-            "Mention that document upload and full features require an account."
-        ),
-        messages=[{"role": "user", "content": query}],
-    )
-    parts = [b.text for b in response.content if hasattr(b, "text")]
-    return "\n".join(parts)
-
-
-def _guest_openai(query: str, model_key: str) -> str:
-    import openai as _openai
-
-    api_key = model_key or os.getenv("OPENAI_API_KEY")
-    client = _openai.OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model=os.getenv("OPENAI_AGENT_MODEL", AgentConfig.OPENAI_VISION_MODEL),
-        max_tokens=1024,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a helpful AI assistant in guest mode. "
-                    "Answer using general knowledge. "
-                    "Mention that document upload and full features require an account."
-                ),
-            },
-            {"role": "user", "content": query},
-        ],
-    )
-    return response.choices[0].message.content or ""
