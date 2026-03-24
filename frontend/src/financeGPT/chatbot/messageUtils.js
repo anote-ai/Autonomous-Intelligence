@@ -101,8 +101,33 @@ export function updateMessageWithStreamData(message, eventData) {
       updatedMessage.currentStep = thinkingStep;
       break;
     }
+    // Streaming text token — append to content so users see the answer forming
+    case "text_token": {
+      updatedMessage.content = (updatedMessage.content || "") + (eventData.content || "");
+      updatedMessage.isThinking = true; // keep indicator until complete
+      break;
+    }
+    // Extended thinking block from Claude claude-3-7+
+    case "thinking": {
+      const thinkingContent = eventData.content || "";
+      const thinkingStep = {
+        id: `step-${Date.now()}`,
+        type: "thinking",
+        thought: thinkingContent.length > 300
+          ? thinkingContent.substring(0, 300) + "…"
+          : thinkingContent,
+        message: "Thinking deeply…",
+        timestamp: Date.now(),
+      };
+      updatedMessage.reasoning = [
+        ...(updatedMessage.reasoning || []),
+        thinkingStep,
+      ];
+      updatedMessage.currentStep = thinkingStep;
+      break;
+    }
     case "complete": {
-      updatedMessage.content = eventData.answer || "";
+      updatedMessage.content = eventData.answer || updatedMessage.content || "";
       updatedMessage.sources = eventData.sources || [];
       updatedMessage.isThinking = false;
       updatedMessage.currentStep = null;

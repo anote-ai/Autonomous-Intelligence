@@ -153,23 +153,85 @@ _TOOL_SPECS: list[dict] = [
             "required": ["url"],
         },
     },
+    {
+        "name": "create_note",
+        "description": (
+            "Save a piece of text as a new document in the user's knowledge base. "
+            "Use this to: save a generated summary, create a to-do list from document content, "
+            "record key findings, or produce any artifact the user can query later. "
+            "The saved note is immediately searchable via retrieve_documents."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Short descriptive title for the note (used as filename).",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Full text content of the note to save.",
+                },
+            },
+            "required": ["title", "content"],
+        },
+    },
+    {
+        "name": "retrieve_documents_multi",
+        "description": (
+            "Run multiple semantic searches in parallel and merge the results. "
+            "Use this for broad questions that require evidence from several angles "
+            "(e.g. 'compare sections A and B', 'find all mentions of X and Y'). "
+            "More powerful than calling retrieve_documents once."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "queries": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of 2–5 distinct search queries.",
+                },
+                "k_per_query": {
+                    "type": "integer",
+                    "description": "Chunks per query (1–6, default 3).",
+                    "default": 3,
+                },
+            },
+            "required": ["queries"],
+        },
+    },
 ]
 
 _SYSTEM_PROMPT = """\
 You are Autonomous Intelligence — a highly capable AI agent that reasons carefully \
-and uses tools to give precise, grounded answers.
+and uses tools to deliver precise, well-sourced answers.
 
-Core principles:
-1. THINK before you act. Identify what information you need.
-2. Always call retrieve_documents first when a document-based question is asked.
-3. Call list_documents if you're unsure what files are available.
-4. Use search_web for current events or facts not in documents.
-5. Use fetch_url to read any URL the user mentions or that appeared in search results.
-6. Use run_python for: data analysis, math, sorting/filtering data, chart generation.
-7. Cite your sources: when quoting documents, mention the filename.
-8. If documents don't contain the answer, say so and answer from general knowledge.
-9. Be thorough but direct. No filler or padding.
-10. If a task requires multiple steps (e.g. search → read → summarize), do them all.
+Decision framework
+------------------
+STEP 1 — Orient:  What kind of question is this?
+  • Document-based  → call retrieve_documents (or retrieve_documents_multi for complex queries)
+  • "What files?"   → call list_documents
+  • Needs history   → call get_chat_history
+  • Current events  → call search_web, then fetch_url on the most relevant result
+  • Math/data       → call run_python
+  • Multi-faceted   → combine tools across multiple iterations
+
+STEP 2 — Retrieve: Pull all necessary information before composing the answer.
+  • For complex questions, call retrieve_documents_multi with 2–4 targeted queries.
+  • If web results look relevant, call fetch_url to read the full content.
+  • If you need data analysis, call run_python with pandas/numpy.
+
+STEP 3 — Synthesize: Compose a clear, well-structured response.
+  • Quote exact passages and cite the filename in parentheses.
+  • If information came from the web, cite the URL.
+  • If documents don't contain the answer, say so explicitly, then answer from knowledge.
+  • Use markdown headers, bullet points, and code blocks where they help readability.
+
+STEP 4 — Persist (optional): If the user asked for a deliverable (summary, list, report),
+  call create_note to save it so they can query it later.
+
+Do not pad responses. Be thorough on content, concise on prose.
 """
 
 # Max characters of accumulated tool outputs to keep in context before truncating
@@ -590,6 +652,10 @@ def _execute_tool(
             return _tool_search_web(inputs), docs
         elif name == "fetch_url":
             return _tool_fetch_url(inputs), docs
+        elif name == "create_note":
+            return _tool_create_note(inputs, chat_id), docs
+        elif name == "retrieve_documents_multi":
+            return _tool_retrieve_multi(inputs, chat_id, user_email, docs)
         else:
             return f"Unknown tool: {name}", docs
     except Exception as exc:
@@ -756,6 +822,64 @@ def _tool_fetch_url(inputs: dict) -> str:
         clean = clean[:6000] + "\n… [content truncated]"
 
     return f"Content from {url}:\n\n{clean}"
+
+
+def _tool_create_note(inputs: dict, chat_id: int) -> str:
+    """Save a generated note/summary as a searchable document."""
+    from api_endpoints.financeGPT.chatbot_endpoints import (
+        add_document_to_db,
+        chunk_document,
+    )
+
+    title = inputs.get("title", "Agent Note").strip()
+    content = inputs.get("content", "").strip()
+    if not content:
+        return "No content provided to save."
+
+    # Wrap in a simple header for readability
+    full_text = f"# {title}\n\n{content}"
+
+    try:
+        doc_id, already_exists = add_document_to_db(full_text, title, chat_id)
+        if not already_exists:
+            chunk_document.remote(full_text, 1000, doc_id)
+        return (
+            f"Note '{title}' saved as document ID {doc_id}. "
+            "It is now searchable via retrieve_documents."
+        )
+    except Exception as exc:
+        return f"Failed to save note: {exc}"
+
+
+def _tool_retrieve_multi(
+    inputs: dict, chat_id: int, user_email: str, docs: list
+) -> tuple[str, list]:
+    """Run multiple retrieval queries and merge deduplicated results."""
+    queries = inputs.get("queries") or []
+    if not queries:
+        return "No queries provided.", docs
+
+    k_per = min(int(inputs.get("k_per_query", 3)), 6)
+    seen_texts: set[str] = set()
+    all_parts: list[str] = []
+
+    for query in queries[:5]:  # cap at 5 queries
+        chunks = get_relevant_chunks(k_per, query, chat_id, user_email)
+        for chunk_text, doc_name in (chunks or []):
+            key = chunk_text[:80]  # deduplicate by prefix
+            if key not in seen_texts:
+                seen_texts.add(key)
+                all_parts.append(f"**Source: {doc_name}** (query: '{query}')\n{chunk_text.strip()}")
+                docs.append({"chunk_text": chunk_text, "document_name": doc_name})
+
+    if not all_parts:
+        return "No relevant chunks found across all queries.", docs
+
+    return (
+        f"Multi-query retrieval ({len(queries)} queries, {len(all_parts)} unique chunks):\n\n"
+        + "\n\n---\n\n".join(all_parts),
+        docs,
+    )
 
 
 # ---------------------------------------------------------------------------
