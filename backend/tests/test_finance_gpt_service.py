@@ -99,6 +99,7 @@ def test_get_relevant_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
             {
                 "start_index": 0,
                 "end_index": 4,
+                "page_number": 1,
                 "embedding_vector": vector,
                 "document_name": "doc-a",
                 "document_text": "abcdefgh",
@@ -106,6 +107,7 @@ def test_get_relevant_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
             {
                 "start_index": 4,
                 "end_index": 8,
+                "page_number": 2,
                 "embedding_vector": vector,
                 "document_name": "doc-b",
                 "document_text": "ijklmnop",
@@ -117,6 +119,17 @@ def test_get_relevant_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
     sources = finance_gpt.get_relevant_chunks(1, "question", 9, "user@example.com")
     assert len(sources) == 1
     assert sources[0][1] in {"doc-a", "doc-b"}
+
+    structured_sources = finance_gpt.get_relevant_chunks(
+        1,
+        "question",
+        9,
+        "user@example.com",
+        include_metadata=True,
+    )
+    assert len(structured_sources) == 1
+    assert structured_sources[0]["document_name"] in {"doc-a", "doc-b"}
+    assert structured_sources[0]["source_type"] == "document_chunk"
 
 
 def test_get_relevant_chunks_handles_embedding_failure(monkeypatch: pytest.MonkeyPatch) -> None:

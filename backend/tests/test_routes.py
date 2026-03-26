@@ -526,7 +526,20 @@ def test_public_chat_and_evaluate(client: Any, app_module: Any, monkeypatch: pyt
     monkeypatch.setattr(app_module, "ensure_SDK_user_exists", lambda user_email: 1)
     monkeypatch.setattr(app_module.AgentConfig, "is_agent_enabled", staticmethod(lambda: False))
     monkeypatch.setattr(app_module, "get_chat_info", lambda chat_id: (0, 0, "Chat"))
-    monkeypatch.setattr(app_module, "get_relevant_chunks", lambda *args: [("chunk", "doc", 1)])
+    monkeypatch.setattr(
+        app_module,
+        "get_relevant_chunks",
+        lambda *args, **kwargs: [
+            {
+                "chunk_text": "chunk",
+                "document_name": "doc",
+                "page_number": 1,
+                "start_index": 0,
+                "end_index": 5,
+                "source_type": "document_chunk",
+            }
+        ],
+    )
     monkeypatch.setattr(app_module, "add_message_to_db", lambda *args, **kwargs: 10)
     monkeypatch.setattr(app_module, "add_sources_to_db", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -544,7 +557,21 @@ def test_public_chat_and_evaluate(client: Any, app_module: Any, monkeypatch: pyt
         json={"chat_id": 9, "message": "hello"},
     )
     assert chat_response.status_code == 200
-    assert chat_response.get_json() == {"message_id": 10, "answer": "openai answer", "sources": [["1", "doc", "chunk"]]}
+    assert chat_response.get_json() == {
+        "message_id": 10,
+        "answer": "openai answer",
+        "sources": [
+            {
+                "id": "source-0",
+                "document_name": "doc",
+                "chunk_text": "chunk",
+                "page_number": 1,
+                "start_index": 0,
+                "end_index": 5,
+                "source_type": "document_chunk",
+            }
+        ],
+    }
 
     evaluate_response = client.post(
         "/public/evaluate",
