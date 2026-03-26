@@ -10,7 +10,7 @@ from pydantic import Field
 import json
 from api_endpoints.financeGPT.chatbot_endpoints import (
     get_relevant_chunks, add_message_to_db, add_sources_to_db,
-    retrieve_message_from_db, retrieve_docs_from_db
+    retrieve_message_from_db, retrieve_docs_from_db, serialize_sources_for_api
 )
 from .config import AgentConfig
 from .multi_agent_system import MultiAgentDocumentSystem
@@ -651,12 +651,13 @@ class ReactiveDocumentAgent:
                 
                 # Try to extract sources from the agent's reasoning early
                 sources = self._extract_sources_from_response(response, chat_id, user_email, query)
+                sources_payload = serialize_sources_for_api(sources)
                 
                 # Yield the completion event that frontend expects
                 yield {
                     "type": "complete", 
                     "answer": answer,
-                    "sources": sources if sources else [],
+                    "sources": sources_payload,
                     "thought": final_thought,
                     "timestamp": self._get_timestamp()
                 }
@@ -730,7 +731,7 @@ class ReactiveDocumentAgent:
                 yield {
                     "type": "step-complete",
                     "answer": answer,
-                    "sources": sources if sources else [],
+                    "sources": sources_payload,
                     "thought": "Processing complete - response ready for user",
                     "timestamp": self._get_timestamp()
                 }
@@ -764,7 +765,7 @@ class ReactiveDocumentAgent:
                     "type": "response-complete",
                     "answer": answer,
                     "message_id": message_id,
-                    "sources": sources if sources else [],
+                    "sources": sources_payload,
                     "message": "Response generated and saved successfully",
                     "total_steps": len(final_reasoning_steps),
                     "agent_reasoning": response.get("intermediate_steps", []),
@@ -1133,7 +1134,7 @@ class ReactiveDocumentAgent:
     def _extract_sources_from_response(self, response: Dict, chat_id: int, user_email: str, query: str) -> List[tuple]:
         try:
             # Try to get sources from the document retrieval that was likely used
-            sources = get_relevant_chunks(2, query, chat_id, user_email)
+            sources = get_relevant_chunks(2, query, chat_id, user_email, include_metadata=True)
             if sources and sources != ["No text found"]:
                 return sources
         except Exception as e:
