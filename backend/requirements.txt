@@ -59,6 +59,7 @@ ratelimit
 # DB
 flask-mysql-connector
 mysqlclient
+alembic>=1.13.0
 
 # Evaluation
 ragas>=0.2.0
