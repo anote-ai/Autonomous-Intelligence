@@ -167,10 +167,20 @@ config = {
 
 CORS(app, resources={ r'/*': {'origins': config['ORIGINS']}}, supports_credentials=True)
 
-app.secret_key = '6cac159dd02c902f822635ee0a6c3078'
+_flask_secret = os.getenv("FLASK_SECRET_KEY") or os.getenv("JWT_SECRET_KEY", "")
+if not _flask_secret:
+    import warnings
+    warnings.warn(
+        "FLASK_SECRET_KEY / JWT_SECRET_KEY env var is not set. "
+        "Using an insecure default — set this variable before deploying to production.",
+        stacklevel=1,
+    )
+    _flask_secret = "change-me-in-production"
+
+app.secret_key = _flask_secret
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_COOKIE_HTTPONLY'] = False
-app.config["JWT_SECRET_KEY"] = "6cac159dd02c902f822635ee0a6c3078"
+app.config["JWT_SECRET_KEY"] = _flask_secret
 app.config["JWT_REFRESH_TOKEN_EXPIRES"] = kSessionTokenExpirationTime
 app.config["JWT_TOKEN_LOCATION"] = "headers"
 app.config.from_object(__name__)
@@ -178,13 +188,13 @@ app.config.from_object(__name__)
 jwt_manager = JWTManager(app)
 app.jwt_manager = jwt_manager
 
-# Configure Flask-Mail
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'vidranatan@gmail.com'
-app.config['MAIL_PASSWORD'] = 'fhytlgpsjyzutlnm'
-app.config['MAIL_DEFAULT_SENDER'] = 'vidranatan@gmail.com'
+# Configure Flask-Mail — all values read from environment variables
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', '587'))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() != 'false'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', '')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', '')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', os.getenv('MAIL_USERNAME', ''))
 mail = Mail(app)
 
 
