@@ -46,6 +46,9 @@ anthropic
 sec_api
 pycryptodome==3.20.0
 
+# API Docs
+flasgger>=0.9.7
+
 # Dev / test
 pytest
 pytest-cov

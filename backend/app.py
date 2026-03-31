@@ -197,6 +197,44 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 ensure_ray_started()
 
+# ---------------------------------------------------------------------------
+# Swagger / OpenAPI documentation  (available at /docs)
+# ---------------------------------------------------------------------------
+from flasgger import Swagger  # noqa: E402
+
+_swagger_template = {
+    "info": {
+        "title": "Anote AI API",
+        "description": (
+            "Private document Q&A and chat completions API.  "
+            "Authenticate with `Authorization: Bearer <api-key>`."
+        ),
+        "version": "1.0.0",
+        "contact": {"name": "Anote AI", "url": "https://anote.ai"},
+    },
+    "securityDefinitions": {
+        "BearerAuth": {"type": "apiKey", "name": "Authorization", "in": "header"}
+    },
+}
+swagger = Swagger(
+    app,
+    template=_swagger_template,
+    config={
+        "headers": [],
+        "specs": [
+            {
+                "endpoint": "apispec",
+                "route": "/apispec.json",
+                "rule_filter": lambda rule: True,
+                "model_filter": lambda tag: True,
+            }
+        ],
+        "static_url_path": "/flasgger_static",
+        "swagger_ui": True,
+        "specs_route": "/docs",
+    },
+)
+
 def valid_api_key_required(fn):
   @wraps(fn)
   def wrapper(*args, **kwargs):
@@ -269,6 +307,15 @@ def import_shared_chat(playbook_url):
 
 @app.route('/health', methods=['GET'])
 def health_check():
+    """
+    Health check endpoint.
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: Server is running
+    """
     return "Healthy", 200
 
 # Auth
@@ -1052,12 +1099,27 @@ def add_model_key():
 @app.route("/generateAPIKey", methods=["POST"])
 @jwt_or_session_token_required
 def generateAPIKey():
-  try:
-    user_email = extractUserEmailFromRequest(request)
-  except InvalidTokenError:
-    # If the JWT is invalid, return an error
-    return jsonify({"error": "Invalid JWT"}), 401
-  return GenerateAPIKeyHandler(request, user_email)
+    """
+    Generate a new API key for the authenticated user.
+    ---
+    tags:
+      - API Keys
+    responses:
+      200:
+        description: New API key created
+        schema:
+          type: object
+          properties:
+            api_key:
+              type: string
+      401:
+        description: Unauthorized
+    """
+    try:
+        user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+    return GenerateAPIKeyHandler(request, user_email)
 
 
 @app.route("/deleteAPIKey", methods=["POST"])
@@ -1069,12 +1131,29 @@ def deleteAPIKey():
 @app.route('/getAPIKeys', methods = ['GET'])
 @jwt_or_session_token_required
 def getAPIKeys():
-  try:
-    user_email = extractUserEmailFromRequest(request)
-  except InvalidTokenError:
-    # If the JWT is invalid, return an error
-    return jsonify({"error": "Invalid JWT"}), 401
-  return GetAPIKeysHandler(request, user_email)
+    """
+    List all API keys for the authenticated user.
+    ---
+    tags:
+      - API Keys
+    responses:
+      200:
+        description: List of API keys
+        schema:
+          type: object
+          properties:
+            api_keys:
+              type: array
+              items:
+                type: object
+      401:
+        description: Unauthorized
+    """
+    try:
+      user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+    return GetAPIKeysHandler(request, user_email)
 
 
 #For the SDK
@@ -1085,6 +1164,41 @@ USER_EMAIL_API = "api@example.com"
 @app.route('/public/upload', methods = ['POST'])
 @valid_api_key_required
 def upload():  # pragma: no cover
+    """
+    Upload documents to a new chat session.
+    ---
+    tags:
+      - Public SDK
+    security:
+      - BearerAuth: []
+    consumes:
+      - multipart/form-data
+    parameters:
+      - in: formData
+        name: files[]
+        type: file
+        description: One or more document files (PDF, DOCX, CSV, TXT, etc.)
+      - in: formData
+        name: task_type
+        type: string
+        description: '"documents" or 0 for Q&A (default)'
+      - in: formData
+        name: model_type
+        type: string
+        description: '"gpt" / 0 for OpenAI, "claude" / 1 for Anthropic'
+    responses:
+      200:
+        description: Upload successful — returns chat_id for subsequent /public/chat calls
+        schema:
+          type: object
+          properties:
+            chat_id:
+              type: integer
+            id:
+              type: integer
+      403:
+        description: Insufficient credits
+    """
     print("Form data:", request.form)
     print("Files:", request.files)
 
@@ -1175,6 +1289,44 @@ def upload():  # pragma: no cover
 @app.route('/public/chat', methods=['POST'])
 @valid_api_key_required
 def public_ingest_pdf():  # pragma: no cover
+    """
+    Send a message to the chatbot and get a grounded answer.
+    ---
+    tags:
+      - Public SDK
+    security:
+      - BearerAuth: []
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          required: [message, chat_id]
+          properties:
+            message:
+              type: string
+              example: What is the main finding in the document?
+            chat_id:
+              type: integer
+              description: Session ID from /public/upload
+            model_key:
+              type: string
+              description: Optional fine-tuned OpenAI key
+    responses:
+      200:
+        description: Answer with source citations
+        schema:
+          type: object
+          properties:
+            answer:
+              type: string
+            message_id:
+              type: integer
+            sources:
+              type: array
+      403:
+        description: Insufficient credits
+    """
     user_email = USER_EMAIL_API
     ensure_SDK_user_exists(user_email)
 
