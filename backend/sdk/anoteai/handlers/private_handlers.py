@@ -9,6 +9,12 @@ from tika import parser as p
 from handlers.private_db import *
 from handlers.public_handlers import is_file_or_isHtml
 
+# chunk_document is a Ray remote function from services.finance_gpt.
+# Imported lazily so that loading this module doesn't require Ray to be active.
+def _get_chunk_document():
+    from services.finance_gpt import chunk_document  # noqa: PLC0415
+    return chunk_document
+
 USER_SDK_EMAIL = "api@example.com"
 
 def upload_private(task_type, model_type, file_paths):
@@ -123,6 +129,7 @@ def evaluate_private(message_id):
 def process_files(chat_type, files, paths, user_email, model_type, chat_id):
     import ray
     ray.init(ignore_reinit_error=True)
+    chunk_document = _get_chunk_document()
     if chat_type == "documents": #question-answering
         #Ingest pdf
         MAX_CHUNK_SIZE = 1000

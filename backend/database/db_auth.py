@@ -58,6 +58,23 @@ def user_email_for_api_key(api_key):
     conn.close()
     return user["email"]
 
+def touch_api_key_last_used(api_key: str) -> None:
+    """Stamp last_used = NOW() for the given API key (best-effort, never raises)."""
+    try:
+        conn, cursor = get_db_connection()
+        cursor.execute(
+            "UPDATE apiKeys SET last_used = CURRENT_TIMESTAMP WHERE api_key = %s",
+            [api_key],
+        )
+        conn.commit()
+    except Exception as exc:
+        print(f"[auth] touch_api_key_last_used failed: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 def is_session_token_valid(session_token):
     conn, cursor = get_db_connection()
     cursor.execute('SELECT COUNT(*) FROM users WHERE session_token=%s AND session_token_expiration > CURRENT_TIMESTAMP', [session_token])

@@ -221,10 +221,11 @@ def valid_api_key_required(fn):
           api_key = auth_header.split(' ')[1]
           if is_api_key_valid(api_key):
             # Check if the user has credits before allowing API usage
-            from database.db_auth import api_key_user_has_credits
+            from database.db_auth import api_key_user_has_credits, touch_api_key_last_used
             if not api_key_user_has_credits(api_key, min_credits=1):
               return jsonify({"error": "Insufficient credits. Please add credits to your account to use the API."}), 403
-            # If api key is valid and user has credits, return the decorated function
+            # Record usage timestamp for this key (best-effort)
+            touch_api_key_last_used(api_key)
             return fn(*args, **kwargs)
     # If API key is not present or valid, return an error message or handle it as needed
     return "Unauthorized", 401
@@ -504,7 +505,7 @@ def customer_portal():
   verifyAuthForPortalSession(request, user_email, mail)
   return CreatePortalSessionHandler(request, user_email)
 
-STRIPE_WEBHOOK_SECRET = "whsec_Ustl52CpxewYc33WdamF06lDCjgg3a2e"
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 
 @app.route('/stripeWebhook', methods=['POST'])
 def stripe_webhook():
