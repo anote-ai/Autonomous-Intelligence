@@ -1410,6 +1410,153 @@ _SUPPORTED_MODELS = [
 ]
 
 
+@app.route("/v1/account", methods=["GET"])
+@valid_api_key_required
+def v1_account():
+    """Return account, subscription, and credit information for the caller.
+
+    This is an Anote-specific extension to the OpenAI-compatible API surface.
+    The response mirrors the shape returned by ``GET /viewUser`` but lives under
+    the ``/v1/`` namespace so SDK clients can reach it without a separate host.
+
+    Returns 200 with JSON:
+        id            – numeric user ID
+        email         – user email
+        plan          – string plan name (free / basic / standard / premium / enterprise)
+        plan_level    – integer 0-4 (matches PaidUserStatus enum)
+        credits_remaining – integer credits left this period
+        credits_monthly   – integer credits granted per billing period (0 = pay-as-you-go)
+        credits_refresh_date – ISO date of next credit reset, or null
+        subscription_status  – "active" | "trialing" | "canceled" | "none"
+        subscription_end_date – ISO date subscription expires, or null
+        is_free_trial – boolean
+        limits        – object with per-plan quotas
+    """
+    from database.db import view_user
+    from constants.global_constants import planToCredits
+
+    api_key = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    user_email = user_email_for_api_key(api_key)
+    result = view_user(user_email)
+
+    # view_user returns a Flask Response — unwrap it
+    if hasattr(result, "get_json"):
+        user_data = result.get_json()
+    elif isinstance(result, tuple):
+        user_data = result[0].get_json() if hasattr(result[0], "get_json") else {}
+    else:
+        user_data = {}
+
+    plan_level = int(user_data.get("paid_user") or 0)
+    plan_names = {0: "free", 1: "basic", 2: "standard", 3: "premium", 4: "enterprise"}
+
+    # Determine subscription status
+    end_date = user_data.get("end_date")
+    is_free_trial = bool(user_data.get("is_free_trial"))
+    if is_free_trial:
+        status = "trialing"
+    elif plan_level > 0:
+        status = "active" if not end_date else "canceled"
+    else:
+        status = "none"
+
+    monthly_credits = planToCredits.get(plan_level, 0)
+
+    return jsonify({
+        "object": "account",
+        "id": user_data.get("id"),
+        "email": user_data.get("email"),
+        "name": user_data.get("name"),
+        "plan": plan_names.get(plan_level, "free"),
+        "plan_level": plan_level,
+        "credits_remaining": user_data.get("credits", 0),
+        "credits_monthly": monthly_credits,
+        "credits_refresh_date": user_data.get("credits_refresh"),
+        "subscription_status": status,
+        "subscription_end_date": end_date,
+        "is_free_trial": is_free_trial,
+        "next_plan": user_data.get("next_plan"),
+        "limits": {
+            "credits_per_month": monthly_credits,
+            "models": _SUPPORTED_MODELS,
+        },
+    })
+
+
+@app.route("/v1/usage", methods=["GET"])
+@valid_api_key_required
+def v1_usage():
+    """Return API usage history and summary for the caller.
+
+    Query parameters:
+        start_date – ISO date string YYYY-MM-DD (optional, inclusive)
+        end_date   – ISO date string YYYY-MM-DD (optional, inclusive)
+        limit      – max rows to return (default 100, max 1000)
+
+    Returns 200 with JSON shaped like::
+
+        {
+          "object": "list",
+          "data": [
+            {
+              "id": 1,
+              "endpoint": "/v1/chat/completions",
+              "model": "gpt-4o",
+              "prompt_tokens": 120,
+              "completion_tokens": 85,
+              "total_tokens": 205,
+              "credits_used": 1,
+              "created": "2024-01-15T10:30:00"
+            },
+            …
+          ],
+          "summary": {
+            "total_requests": 42,
+            "prompt_tokens": 5100,
+            "completion_tokens": 3600,
+            "total_tokens": 8700,
+            "credits_used": 42,
+            "period_start": "2024-01-01",
+            "period_end": "2024-01-31"
+          }
+        }
+    """
+    from database.usage import get_usage_rows, get_usage_summary, user_and_key_ids_for_api_key
+
+    api_key = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    user_id, _ = user_and_key_ids_for_api_key(api_key)
+    if user_id is None:
+        return jsonify({"error": "API key not found"}), 401
+
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    try:
+        limit = int(request.args.get("limit", 100))
+    except (TypeError, ValueError):
+        limit = 100
+
+    rows = get_usage_rows(user_id, start_date=start_date, end_date=end_date, limit=limit)
+    summary = get_usage_summary(user_id, start_date=start_date, end_date=end_date)
+
+    # Serialize datetimes to ISO strings
+    serialized = []
+    for row in rows:
+        r = dict(row)
+        if hasattr(r.get("created"), "isoformat"):
+            r["created"] = r["created"].isoformat()
+        serialized.append(r)
+
+    return jsonify({
+        "object": "list",
+        "data": serialized,
+        "summary": {
+            **summary,
+            "period_start": start_date,
+            "period_end": end_date,
+        },
+    })
+
+
 @app.route("/v1/models", methods=["GET"])
 @valid_api_key_required
 def v1_list_models():
@@ -1482,6 +1629,8 @@ def v1_chat_completions():  # pragma: no cover
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
 
     answer = ""
+    prompt_tokens = 0
+    completion_tokens = 0
 
     try:
         if chat_id:
@@ -1512,6 +1661,8 @@ def v1_chat_completions():  # pragma: no cover
                     messages=[{"role": "user", "content": user_message}],
                 )
                 answer = resp.content[0].text
+                prompt_tokens = resp.usage.input_tokens
+                completion_tokens = resp.usage.output_tokens
             else:
                 import openai as _openai
                 _client = _openai.OpenAI(api_key=openai_api_key)
@@ -1523,6 +1674,9 @@ def v1_chat_completions():  # pragma: no cover
                     ],
                 )
                 answer = resp.choices[0].message.content
+                if resp.usage:
+                    prompt_tokens = resp.usage.prompt_tokens
+                    completion_tokens = resp.usage.completion_tokens
 
             message_id = add_message_to_db(answer, chat_id, 0)
             try:
@@ -1563,11 +1717,16 @@ def v1_chat_completions():  # pragma: no cover
                     messages=conv_msgs,
                 )
                 answer = resp.content[0].text
+                prompt_tokens = resp.usage.input_tokens
+                completion_tokens = resp.usage.output_tokens
             else:
                 import openai as _openai
                 _client = _openai.OpenAI(api_key=openai_api_key)
                 resp = _client.chat.completions.create(model=model, messages=formatted)
                 answer = resp.choices[0].message.content
+                if resp.usage:
+                    prompt_tokens = resp.usage.prompt_tokens
+                    completion_tokens = resp.usage.completion_tokens
 
     except Exception as exc:
         return jsonify({
@@ -1577,6 +1736,25 @@ def v1_chat_completions():  # pragma: no cover
                 "code": "internal_error",
             }
         }), 500
+
+    # ------------------------------------------------------------------
+    # Log usage (best-effort — never fails the request)
+    # ------------------------------------------------------------------
+    try:
+        from database.usage import log_api_usage, user_and_key_ids_for_api_key as _uid_kid
+        _raw_key = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        _uid, _kid = _uid_kid(_raw_key)
+        log_api_usage(
+            user_id=_uid,
+            api_key_id=_kid,
+            endpoint="/v1/chat/completions",
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            credits_used=1,
+        )
+    except Exception:
+        pass
 
     # ------------------------------------------------------------------
     # Build OpenAI-compatible response envelope
@@ -1598,9 +1776,9 @@ def v1_chat_completions():  # pragma: no cover
             }
         ],
         "usage": {
-            "prompt_tokens": -1,   # not tracked yet
-            "completion_tokens": -1,
-            "total_tokens": -1,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
         },
         # Anote-specific extension fields
         "anote": {

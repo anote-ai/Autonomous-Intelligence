@@ -212,6 +212,22 @@ CREATE TABLE user_company_chatbots (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+-- Per-request usage log for billing metering and the /v1/usage API
+CREATE TABLE IF NOT EXISTS api_usage (
+    id          INTEGER PRIMARY KEY AUTO_INCREMENT,
+    user_id     INTEGER,
+    api_key_id  INTEGER,
+    endpoint    VARCHAR(128) NOT NULL,
+    model       VARCHAR(128),
+    prompt_tokens      INTEGER NOT NULL DEFAULT 0,
+    completion_tokens  INTEGER NOT NULL DEFAULT 0,
+    total_tokens       INTEGER NOT NULL DEFAULT 0,
+    credits_used       INTEGER NOT NULL DEFAULT 1,
+    created     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id)    REFERENCES users(id)   ON DELETE SET NULL,
+    FOREIGN KEY (api_key_id) REFERENCES apiKeys(id) ON DELETE SET NULL
+);
+
 
 
 CREATE UNIQUE INDEX idx_users_email ON users(email);
@@ -225,3 +241,6 @@ CREATE INDEX idx_chunks_document_id ON chunks(document_id);
 CREATE INDEX idx_prompt_answers_prompt_id ON prompt_answers(prompt_id);
 CREATE INDEX idx_prompt_answers_citation_id ON prompt_answers(citation_id);
 CREATE UNIQUE INDEX idx_user_chatbot_unique ON user_company_chatbots(user_id, path);
+CREATE INDEX idx_api_usage_user_id  ON api_usage(user_id);
+CREATE INDEX idx_api_usage_key_id   ON api_usage(api_key_id);
+CREATE INDEX idx_api_usage_created  ON api_usage(created);

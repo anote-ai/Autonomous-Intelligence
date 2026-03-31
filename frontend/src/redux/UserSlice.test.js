@@ -115,4 +115,22 @@ describe("UserSlice API key state", () => {
     expect(nextState.entities.apiKeys.allIds).toEqual([]);
     expect(nextState.entities.apiKeys.byId).toEqual({});
   });
+
+  it("generateAPIKey.fulfilled does not add duplicate id to allIds (#74)", () => {
+    // Simulate the reducer being called twice with the same key (double-dispatch /
+    // stale redux-persist rehydration scenario that caused issue #74)
+    const key = { id: 5, key: "sk-abc", name: "My Key" };
+
+    const after1 = userSlice.reducer(
+      initialState,
+      generateAPIKey.fulfilled(key, "req-1")
+    );
+    const after2 = userSlice.reducer(
+      after1,
+      generateAPIKey.fulfilled(key, "req-2")
+    );
+
+    expect(after2.entities.apiKeys.allIds).toEqual([5]);
+    expect(after2.entities.apiKeys.byId[5]).toEqual(key);
+  });
 });
