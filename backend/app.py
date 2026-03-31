@@ -65,6 +65,7 @@ from database.db import (
     get_chat_info,
     get_message_info,
     retrieve_messages as retrieve_message_from_db,
+    retrieve_messages_from_share_uuid,
     update_chat_name as update_chat_name_in_db,
 )
 from database.db_auth import (
@@ -617,10 +618,17 @@ def retrieve_messages_from_chat():
 @app.route('/retrieve-shared-messages-from-chat', methods=['POST'])
 def get_playbook_messages():
     chat_type = 0
-    chat_id = request.json.get('chat_id')
-
+    body = request.get_json(force=True) or {}
+    # Support both legacy chat_id lookup and UUID-based playbook lookup
+    playbook_url = body.get('playbook_url')
+    if playbook_url:
+        messages = retrieve_messages_from_share_uuid(playbook_url)
+        return jsonify(messages=[
+            {"message_text": m["message_text"], "sent_from_user": 1 if m["role"] == "user" else 0}
+            for m in messages
+        ])
+    chat_id = body.get('chat_id')
     messages = retrieve_message_from_db("anon@anote.ai", chat_id, chat_type)
-
     return jsonify(messages=messages)
 
 @app.route('/update-chat-name', methods=['POST'])
