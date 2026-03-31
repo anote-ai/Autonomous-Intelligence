@@ -3,6 +3,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPaperPlane,
   faFile,
+  faImage,
+  faXmark,
   faBrain,
   faCheckCircle,
   faExclamationTriangle,
@@ -19,7 +21,7 @@ import {
 import { useDispatch, useSelector } from "react-redux";
 import { setChatMessages, selectCachedMessages } from "../../redux/ChatSlice";
 import FileUpload from "../../components/FileUpload";
-import fetcher from "../../http/RequestConfig";
+import fetcher, { postFormData } from "../../http/RequestConfig";
 import ThinkingIndicator from "../chatbot/ThinkingIndicator";
 import {
   createUploadedDocumentMessages,
@@ -60,9 +62,33 @@ const Chatbot = ({
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  // Inline image attachments staged for the next chat message
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+  const imageInputRef = useRef(null);
 
   const shouldShowUpgradeModal = () => {
     return user && numCredits === 0 && messages.length > 0 && !showUpgradeModal; // Only if not already shown
+  };
+
+  const handleImageAttachmentPick = (e) => {
+    const files = Array.from(e.target.files || []);
+    const picked = files.map((file) => ({
+      id: `${file.name}-${file.size}-${file.lastModified}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      name: file.name,
+    }));
+    setPendingAttachments((prev) => [...prev, ...picked]);
+    // Reset input so the same file can be re-selected if removed then re-added
+    e.target.value = "";
+  };
+
+  const removeAttachment = (id) => {
+    setPendingAttachments((prev) => {
+      const removed = prev.find((a) => a.id === id);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((a) => a.id !== id);
+    });
   };
 
   const handleFileSelect = (files) => {
@@ -281,7 +307,7 @@ const Chatbot = ({
       user ? "authenticated" : "guest"
     );
 
-    if (!message.trim()) return;
+    if (!message.trim() && pendingAttachments.length === 0) return;
 
     // For authenticated users, check credits and deduct them
     if (user) {
@@ -296,7 +322,9 @@ const Chatbot = ({
     // For guests, we skip credit checks and allow them to chat
 
     const currentMessage = message.trim();
+    const currentAttachments = pendingAttachments;
     setMessage("");
+    setPendingAttachments([]);
 
     let targetChatId = id;
 
@@ -431,6 +459,10 @@ const Chatbot = ({
         chat_id: targetChatId,
         role: "user",
         content: currentMessage,
+        attachments: currentAttachments.map((a) => ({
+          previewUrl: a.previewUrl,
+          name: a.name,
+        })),
         timestamp: now,
       },
       {
@@ -441,7 +473,7 @@ const Chatbot = ({
         isThinking: true,
         reasoning: [],
         sources: [],
-        timestamp: now + 1, // Slightly later timestamp for thinking message
+        timestamp: now + 1,
       },
     ]);
 
@@ -449,7 +481,7 @@ const Chatbot = ({
     if (user) {
       localStorage.setItem(`pending-message-${targetChatId}`, currentMessage);
     }
-    await sendToAPI(currentMessage, targetChatId, thinkingId);
+    await sendToAPI(currentMessage, targetChatId, thinkingId, currentAttachments);
   };
 
   const handleSSEStreamingResponse = useCallback(async (
@@ -575,7 +607,7 @@ const Chatbot = ({
     }
   }, [chatNameGenerated, inferChatName, onChatsChanged]);
 
-  const sendToAPI = useCallback(async (text, chatId, thinkingId) => {
+  const sendToAPI = useCallback(async (text, chatId, thinkingId, attachments = []) => {
     try {
       const isGuestChat =
         (typeof chatId === "string" && chatId.startsWith("guest-")) ||
@@ -587,21 +619,38 @@ const Chatbot = ({
           chatId,
           isGuestChat,
           user: !!user,
+          attachments: attachments.length,
         });
       }
 
-      const res = await fetcher("process-message-pdf", {
-        method: "POST",
-        isGuest: isGuestChat,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          chat_id: isGuestChat ? null : Number(chatId),
-          model_type: isPrivate,
-          model_key: "",
-          is_guest: isGuestChat,
-        }),
-      });
+      let res;
+      if (attachments.length > 0) {
+        // Use multipart/form-data so image files travel alongside the message
+        const form = new FormData();
+        form.append("message", text);
+        form.append("chat_id", isGuestChat ? "" : String(Number(chatId)));
+        form.append("model_type", String(isPrivate));
+        form.append("model_key", "");
+        form.append("is_guest", isGuestChat ? "true" : "false");
+        attachments.forEach((a) => form.append("attachments[]", a.file));
+        res = await postFormData("process-message-pdf", form, { isGuest: isGuestChat });
+      } else {
+        res = await fetcher("process-message-pdf", {
+          method: "POST",
+          isGuest: isGuestChat,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: text,
+            chat_id: isGuestChat ? null : Number(chatId),
+            model_type: isPrivate,
+            model_key: "",
+            is_guest: isGuestChat,
+          }),
+        });
+      }
+
+      // Revoke object URLs now the request is away
+      attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
 
       if (isDev) {
         console.log("API response status:", res.status);
@@ -927,10 +976,25 @@ const Chatbot = ({
                         </div>
                       ) : (
                         <div>
+                          {/* Image thumbnails for user messages with attachments */}
+                          {msg.role === "user" && msg.attachments?.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {msg.attachments.map((att, i) => (
+                                <img
+                                  key={i}
+                                  src={att.previewUrl}
+                                  alt={att.name}
+                                  className="max-h-48 max-w-xs rounded-lg object-cover border border-gray-600"
+                                />
+                              ))}
+                            </div>
+                          )}
                           {/* Main response content */}
-                          <p className="whitespace-pre-wrap leading-relaxed text-sm">
-                            {msg.content}
-                          </p>
+                          {msg.content && (
+                            <p className="whitespace-pre-wrap leading-relaxed text-sm">
+                              {msg.content}
+                            </p>
+                          )}
                           {/* Inline charts */}
                           {msg.charts && msg.charts.length > 0 && (
                             <div className="mt-4 space-y-3">
@@ -978,47 +1042,82 @@ const Chatbot = ({
 
         {/* Input form */}
         <div className="flex w-full justify-center mb-4 px-4">
-          <div className="flex items-center gap-1 focus-within:ring-slate-600 focus-within:ring-2 border-gray-600 p-2 rounded-xl bg-sidebar w-full max-w-4xl">
-            {/* Left side - Upload button */}
-            <button
-              type="button"
-              onClick={() => {
-                console.log(
-                  "Upload button clicked in Chatbot",
-                  "selectedChatId:",
-                  selectedChatId
-                );
-                setShowFileUpload(true);
-                setUploadButtonClicked(true);
-                setTimeout(() => setUploadButtonClicked(false), 1000);
-              }}
-              disabled={!user ? false : numCredits === 0}
-              className={`flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 ${
-                uploadButtonClicked
-                  ? "bg-gray-600 text-white"
-                  : "bg-gray-600 hover:bg-gray-500 text-white"
-              }`}
-              title={
-                !id
-                  ? "Please select or create a chat first"
-                  : !user
-                  ? "Add files (login for enhanced features)"
-                  : "Add files"
-              }
-            >
-              <FontAwesomeIcon icon={faFile} className="text-lg" />
-            </button>
+          <div className="flex flex-col gap-1 focus-within:ring-slate-600 focus-within:ring-2 border-gray-600 p-2 rounded-xl bg-sidebar w-full max-w-4xl">
+            {/* Pending image attachment previews */}
+            {pendingAttachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-2 pt-1">
+                {pendingAttachments.map((attachment) => (
+                  <div key={attachment.id} className="relative group">
+                    <img
+                      src={attachment.previewUrl}
+                      alt={attachment.name}
+                      className="h-16 w-16 object-cover rounded-lg border border-gray-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(attachment.id)}
+                      className="absolute -top-1.5 -right-1.5 bg-gray-700 hover:bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center transition-colors"
+                      title="Remove image"
+                    >
+                      <FontAwesomeIcon icon={faXmark} className="text-xs" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
-            {/* Center - Input */}
-            <div className="flex-1">
-              <div className="relative">
-                <div className="relative flex items-center rounded-lg focus-within:border-accent  focus-within:ring-0 transition-all duration-200">
+            <div className="flex items-center gap-1">
+              {/* Hidden image file input */}
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
+                multiple
+                onChange={handleImageAttachmentPick}
+                className="hidden"
+              />
+
+              {/* Left side - Document upload button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowFileUpload(true);
+                  setUploadButtonClicked(true);
+                  setTimeout(() => setUploadButtonClicked(false), 1000);
+                }}
+                disabled={!user ? false : numCredits === 0}
+                className={`flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 ${
+                  uploadButtonClicked
+                    ? "bg-gray-600 text-white"
+                    : "bg-gray-600 hover:bg-gray-500 text-white"
+                }`}
+                title={!id ? "Please select or create a chat first" : "Upload documents"}
+              >
+                <FontAwesomeIcon icon={faFile} className="text-lg" />
+              </button>
+
+              {/* Image attach button */}
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={messages.some((msg) => msg.isThinking)}
+                className="flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 bg-gray-600 hover:bg-gray-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Attach images"
+              >
+                <FontAwesomeIcon icon={faImage} className="text-lg" />
+              </button>
+
+              {/* Center - Input */}
+              <div className="flex-1">
+                <div className="relative flex items-center rounded-lg focus-within:border-accent focus-within:ring-0 transition-all duration-200">
                   <textarea
-                    className="w-full  border-none disabled:cursor-not-allowed  resize-none text-base px-4 py-3 focus:ring-0 focus:outline-none text-white placeholder:text-gray-400 bg-transparent rounded-lg"
+                    className="w-full border-none disabled:cursor-not-allowed resize-none text-base px-4 py-3 focus:ring-0 focus:outline-none text-white placeholder:text-gray-400 bg-transparent rounded-lg"
                     rows={1}
                     placeholder={
                       !user
                         ? "Ask your question (guest mode)"
+                        : pendingAttachments.length > 0
+                        ? "Ask about your image..."
                         : "Ask your document a question"
                     }
                     value={message}
@@ -1029,27 +1128,25 @@ const Chatbot = ({
                   />
                 </div>
               </div>
-            </div>
 
-            {/* Right side - Send button */}
-            <button
-              type="button"
-              onClick={handleSendMessage}
-              disabled={
-                !message ||
-                message.trim() === "" ||
-                messages.some((msg) => msg.isThinking)
-              }
-              className={`flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 ${
-                !message ||
-                message.trim() === "" ||
-                messages.some((msg) => msg.isThinking)
-                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                  : "bg-gray-600 hover:bg-gray-500 text-white"
-              }`}
-            >
-              <FontAwesomeIcon icon={faPaperPlane} className="text-lg" />
-            </button>
+              {/* Right side - Send button */}
+              <button
+                type="button"
+                onClick={handleSendMessage}
+                disabled={
+                  ((!message || message.trim() === "") && pendingAttachments.length === 0) ||
+                  messages.some((msg) => msg.isThinking)
+                }
+                className={`flex items-center justify-center w-12 h-12 rounded-lg transition-colors flex-shrink-0 ${
+                  ((!message || message.trim() === "") && pendingAttachments.length === 0) ||
+                  messages.some((msg) => msg.isThinking)
+                    ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                    : "bg-gray-600 hover:bg-gray-500 text-white"
+                }`}
+              >
+                <FontAwesomeIcon icon={faPaperPlane} className="text-lg" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
