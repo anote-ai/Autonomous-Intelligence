@@ -1294,7 +1294,13 @@ def _public_chat_fallback(message, chat_id, model_type, model_key, user_email): 
 @app.route('/public/evaluate', methods = ['POST'])
 @valid_api_key_required
 def evaluate():
-    message_id = request.json['message_id']
+    from api_endpoints.schemas import EvaluateRequest
+    from pydantic import ValidationError as _ValidationError
+    try:
+        req = EvaluateRequest.model_validate(request.get_json(force=True) or {})
+    except _ValidationError as exc:
+        return jsonify({"error": {"message": str(exc), "type": "validation_error"}}), 422
+    message_id = req.message_id
     user_email = USER_EMAIL_API
 
     question_json, answer_json = get_message_info(message_id, user_email)
@@ -1439,12 +1445,18 @@ def v1_chat_completions():  # pragma: no cover
                    through this compatibility shim; set to false.
     """
     import time
+    from api_endpoints.schemas import ChatCompletionsRequest
+    from pydantic import ValidationError as _ValidationError
 
-    body = request.get_json(force=True) or {}
-    model = body.get("model", "gpt-4o")
-    messages: list[dict] = body.get("messages", [])
-    chat_id = body.get("chat_id")  # optional – grounds reply in docs
-    stream = body.get("stream", False)
+    try:
+        req = ChatCompletionsRequest.model_validate(request.get_json(force=True) or {})
+    except _ValidationError as exc:
+        return jsonify({"error": {"message": str(exc), "type": "validation_error"}}), 422
+
+    model = req.model
+    messages: list[dict] = [m.model_dump() for m in req.messages]
+    chat_id = req.chat_id
+    stream = req.stream
 
     if not messages:
         return jsonify({"error": {"message": "messages is required", "type": "invalid_request_error"}}), 400
