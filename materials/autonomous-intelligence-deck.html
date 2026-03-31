@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Autonomous Intelligence — Pitch Deck</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: #0a0a0f;
+    color: #e8e8f0;
+    overflow: hidden;
+  }
+
+  /* ── Slide engine ─────────────────────────────────────────────────────── */
+  .deck { width: 100vw; height: 100vh; position: relative; }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 64px;
+    text-align: center;
+  }
+  .slide.active { display: flex; }
+
+  /* ── Controls ─────────────────────────────────────────────────────────── */
+  .controls {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    z-index: 100;
+  }
+  .controls button {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #e8e8f0;
+    padding: 8px 22px;
+    border-radius: 999px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .controls button:hover { background: rgba(255,255,255,0.16); }
+  .counter {
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    min-width: 60px;
+    text-align: center;
+  }
+
+  /* ── Color palette ────────────────────────────────────────────────────── */
+  :root {
+    --blue:   #5b9cf6;
+    --purple: #a78bfa;
+    --teal:   #34d399;
+    --orange: #fb923c;
+    --pink:   #f472b6;
+    --gold:   #fbbf24;
+  }
+
+  /* ── Slide backgrounds ────────────────────────────────────────────────── */
+  .bg-hero    { background: radial-gradient(ellipse 80% 60% at 50% 40%, #1a1440 0%, #0a0a0f 70%); }
+  .bg-problem { background: radial-gradient(ellipse 70% 50% at 30% 60%, #1a0e1a 0%, #0a0a0f 70%); }
+  .bg-solution{ background: radial-gradient(ellipse 70% 55% at 70% 40%, #0c1a2e 0%, #0a0a0f 70%); }
+  .bg-product { background: radial-gradient(ellipse 80% 60% at 50% 50%, #0d1f1a 0%, #0a0a0f 70%); }
+  .bg-api     { background: radial-gradient(ellipse 70% 50% at 40% 55%, #1a0e10 0%, #0a0a0f 70%); }
+  .bg-arch    { background: radial-gradient(ellipse 80% 60% at 60% 40%, #12101f 0%, #0a0a0f 70%); }
+  .bg-market  { background: radial-gradient(ellipse 70% 55% at 35% 60%, #1a1200 0%, #0a0a0f 70%); }
+  .bg-traction{ background: radial-gradient(ellipse 70% 55% at 65% 40%, #0a1a1a 0%, #0a0a0f 70%); }
+  .bg-team    { background: radial-gradient(ellipse 80% 60% at 50% 50%, #1a0a1a 0%, #0a0a0f 70%); }
+  .bg-cta     { background: radial-gradient(ellipse 80% 70% at 50% 40%, #0f0f2a 0%, #0a0a0f 70%); }
+
+  /* ── Typography ───────────────────────────────────────────────────────── */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 16px;
+  }
+  h1 {
+    font-size: clamp(36px, 5vw, 64px);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -1.5px;
+    margin-bottom: 20px;
+  }
+  h2 {
+    font-size: clamp(28px, 3.5vw, 48px);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -1px;
+    margin-bottom: 16px;
+  }
+  h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+  p.lead {
+    font-size: clamp(16px, 1.8vw, 22px);
+    line-height: 1.6;
+    color: rgba(232,232,240,0.72);
+    max-width: 680px;
+  }
+  .highlight { color: var(--blue); }
+  .hl-purple  { color: var(--purple); }
+  .hl-teal    { color: var(--teal); }
+  .hl-orange  { color: var(--orange); }
+  .hl-gold    { color: var(--gold); }
+
+  /* ── Pill / badge ─────────────────────────────────────────────────────── */
+  .pill {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    margin-bottom: 24px;
+  }
+  .pill-blue   { background: rgba(91,156,246,0.15); color: var(--blue);   border: 1px solid rgba(91,156,246,0.3);  }
+  .pill-purple { background: rgba(167,139,250,0.15); color: var(--purple); border: 1px solid rgba(167,139,250,0.3); }
+  .pill-teal   { background: rgba(52,211,153,0.15);  color: var(--teal);   border: 1px solid rgba(52,211,153,0.3);  }
+  .pill-orange { background: rgba(251,146,60,0.15);  color: var(--orange); border: 1px solid rgba(251,146,60,0.3);  }
+
+  /* ── Card grid ────────────────────────────────────────────────────────── */
+  .card-grid {
+    display: grid;
+    gap: 16px;
+    width: 100%;
+    max-width: 900px;
+    margin-top: 32px;
+  }
+  .card-grid-2 { grid-template-columns: 1fr 1fr; }
+  .card-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card-grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 16px;
+    padding: 24px 20px;
+    text-align: left;
+  }
+  .card .icon { font-size: 28px; margin-bottom: 12px; }
+  .card h3 { font-size: 15px; margin-bottom: 6px; }
+  .card p  { font-size: 13px; color: rgba(232,232,240,0.6); line-height: 1.5; }
+
+  /* ── Code block ───────────────────────────────────────────────────────── */
+  .code-block {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 24px 28px;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    text-align: left;
+    max-width: 660px;
+    margin-top: 28px;
+    white-space: pre;
+    color: #c9d1d9;
+  }
+  .code-block .kw  { color: #ff79c6; }
+  .code-block .str { color: #f1fa8c; }
+  .code-block .cmt { color: #6272a4; }
+  .code-block .fn  { color: #50fa7b; }
+  .code-block .num { color: #bd93f9; }
+
+  /* ── Stat row ─────────────────────────────────────────────────────────── */
+  .stat-row {
+    display: flex;
+    gap: 40px;
+    justify-content: center;
+    margin-top: 36px;
+    flex-wrap: wrap;
+  }
+  .stat { text-align: center; }
+  .stat .number {
+    font-size: clamp(32px, 4vw, 52px);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -2px;
+  }
+  .stat .label {
+    font-size: 13px;
+    color: rgba(232,232,240,0.5);
+    margin-top: 6px;
+  }
+
+  /* ── Flow diagram ─────────────────────────────────────────────────────── */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 32px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .flow-step {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    min-width: 110px;
+  }
+  .flow-arrow { color: rgba(255,255,255,0.3); font-size: 20px; }
+
+  /* ── List ─────────────────────────────────────────────────────────────── */
+  .check-list {
+    list-style: none;
+    text-align: left;
+    max-width: 600px;
+    margin-top: 28px;
+  }
+  .check-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 16px;
+    color: rgba(232,232,240,0.85);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .check-list li:last-child { border-bottom: none; }
+  .check-list .check { color: var(--teal); flex-shrink: 0; margin-top: 2px; }
+
+  /* ── Table ────────────────────────────────────────────────────────────── */
+  .compare-table {
+    width: 100%;
+    max-width: 700px;
+    border-collapse: collapse;
+    margin-top: 28px;
+    font-size: 14px;
+  }
+  .compare-table th {
+    padding: 10px 16px;
+    background: rgba(255,255,255,0.06);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+  }
+  .compare-table td {
+    padding: 11px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    color: rgba(232,232,240,0.8);
+  }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .yes { color: var(--teal); font-weight: 700; }
+  .no  { color: rgba(255,255,255,0.3); }
+  .row-hl td { background: rgba(91,156,246,0.07); }
+
+  /* ── Divider ──────────────────────────────────────────────────────────── */
+  .divider {
+    width: 48px;
+    height: 3px;
+    border-radius: 2px;
+    margin: 16px auto 24px;
+  }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <!-- ── 1. HERO ──────────────────────────────────────────────────────── -->
+  <div class="slide active bg-hero">
+    <div class="eyebrow">Anote AI</div>
+    <h1>Autonomous<br><span class="highlight">Intelligence</span></h1>
+    <div class="divider" style="background:var(--blue)"></div>
+    <p class="lead">Private document Q&amp;A and AI chat — self-hosted, OpenAI-compatible, and built for enterprises that can't send data to the cloud.</p>
+    <div class="stat-row" style="margin-top:48px">
+      <div class="stat"><div class="number highlight">100%</div><div class="label">Data stays on your infra</div></div>
+      <div class="stat"><div class="number hl-purple">GPT-4o</div><div class="label">Compatible API surface</div></div>
+      <div class="stat"><div class="number hl-teal">RAG</div><div class="label">+ Agentic reasoning</div></div>
+    </div>
+  </div>
+
+  <!-- ── 2. PROBLEM ───────────────────────────────────────────────────── -->
+  <div class="slide bg-problem">
+    <div class="pill pill-purple">The Problem</div>
+    <h2>AI is powerful.<br>But <span class="hl-purple">your data can't leave.</span></h2>
+    <div class="card-grid card-grid-3" style="max-width:800px;margin-top:36px">
+      <div class="card">
+        <div class="icon">🏦</div>
+        <h3>Regulated industries</h3>
+        <p>Finance, healthcare, legal — strict data residency rules block SaaS AI tools entirely.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔒</div>
+        <h3>IP &amp; trade secrets</h3>
+        <p>R&amp;D docs, M&amp;A filings, and proprietary research can't be sent to third-party APIs.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📋</div>
+        <h3>Compliance burden</h3>
+        <p>IT and legal veto ChatGPT integrations — no visibility into what leaves the network.</p>
+      </div>
+    </div>
+    <p class="lead" style="margin-top:36px;font-size:15px">
+      <strong style="color:#fff">$180B+ enterprise software market</strong> — most of it blocked from AI adoption due to data sovereignty concerns.
+    </p>
+  </div>
+
+  <!-- ── 3. SOLUTION ──────────────────────────────────────────────────── -->
+  <div class="slide bg-solution">
+    <div class="pill pill-blue">The Solution</div>
+    <h2>Drop-in AI that runs<br><span class="highlight">inside your perimeter</span></h2>
+    <div class="flow">
+      <div class="flow-step">📄<br>Upload docs</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">🔍<br>RAG chunking</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">🤖<br>LLM answer</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">📊<br>Cited response</div>
+    </div>
+    <ul class="check-list" style="margin-top:36px">
+      <li><span class="check">✓</span>Self-hosted Docker deploy — data never leaves your VPC</li>
+      <li><span class="check">✓</span>OpenAI-compatible API — existing integrations just work</li>
+      <li><span class="check">✓</span>GPT-4o &amp; Claude in one interface — switchable per request</li>
+      <li><span class="check">✓</span>Agentic reasoning with tool use for complex multi-step queries</li>
+    </ul>
+  </div>
+
+  <!-- ── 4. PRODUCT ───────────────────────────────────────────────────── -->
+  <div class="slide bg-product">
+    <div class="pill pill-teal">Product</div>
+    <h2>Everything needed to<br><span class="hl-teal">chat with your documents</span></h2>
+    <div class="card-grid card-grid-4" style="margin-top:32px">
+      <div class="card">
+        <div class="icon">💬</div>
+        <h3>Chat UI</h3>
+        <p>React-based chatbot with streaming, image attachments, and chat history.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📎</div>
+        <h3>Document Q&amp;A</h3>
+        <p>Upload PDF, DOCX, HTML. Semantic search retrieves the most relevant passages.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔗</div>
+        <h3>REST API</h3>
+        <p>OpenAI-compatible <code style="font-size:11px;color:var(--blue)">/v1/chat/completions</code> + <code style="font-size:11px;color:var(--blue)">/v1/question-answer</code>.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🧠</div>
+        <h3>Agents</h3>
+        <p>Autonomous &amp; reactive agents with tool calling, multi-step planning, and streaming reasoning.</p>
+      </div>
+    </div>
+    <div class="card-grid card-grid-3" style="margin-top:16px;max-width:700px">
+      <div class="card">
+        <div class="icon">🌐</div>
+        <h3>Multi-language</h3>
+        <p>Chinese, Japanese, Korean, Spanish, Arabic blueprints built in.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📊</div>
+        <h3>Chart generation</h3>
+        <p>Finance-aware charts streamed inline alongside text answers.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔑</div>
+        <h3>API keys &amp; auth</h3>
+        <p>JWT + Google OAuth, API key management, Stripe subscriptions.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 5. API COMPATIBILITY ─────────────────────────────────────────── -->
+  <div class="slide bg-api">
+    <div class="pill pill-orange">OpenAI Compatible</div>
+    <h2>Your existing code.<br><span class="hl-orange">Zero rewrites.</span></h2>
+    <div class="code-block"><span class="kw">from</span> anoteai <span class="kw">import</span> AnoteOpenAI
+
+<span class="cmt"># Swap the base_url — everything else stays identical</span>
+client = <span class="fn">AnoteOpenAI</span>(
+    api_key=<span class="str">"your-key"</span>,
+    base_url=<span class="str">"http://your-server:5000"</span>
+)
+
+<span class="cmt"># Standard chat completions</span>
+response = client.chat.completions.<span class="fn">create</span>(
+    model=<span class="str">"gpt-4o"</span>,
+    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Summarize Q3 earnings"</span>}],
+    extra_body={<span class="str">"chat_id"</span>: <span class="num">42</span>}  <span class="cmt"># optional: ground answer in docs</span>
+)</div>
+    <p class="lead" style="margin-top:20px;font-size:14px">
+      Works with LangChain, LlamaIndex, or any SDK that accepts a <code style="color:var(--orange)">base_url</code> override.
+    </p>
+  </div>
+
+  <!-- ── 6. ARCHITECTURE ──────────────────────────────────────────────── -->
+  <div class="slide bg-arch">
+    <div class="pill pill-blue">Architecture</div>
+    <h2>Production-grade stack,<br><span class="highlight">deployable in minutes</span></h2>
+    <div class="card-grid card-grid-2" style="max-width:800px;margin-top:32px">
+      <div class="card">
+        <h3 style="color:var(--blue);margin-bottom:14px">Backend</h3>
+        <p style="font-size:13px;line-height:2">
+          Flask + LangChain / LangGraph<br>
+          SQLAlchemy 2.x ORM + MySQL 8<br>
+          Redis session cache<br>
+          Apache Tika document parsing<br>
+          Ray for async embedding jobs<br>
+          Alembic schema migrations
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="color:var(--purple);margin-bottom:14px">Frontend</h3>
+        <p style="font-size:13px;line-height:2">
+          React 18 + Redux Toolkit<br>
+          Tailwind CSS + Flowbite<br>
+          Server-Sent Events streaming<br>
+          PDF viewer, image attachments<br>
+          Vitest unit test suite<br>
+          Shareable chat links
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="color:var(--teal);margin-bottom:14px">AI / Models</h3>
+        <p style="font-size:13px;line-height:2">
+          OpenAI GPT-4o / GPT-4 Vision<br>
+          Anthropic Claude 3.5 Sonnet<br>
+          Local LLM via Ollama<br>
+          Sentence Transformers embeddings<br>
+          Centralized provider factory<br>
+          Feature-flagged per deployment
+        </p>
+      </div>
+      <div class="card">
+        <h3 style="color:var(--orange);margin-bottom:14px">Operations</h3>
+        <p style="font-size:13px;line-height:2">
+          Docker Compose one-command deploy<br>
+          Flasgger OpenAPI docs at /docs<br>
+          Pydantic v2 request validation<br>
+          Stripe billing + webhooks<br>
+          Google OAuth SSO<br>
+          GitHub Actions CI/CD
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 7. COMPETITIVE ───────────────────────────────────────────────── -->
+  <div class="slide bg-market">
+    <div class="pill pill-orange">Why Us</div>
+    <h2>The only <span class="hl-gold">private-first</span><br>drop-in OpenAI alternative</h2>
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th style="text-align:left">Feature</th>
+          <th>ChatGPT / OpenAI</th>
+          <th>Open-source LLMs</th>
+          <th class="highlight">Autonomous Intelligence</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Data stays on-prem</td><td class="no">✗</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td>OpenAI-compatible API</td><td class="yes">✓</td><td class="no">✗</td><td class="yes row-hl">✓</td></tr>
+        <tr><td>GPT-4o &amp; Claude unified</td><td class="no">✗</td><td class="no">✗</td><td class="yes row-hl">✓</td></tr>
+        <tr><td>RAG over private docs</td><td class="yes">✓*</td><td class="no">✗</td><td class="yes row-hl">✓</td></tr>
+        <tr><td>Agentic tool use</td><td class="yes">✓</td><td class="no">✗</td><td class="yes row-hl">✓</td></tr>
+        <tr><td>One-command deploy</td><td class="yes">✓</td><td class="no">✗</td><td class="yes row-hl">✓</td></tr>
+        <tr><td>Full source available</td><td class="no">✗</td><td class="yes">✓</td><td class="yes row-hl">✓</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:11px;color:rgba(255,255,255,0.3);margin-top:12px">* ChatGPT Enterprise only, data still exits your network</p>
+  </div>
+
+  <!-- ── 8. TRACTION / ROADMAP ─────────────────────────────────────────── -->
+  <div class="slide bg-traction">
+    <div class="pill pill-teal">Traction &amp; Roadmap</div>
+    <h2>Built in the open,<br><span class="hl-teal">shipping fast</span></h2>
+    <div class="card-grid card-grid-2" style="max-width:800px;margin-top:32px">
+      <div class="card">
+        <h3 style="color:var(--teal);margin-bottom:16px">Shipped</h3>
+        <ul style="list-style:none;font-size:13px;line-height:2.2;color:rgba(232,232,240,0.75)">
+          <li>✅ OpenAI-compatible <code style="color:var(--blue)">/v1/chat/completions</code></li>
+          <li>✅ Document Q&amp;A with source citations</li>
+          <li>✅ Streaming SSE responses</li>
+          <li>✅ Image &amp; PDF multimodal support</li>
+          <li>✅ Autonomous + reactive agent system</li>
+          <li>✅ Shareable chat links</li>
+          <li>✅ SQLAlchemy ORM + Alembic migrations</li>
+          <li>✅ Flasgger OpenAPI docs</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 style="color:var(--blue);margin-bottom:16px">Coming Next</h3>
+        <ul style="list-style:none;font-size:13px;line-height:2.2;color:rgba(232,232,240,0.75)">
+          <li>🔜 MCP server integration (tool marketplace)</li>
+          <li>🔜 Audio transcription pipeline (Whisper)</li>
+          <li>🔜 Video frame analysis</li>
+          <li>🔜 Dynamic tool registration by agents</li>
+          <li>🔜 Tabular data (CSV / Excel) ingestion</li>
+          <li>🔜 Evaluation dashboard (RAGAS metrics)</li>
+          <li>🔜 Fine-tuning on private datasets</li>
+          <li>🔜 On-prem model hub (Ollama catalog)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 9. BUSINESS MODEL ─────────────────────────────────────────────── -->
+  <div class="slide bg-team">
+    <div class="pill pill-purple">Business Model</div>
+    <h2>SaaS + <span class="hl-purple">Enterprise</span><br>deployment tiers</h2>
+    <div class="card-grid card-grid-3" style="max-width:860px;margin-top:36px">
+      <div class="card" style="border-color:rgba(255,255,255,0.12)">
+        <div class="icon">🌱</div>
+        <h3>Developer</h3>
+        <p style="color:var(--teal);font-size:20px;font-weight:700;margin:8px 0">Free</p>
+        <p>Self-host with community support. Full API access. Perfect for evaluation and prototypes.</p>
+      </div>
+      <div class="card" style="border-color:var(--blue);box-shadow:0 0 0 1px rgba(91,156,246,0.2)">
+        <div class="icon">🚀</div>
+        <h3>Cloud</h3>
+        <p style="color:var(--blue);font-size:20px;font-weight:700;margin:8px 0">Usage-based</p>
+        <p>Managed hosting, auto-scaling, 99.9% SLA. Stripe metered billing per token consumed.</p>
+      </div>
+      <div class="card" style="border-color:rgba(167,139,250,0.3)">
+        <div class="icon">🏢</div>
+        <h3>Enterprise</h3>
+        <p style="color:var(--purple);font-size:20px;font-weight:700;margin:8px 0">Custom</p>
+        <p>VPC deploy, SSO, audit logs, SLA, dedicated support. Annual contracts.</p>
+      </div>
+    </div>
+    <div class="stat-row" style="margin-top:40px">
+      <div class="stat"><div class="number hl-gold">$300B+</div><div class="label">Enterprise AI market by 2026</div></div>
+      <div class="stat"><div class="number highlight">67%</div><div class="label">Enterprises blocked from AI by data concerns</div></div>
+      <div class="stat"><div class="number hl-teal">10x</div><div class="label">Cost savings vs. per-seat SaaS at scale</div></div>
+    </div>
+  </div>
+
+  <!-- ── 10. CTA ───────────────────────────────────────────────────────── -->
+  <div class="slide bg-cta">
+    <div class="eyebrow">Anote AI</div>
+    <h1>Private AI,<br><span class="highlight">ready to ship.</span></h1>
+    <div class="divider" style="background:linear-gradient(90deg,var(--blue),var(--purple))"></div>
+    <p class="lead">Deploy in 5 minutes with Docker. Plug your existing OpenAI integrations in. Keep every byte on your infrastructure.</p>
+    <div class="stat-row" style="margin-top:48px;gap:32px">
+      <div class="card" style="min-width:200px;text-align:center;padding:20px 28px">
+        <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:6px">Get started</div>
+        <code style="color:var(--teal);font-size:14px">docker compose up</code>
+      </div>
+      <div class="card" style="min-width:200px;text-align:center;padding:20px 28px">
+        <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:6px">API endpoint</div>
+        <code style="color:var(--blue);font-size:14px">localhost:5000/v1</code>
+      </div>
+      <div class="card" style="min-width:200px;text-align:center;padding:20px 28px">
+        <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:6px">Interactive docs</div>
+        <code style="color:var(--purple);font-size:14px">localhost:5000/docs</code>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.deck -->
+
+<!-- ── Controls ──────────────────────────────────────────────────────── -->
+<div class="controls">
+  <button id="prev">&#8592; Prev</button>
+  <span class="counter" id="counter">1 / 10</span>
+  <button id="next">Next &#8594;</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let current = 0;
+
+  function show(n) {
+    slides[current].classList.remove('active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    document.getElementById('counter').textContent = `${current + 1} / ${slides.length}`;
+  }
+
+  document.getElementById('prev').addEventListener('click', () => show(current - 1));
+  document.getElementById('next').addEventListener('click', () => show(current + 1));
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') show(current + 1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')                      show(current - 1);
+  });
+</script>
+</body>
+</html>
