@@ -2,32 +2,31 @@ import React from "react";
 import { render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { APISKeyDashboard } from "./APISKeyDashboard";
+import { vi } from "vitest";
 
-const mockDispatch = jest.fn();
-const mockGetAPIKeys = jest.fn(() => ({ type: "user/getAPIKeys" }));
-const mockNavigate = jest.fn();
+const mockDispatch = vi.fn();
+const mockGetAPIKeys = vi.fn(() => ({ type: "user/getAPIKeys" }));
+const mockNavigate = vi.fn();
 
-jest.mock("react-redux", () => ({
+vi.mock("react-redux", () => ({
   useDispatch: () => mockDispatch,
 }));
 
-jest.mock("../../redux/UserSlice", () => ({
+vi.mock("../../redux/UserSlice", () => ({
   useAPIKeys: () => [],
   useNumCredits: () => 3,
-  generateAPIKey: jest.fn(),
-  deleteAPIKey: jest.fn(),
+  generateAPIKey: vi.fn(),
+  deleteAPIKey: vi.fn(),
   getAPIKeys: (...args) => mockGetAPIKeys(...args),
 }));
 
-jest.mock("copy-to-clipboard", () => jest.fn());
+vi.mock("copy-to-clipboard", () => ({ default: vi.fn() }));
 
-jest.mock("@fortawesome/react-fontawesome", () => ({
+vi.mock("@fortawesome/react-fontawesome", () => ({
   FontAwesomeIcon: () => null,
 }));
 
-jest.mock("flowbite-react", () => {
-  const React = require("react");
-
+vi.mock("flowbite-react", () => {
   const sanitizeProps = ({ color, outline, show, size, ...props }) => props;
   const passthrough = ({ children, ...props }) =>
     React.createElement("div", sanitizeProps(props), children);
@@ -59,8 +58,8 @@ jest.mock("flowbite-react", () => {
   };
 });
 
-jest.mock("react-router-dom", () => {
-  const actual = jest.requireActual("react-router-dom");
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal();
   return {
     ...actual,
     useNavigate: () => mockNavigate,
