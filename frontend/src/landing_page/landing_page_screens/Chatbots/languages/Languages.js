@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useLandingChatApi } from "../useLandingChatApi";
 
 const LANGUAGE_MODELS = {
   korean: "GPT-4.1",
@@ -33,6 +34,7 @@ const Languages = () => {
     const scrollRef = useRef(null);
     const [file, setFile] = useState(null);
     const fileInputRef = useRef(null);
+    const { sendMultipartChat } = useLandingChatApi();
 
     // Redirect to Spanish if no language is selected
     useEffect(() => {
@@ -101,15 +103,9 @@ const Languages = () => {
 
         console.log("Sending message:", text);
 
-        const res = await fetch(apiUrl, {
-          method: "POST",
-          // headers: { "Content-Type": "application/json" },
-          body: formData,
-        });
+        const data = await sendMultipartChat(apiUrl, formData);
 
-        const data = await res.json();
-
-        console.log("Received response:", res);
+        console.log("Received response:", data);
 
         setMessages((prev) =>
           prev.map((msg) =>

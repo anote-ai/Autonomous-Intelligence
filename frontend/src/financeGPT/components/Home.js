@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import Chatbot from "./Chatbot";
 import Sidebar from "../Sidebar";
 import { useChatHistory } from "../useChatHistory";
+import { useChatbotApi } from "../useChatbotApi";
 
 function HomeChatbot({
   isGuestMode = false,

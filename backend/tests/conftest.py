@@ -47,9 +47,21 @@ def _install_import_stubs() -> None:
     mysql_module = types.ModuleType("mysql")
     mysql_connector_module = types.ModuleType("mysql.connector")
     mysql_connector_module.connect = lambda *args, **kwargs: MagicMock()
+    mysql_pooling_module = types.ModuleType("mysql.connector.pooling")
+
+    class FakeMySQLConnectionPool:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.connection = MagicMock()
+
+        def get_connection(self) -> MagicMock:
+            return self.connection
+
+    mysql_pooling_module.MySQLConnectionPool = FakeMySQLConnectionPool
     mysql_module.connector = mysql_connector_module
     _register_module("mysql", mysql_module)
     _register_module("mysql.connector", mysql_connector_module)
+    _register_module("mysql.connector.pooling", mysql_pooling_module)
+    mysql_connector_module.pooling = mysql_pooling_module
 
     finance_module = types.ModuleType("api_endpoints.financeGPT.chatbot_endpoints")
 
