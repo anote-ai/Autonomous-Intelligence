@@ -106,6 +106,7 @@ _get_model()
 from datetime import datetime
 
 from agents.config import AgentConfig
+from agents.autonomous_agent import AutonomousDocumentAgent
 from agents.reactive_agent import ReactiveDocumentAgent
 from api_endpoints.languages.arabic import arabic_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
@@ -820,8 +821,8 @@ def process_message_pdf():  # pragma: no cover
     # Check if agents are enabled
     if AgentConfig.is_agent_enabled():
         try:
-            # Initialize the reactive agent
-            agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
+            # Use the autonomous agent (tool-calling loop with optional extended thinking)
+            agent = AutonomousDocumentAgent(model_type=model_type, model_key=model_key)
 
             # Process the query using the appropriate method based on guest status
             if is_guest:

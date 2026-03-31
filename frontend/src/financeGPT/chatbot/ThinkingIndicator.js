@@ -8,10 +8,15 @@ import {
   faLightbulb,
   faSearch,
   faSitemap,
+  faWrench,
 } from "@fortawesome/free-solid-svg-icons";
 
 function getStepIcon(type) {
   switch (type) {
+    case "tool_registered":
+      return <FontAwesomeIcon icon={faWrench} className="text-emerald-400" />;
+    case "thinking":
+      return <FontAwesomeIcon icon={faLightbulb} className="text-yellow-400" />;
     case "llm_reasoning":
       return <FontAwesomeIcon icon={faBrain} className="text-accent" />;
     case "tool_start":
@@ -47,6 +52,10 @@ function getStepIcon(type) {
 
 function getStepColor(type) {
   switch (type) {
+    case "tool_registered":
+      return "border-l-emerald-400 bg-emerald-950/20";
+    case "thinking":
+      return "border-l-yellow-400 bg-yellow-950/20";
     case "llm_reasoning":
     case "tool_start":
     case "tools_start":
@@ -97,7 +106,19 @@ function ThinkingIndicator({ step }) {
         </div>
       )}
 
-      {step.tool_name && (
+      {step.type === "tool_registered" && step.tool_name && (
+        <div className="text-emerald-400 text-xs font-mono mb-1">
+          fn {step.tool_name}(inputs)
+        </div>
+      )}
+      {step.type === "tool_registered" && step.description && (
+        <div className="text-gray-400 text-xs">
+          {step.description.length > 120
+            ? `${step.description.substring(0, 120)}…`
+            : step.description}
+        </div>
+      )}
+      {step.type !== "tool_registered" && step.tool_name && (
         <div className="text-gray-500 text-xs">
           <strong>Tool:</strong> {step.tool_name}
         </div>
