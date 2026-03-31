@@ -95,31 +95,35 @@ from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
 from jwt import InvalidTokenError
 from pip._vendor import cachecontrol
-from services.finance_gpt import (
-    _get_model,
-    chunk_document,
-    fetch_external_url,
-    get_relevant_chunks,
-    get_text_from_url,
-)
 from tika import parser as p
-from api_endpoints.financeGPT.chatbot_endpoints import (
-    serialize_sources_for_api,
-    sources_to_prompt_context,
-)
-
-_get_model()
 from datetime import datetime
 
+from features import is_finance_gpt_enabled, is_agent_enabled
 from agents.config import AgentConfig
-from agents.autonomous_agent import AutonomousDocumentAgent
-from agents.reactive_agent import ReactiveDocumentAgent
 from api_endpoints.languages.arabic import arabic_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
 from api_endpoints.languages.gtm import gpt4_blueprint
 from api_endpoints.languages.japanese import japanese_blueprint
 from api_endpoints.languages.korean import korean_blueprint
 from api_endpoints.languages.spanish import spanish_blueprint
+
+if is_finance_gpt_enabled():
+    from services.finance_gpt import (
+        _get_model,
+        chunk_document,
+        fetch_external_url,
+        get_relevant_chunks,
+        get_text_from_url,
+    )
+    from api_endpoints.financeGPT.chatbot_endpoints import (
+        serialize_sources_for_api,
+        sources_to_prompt_context,
+    )
+    _get_model()
+
+if is_agent_enabled():
+    from agents.autonomous_agent import AutonomousDocumentAgent
+    from agents.reactive_agent import ReactiveDocumentAgent
 
 load_dotenv(override=True)
 
