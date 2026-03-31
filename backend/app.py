@@ -11,7 +11,7 @@ import openai
 import ray
 import requests
 import stripe
-from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic
+from anthropic import Anthropic
 from api_endpoints.chat.handler import (
     CreateNewChatHandler,
     DeleteChatHandler,
@@ -995,17 +995,24 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
             api_key=os.getenv("ANTHROPIC_API_KEY")
         )
 
-        completion = anthropic.completions.create(
-            model="claude-2",
-            max_tokens_to_sample=700,
-            prompt = (
-              f"{HUMAN_PROMPT} "
-              f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. "
-              f"please address the question: {query}. "
-              f"Consider the provided text as evidence: {sources_str}. "
-              f"{AI_PROMPT}")
+        completion = anthropic.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=700,
+            system=(
+                "You are a factual chatbot that answers questions about uploaded documents. "
+                "You only answer with answers you find in the text, no outside information."
+            ),
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"These are the sources from the text: {sources_str}\n"
+                        f"And this is the question: {query}."
+                    ),
+                }
+            ],
         )
-        answer = completion.completion
+        answer = completion.content[0].text
 
     #This adds bot message
     message_id = add_message_to_db(answer, chat_id, 0)
@@ -1099,8 +1106,20 @@ def upload():  # pragma: no cover
     #chat_type = int(request.form.getlist('task_type')[0])  # Convert to int
     #model_type = int(request.form.getlist('model_type')[0])
 
-    chat_type = request.form.getlist('task_type')[0]
-    model_type = request.form.getlist('model_type')[0]
+    raw_task = request.form.getlist('task_type')
+    raw_model = request.form.getlist('model_type')
+    chat_type = raw_task[0] if raw_task else "documents"
+    model_type = raw_model[0] if raw_model else "gpt"
+
+    # Accept both numeric (0/1) and string ("gpt"/"claude") model_type
+    _model_str_map = {"0": "gpt", "1": "claude", "2": "llama"}
+    if str(model_type) in _model_str_map:
+        model_type = _model_str_map[str(model_type)]
+
+    # Accept both numeric (0) and string ("documents") task_type
+    _task_str_map = {"0": "documents", "1": "edgar"}
+    if str(chat_type) in _task_str_map:
+        chat_type = _task_str_map[str(chat_type)]
 
     user_email = USER_EMAIL_API
 
@@ -1148,9 +1167,9 @@ def upload():  # pragma: no cover
                 result_id = chunk_document.remote(text, MAX_CHUNK_SIZE, doc_id)
                 result = ray.get(result_id)
     else:
-        return jsonify({"id": "Please enter a valid task type"}), 400
+        return jsonify({"error": f"Invalid task type: {chat_type!r}. Use 'documents' or 0."}), 400
 
-    return jsonify({"id": chat_id}), 200
+    return jsonify({"chat_id": chat_id, "id": chat_id}), 200  # 'id' kept for backward compat
 
 
 @app.route('/public/chat', methods=['POST'])
@@ -1238,18 +1257,25 @@ def _public_chat_fallback(message, chat_id, model_type, model_key, user_email): 
         if model_key:
            return jsonify({"Error": "You cannot enter a fine-tuned model key when using Claude"}), 400
 
-        anthropic = Anthropic(api_key = os.getenv("ANTHROPIC_API_KEY"))
-        completion = anthropic.completions.create(
-            model="claude-2",
-            max_tokens_to_sample=700,
-            prompt = (
-              f"{HUMAN_PROMPT} "
-              f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. "
-              f"please address the question: {query}. "
-              f"Consider the provided text as evidence: {sources_str}. "
-              f"{AI_PROMPT}")
+        anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        completion = anthropic.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=700,
+            system=(
+                "You are a factual chatbot that answers questions about uploaded documents. "
+                "You only answer with answers you find in the text, no outside information."
+            ),
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"These are the sources from the text: {sources_str}\n"
+                        f"And this is the question: {query}."
+                    ),
+                }
+            ],
         )
-        answer = completion.completion
+        answer = completion.content[0].text
 
     #This adds bot message
     message_id = add_message_to_db(answer, chat_id, 0)
@@ -1349,6 +1375,351 @@ def get_user_companies():
 
 api = Blueprint('api', __name__)
 app.register_blueprint(api)
+
+
+# ---------------------------------------------------------------------------
+# OpenAI-compatible Chat Completions API  (/v1/*)
+# ---------------------------------------------------------------------------
+# These endpoints let any OpenAI-compatible client (e.g. the openai Python
+# SDK, LangChain, etc.) talk directly to this server:
+#
+#   client = OpenAI(base_url="http://localhost:5000/v1", api_key="<your-key>")
+#   client.chat.completions.create(
+#       model="gpt-4o",
+#       messages=[{"role": "user", "content": "What is in my documents?"}],
+#   )
+#
+# Pass `chat_id` inside the optional `extra_body` / `extra_params` dict to
+# ground the answer in previously-uploaded documents.  Omit it (or set it to
+# null) for a plain, document-free chat-completion.
+# ---------------------------------------------------------------------------
+
+_SUPPORTED_MODELS = [
+    # OpenAI
+    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
+    # Anthropic
+    "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
+    "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022",
+    "claude-3-opus-20240229",
+    # Local / Ollama
+    "llama3", "llama2", "mistral",
+]
+
+
+@app.route("/v1/models", methods=["GET"])
+@valid_api_key_required
+def v1_list_models():
+    """Return the list of models that this server supports (OpenAI format)."""
+    now = int(__import__("time").time())
+    data = [
+        {
+            "id": m,
+            "object": "model",
+            "created": now,
+            "owned_by": "anote-ai",
+        }
+        for m in _SUPPORTED_MODELS
+    ]
+    return jsonify({"object": "list", "data": data})
+
+
+@app.route("/v1/chat/completions", methods=["POST"])
+@valid_api_key_required
+def v1_chat_completions():  # pragma: no cover
+    """OpenAI-compatible chat completions endpoint.
+
+    Required body fields:
+        model    – model name (any value from /v1/models)
+        messages – list of {"role": "user"|"assistant"|"system", "content": "…"}
+
+    Optional body fields:
+        chat_id  – integer chat / session ID.  When provided the answer is
+                   grounded in the documents that were uploaded to that chat.
+        stream   – boolean (default false).  Streaming is not yet supported
+                   through this compatibility shim; set to false.
+    """
+    import time
+
+    body = request.get_json(force=True) or {}
+    model = body.get("model", "gpt-4o")
+    messages: list[dict] = body.get("messages", [])
+    chat_id = body.get("chat_id")  # optional – grounds reply in docs
+    stream = body.get("stream", False)
+
+    if not messages:
+        return jsonify({"error": {"message": "messages is required", "type": "invalid_request_error"}}), 400
+
+    # Extract the last user message as the primary query
+    user_message = ""
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            content = m.get("content", "")
+            if isinstance(content, list):
+                # Multimodal content blocks – concatenate text parts
+                user_message = " ".join(
+                    block.get("text", "") for block in content if block.get("type") == "text"
+                )
+            else:
+                user_message = str(content)
+            break
+
+    if not user_message:
+        return jsonify({"error": {"message": "No user message found in messages", "type": "invalid_request_error"}}), 400
+
+    # Build conversation history for context (all but the last user turn)
+    history_pairs: list[dict] = []
+    for m in messages[:-1]:
+        if m.get("role") in ("user", "assistant"):
+            history_pairs.append({"role": m["role"], "content": m.get("content", "")})
+
+    # Determine which provider / model to use
+    is_anthropic = model.startswith("claude")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+
+    answer = ""
+
+    try:
+        if chat_id:
+            # ------------------------------------------------------------------
+            # Grounded answer: retrieve relevant document chunks first
+            # ------------------------------------------------------------------
+            user_email = USER_EMAIL_API
+            ensure_SDK_user_exists(user_email)
+
+            add_message_to_db(user_message, chat_id, 1)
+            sources = get_relevant_chunks(2, user_message, chat_id, user_email, include_metadata=True)
+            sources_str = sources_to_prompt_context(sources)
+
+            system_prompt = (
+                "You are a helpful assistant that answers questions grounded in the "
+                "provided document context.  Only use facts from the context below.  "
+                "If the answer is not in the context, say you don't know.\n\n"
+                f"Context:\n{sources_str}"
+            )
+
+            if is_anthropic:
+                from anthropic import Anthropic as _Anthropic
+                _client = _Anthropic(api_key=anthropic_api_key)
+                resp = _client.messages.create(
+                    model=model,
+                    max_tokens=1024,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": user_message}],
+                )
+                answer = resp.content[0].text
+            else:
+                import openai as _openai
+                _client = _openai.OpenAI(api_key=openai_api_key)
+                resp = _client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                )
+                answer = resp.choices[0].message.content
+
+            message_id = add_message_to_db(answer, chat_id, 0)
+            try:
+                add_sources_to_db(message_id, sources)
+            except Exception:
+                pass
+
+            sources_payload = serialize_sources_for_api(sources)
+        else:
+            # ------------------------------------------------------------------
+            # Plain chat completion (no document grounding)
+            # ------------------------------------------------------------------
+            sources_payload = []
+            message_id = None
+
+            # Convert history + system messages into provider format
+            formatted: list[dict] = []
+            for m in messages:
+                role = m.get("role", "user")
+                content = m.get("content", "")
+                if isinstance(content, list):
+                    content = " ".join(
+                        block.get("text", "") for block in content if block.get("type") == "text"
+                    )
+                formatted.append({"role": role, "content": content})
+
+            if is_anthropic:
+                from anthropic import Anthropic as _Anthropic
+                _client = _Anthropic(api_key=anthropic_api_key)
+                # Separate system messages from the conversation
+                system_msgs = [m["content"] for m in formatted if m["role"] == "system"]
+                conv_msgs = [m for m in formatted if m["role"] != "system"]
+                system_text = "\n".join(system_msgs) if system_msgs else "You are a helpful assistant."
+                resp = _client.messages.create(
+                    model=model,
+                    max_tokens=1024,
+                    system=system_text,
+                    messages=conv_msgs,
+                )
+                answer = resp.content[0].text
+            else:
+                import openai as _openai
+                _client = _openai.OpenAI(api_key=openai_api_key)
+                resp = _client.chat.completions.create(model=model, messages=formatted)
+                answer = resp.choices[0].message.content
+
+    except Exception as exc:
+        return jsonify({
+            "error": {
+                "message": str(exc),
+                "type": "server_error",
+                "code": "internal_error",
+            }
+        }), 500
+
+    # ------------------------------------------------------------------
+    # Build OpenAI-compatible response envelope
+    # ------------------------------------------------------------------
+    completion_id = f"chatcmpl-anote-{int(time.time())}"
+    response_body = {
+        "id": completion_id,
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": answer,
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": -1,   # not tracked yet
+            "completion_tokens": -1,
+            "total_tokens": -1,
+        },
+        # Anote-specific extension fields
+        "anote": {
+            "message_id": message_id,
+            "sources": sources_payload,
+        },
+    }
+
+    if stream:
+        # Return a minimal SSE stream with a single data chunk + [DONE]
+        def _stream():
+            chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": answer}, "finish_reason": "stop"}],
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return Response(_stream(), mimetype="text/event-stream")
+
+    return jsonify(response_body)
+
+
+@app.route("/v1/question-answer", methods=["POST"])
+@valid_api_key_required
+def v1_question_answer():  # pragma: no cover
+    """Simple stateless Q&A endpoint — no chat session required.
+
+    Upload documents via /public/upload first to get a chat_id, then call
+    this endpoint to ask questions against those documents.
+
+    Body:
+        question  (str)  – the question to answer
+        chat_id   (int)  – session ID from /public/upload
+        model     (str)  – optional model name (default: gpt-4o)
+    """
+    body = request.get_json(force=True) or {}
+    question = body.get("question", "").strip()
+    chat_id = body.get("chat_id")
+    model = body.get("model", "gpt-4o")
+
+    if not question:
+        return jsonify({"error": "question is required"}), 400
+    if not chat_id:
+        return jsonify({"error": "chat_id is required — upload documents first via /public/upload"}), 400
+
+    # Delegate to the chat completions handler logic
+    request_body = {
+        "model": model,
+        "messages": [{"role": "user", "content": question}],
+        "chat_id": chat_id,
+        "stream": False,
+    }
+    # Temporarily swap request JSON so v1_chat_completions can read it
+    with app.test_request_context(
+        "/v1/question-answer",
+        method="POST",
+        json=request_body,
+        headers={"Authorization": request.headers.get("Authorization", "")},
+    ):
+        from flask import g as _g
+        pass
+
+    # Direct implementation (avoids nested request context complexity)
+    user_email = USER_EMAIL_API
+    ensure_SDK_user_exists(user_email)
+
+    add_message_to_db(question, chat_id, 1)
+    sources = get_relevant_chunks(2, question, chat_id, user_email, include_metadata=True)
+    sources_str = sources_to_prompt_context(sources)
+
+    is_anthropic = model.startswith("claude")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    system_prompt = (
+        "You are a helpful assistant that answers questions grounded in the "
+        "provided document context. Only use facts from the context below. "
+        "If the answer is not in the context, say you don't know.\n\n"
+        f"Context:\n{sources_str}"
+    )
+
+    try:
+        if is_anthropic:
+            from anthropic import Anthropic as _Anthropic
+            _client = _Anthropic(api_key=anthropic_api_key)
+            resp = _client.messages.create(
+                model=model,
+                max_tokens=1024,
+                system=system_prompt,
+                messages=[{"role": "user", "content": question}],
+            )
+            answer = resp.content[0].text
+        else:
+            import openai as _openai
+            _client = _openai.OpenAI(api_key=openai_api_key)
+            resp = _client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": question},
+                ],
+            )
+            answer = resp.choices[0].message.content
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    message_id = add_message_to_db(answer, chat_id, 0)
+    try:
+        add_sources_to_db(message_id, sources)
+    except Exception:
+        pass
+
+    return jsonify({
+        "answer": answer,
+        "message_id": message_id,
+        "sources": serialize_sources_for_api(sources),
+        "model": model,
+        "question": question,
+    })
+
 
 if __name__ == '__main__':
     debug_mode = os.getenv("FLASK_ENV") == "development"
