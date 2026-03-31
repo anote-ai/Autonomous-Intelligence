@@ -1377,9 +1377,15 @@ def get_document_content(document_id, email):
 def _combine_sources(sources):
     combined_sources = ""
     for source in sources:
-        if len(source) < 2:
-            continue
-        chunk_text, document_name = source[0], source[1]
+        if isinstance(source, dict):
+            chunk_text = source.get("chunk_text")
+            document_name = source.get("document_name")
+            if not chunk_text or not document_name:
+                continue
+        else:
+            if len(source) < 2:
+                continue
+            chunk_text, document_name = source[0], source[1]
         combined_sources += f"Document: {document_name}: {chunk_text}\n\n"
     return combined_sources
 

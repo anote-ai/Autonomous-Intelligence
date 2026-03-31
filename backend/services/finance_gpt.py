@@ -416,7 +416,7 @@ def knn(query_vector, document_vectors):
     ]
 
 
-def get_relevant_chunks(k, question, chat_id, user_email):
+def get_relevant_chunks(k, question, chat_id, user_email, include_metadata=False):
     rows = get_chat_chunks(user_email, chat_id)
     chunk_embeddings = []
     chunk_metadata = []
@@ -432,6 +432,7 @@ def get_relevant_chunks(k, question, chat_id, user_email):
             {
                 "start": row["start_index"],
                 "end": row["end_index"],
+                "page_number": row.get("page_number"),
                 "document_name": row["document_name"],
                 "document_text": row["document_text"],
             }
@@ -452,12 +453,20 @@ def get_relevant_chunks(k, question, chat_id, user_email):
     source_chunks = []
     for index in range(min(k, len(results))):
         metadata = chunk_metadata[results[index]["index"]]
-        source_chunks.append(
-            (
-                metadata["document_text"][metadata["start"] : metadata["end"]],
-                metadata["document_name"],
+        chunk_text = metadata["document_text"][metadata["start"] : metadata["end"]]
+        if include_metadata:
+            source_chunks.append(
+                {
+                    "chunk_text": chunk_text,
+                    "document_name": metadata["document_name"],
+                    "page_number": metadata["page_number"],
+                    "start_index": metadata["start"],
+                    "end_index": metadata["end"],
+                    "source_type": "document_chunk",
+                }
             )
-        )
+        else:
+            source_chunks.append((chunk_text, metadata["document_name"]))
     return source_chunks
 
 

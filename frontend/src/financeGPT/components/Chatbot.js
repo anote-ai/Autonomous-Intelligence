@@ -29,6 +29,7 @@ import ThinkingIndicator from "../chatbot/ThinkingIndicator";
 import {
   createUploadedDocumentMessages,
   formatChatMessages,
+  normalizeSources,
   sortMessagesByTimestamp,
   updateMessageWithStreamData,
 } from "../chatbot/messageUtils";
@@ -599,6 +600,7 @@ const Chatbot = ({
                 eventData.type === "complete" ||
                 eventData.type === "step-complete"
               ) {
+                const normalizedSources = normalizeSources(eventData.sources);
                 setTimeout(() => {
                   setMessages((prev) =>
                     prev.map((msg) =>
@@ -608,7 +610,9 @@ const Chatbot = ({
                             isThinking: false,
                             currentStep: null,
                             content: eventData.answer || msg.content,
-                            sources: eventData.sources || msg.sources || [],
+                            sources: normalizedSources.length
+                              ? normalizedSources
+                              : msg.sources || [],
                             charts: [
                               ...(msg.charts || []),
                               ...(eventData.charts || []),
@@ -1048,6 +1052,37 @@ const Chatbot = ({
                               ))}
                             </div>
                           )}
+                          {msg.role === "assistant" &&
+                            !msg.isThinking &&
+                            msg.sources?.length > 0 && (
+                              <div className="mt-4 border-t border-[#2e3a4c] pt-3">
+                                <div className="text-xs font-semibold uppercase tracking-wide text-[#defe47] mb-2">
+                                  Grounded Sources
+                                </div>
+                                <div className="space-y-2">
+                                  {msg.sources.map((source, sourceIndex) => (
+                                    <div
+                                      key={source.id || sourceIndex}
+                                      className="rounded-lg border border-[#2e3a4c] bg-[#0f1419] p-3"
+                                    >
+                                      <div className="flex items-center justify-between gap-2 text-xs text-gray-300">
+                                        <span className="font-medium text-white">
+                                          {source.document_name}
+                                        </span>
+                                        <span className="text-gray-400">
+                                          {source.page_number != null
+                                            ? `Page ${source.page_number}`
+                                            : "Document evidence"}
+                                        </span>
+                                      </div>
+                                      <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-gray-300">
+                                        {source.chunk_text}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                         </div>
                       )}
                     </div>

@@ -1,3 +1,88 @@
+function normalizeSource(source, index) {
+  if (!source) {
+    return null;
+  }
+
+  if (Array.isArray(source)) {
+    const [chunkText, documentName, pageNumber, startIndex, endIndex] = source;
+    return {
+      id: `source-${index}`,
+      chunk_text: chunkText || "",
+      document_name: documentName || "Unknown document",
+      page_number: Number.isInteger(pageNumber) ? pageNumber : null,
+      start_index: typeof startIndex === "number" ? startIndex : null,
+      end_index: typeof endIndex === "number" ? endIndex : null,
+      source_type: "document_chunk",
+    };
+  }
+
+  if (typeof source === "object") {
+    return {
+      id: source.id || `source-${index}`,
+      chunk_text: source.chunk_text || source.chunkText || "",
+      document_name:
+        source.document_name || source.documentName || "Unknown document",
+      page_number:
+        Number.isInteger(source.page_number) || Number.isInteger(source.pageNumber)
+          ? source.page_number ?? source.pageNumber
+          : null,
+      start_index:
+        typeof source.start_index === "number"
+          ? source.start_index
+          : typeof source.startIndex === "number"
+          ? source.startIndex
+          : null,
+      end_index:
+        typeof source.end_index === "number"
+          ? source.end_index
+          : typeof source.endIndex === "number"
+          ? source.endIndex
+          : null,
+      source_type: source.source_type || source.sourceType || "document_chunk",
+    };
+  }
+
+  return null;
+}
+
+export function normalizeSources(sources) {
+  return (sources || [])
+    .map((source, index) => normalizeSource(source, index))
+    .filter(Boolean);
+}
+
+export function parseRelevantChunks(relevantChunks) {
+  if (!relevantChunks || typeof relevantChunks !== "string") {
+    return [];
+  }
+
+  return relevantChunks
+    .split("\n\n")
+    .map((entry, index) => {
+      const normalized = entry.trim();
+      if (!normalized.startsWith("Document: ")) {
+        return null;
+      }
+
+      const content = normalized.slice("Document: ".length);
+      const separatorIndex = content.indexOf(": ");
+      if (separatorIndex === -1) {
+        return null;
+      }
+
+      return {
+        id: `stored-source-${index}`,
+        document_name: content.slice(0, separatorIndex).trim() || "Unknown document",
+        chunk_text: content.slice(separatorIndex + 2).trim(),
+        page_number: null,
+        start_index: null,
+        end_index: null,
+        source_type: "stored_relevant_chunk",
+      };
+    })
+    .filter(Boolean);
+}
+
 export function formatChatMessages(rawMessages, chatId) {
   return rawMessages.map((message) => ({
     id: message.id,
@@ -6,7 +91,10 @@ export function formatChatMessages(rawMessages, chatId) {
     role: message.sent_from_user === 1 ? "user" : "assistant",
     relevant_chunks: message.relevant_chunks,
     reasoning: message.reasoning || [],
-    sources: message.sources || [],
+    sources:
+      normalizeSources(message.sources).length > 0
+        ? normalizeSources(message.sources)
+        : parseRelevantChunks(message.relevant_chunks),
     charts: message.charts || [],
     timestamp: new Date(message.created).getTime(),
   }));
@@ -153,7 +241,7 @@ export function updateMessageWithStreamData(message, eventData) {
     }
     case "complete": {
       updatedMessage.content = eventData.answer || updatedMessage.content || "";
-      updatedMessage.sources = eventData.sources || [];
+      updatedMessage.sources = normalizeSources(eventData.sources);
       updatedMessage.charts = [
         ...(updatedMessage.charts || []),
         ...(eventData.charts || []),
@@ -174,7 +262,7 @@ export function updateMessageWithStreamData(message, eventData) {
     }
     case "step-complete": {
       updatedMessage.content = eventData.answer || "";
-      updatedMessage.sources = eventData.sources || [];
+      updatedMessage.sources = normalizeSources(eventData.sources);
       updatedMessage.isThinking = false;
       updatedMessage.currentStep = null;
       updatedMessage.reasoning = [

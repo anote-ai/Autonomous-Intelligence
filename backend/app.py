@@ -102,6 +102,10 @@ from services.finance_gpt import (
     get_text_from_url,
 )
 from tika import parser as p
+from api_endpoints.financeGPT.chatbot_endpoints import (
+    serialize_sources_for_api,
+    sources_to_prompt_context,
+)
 
 _get_model()
 from datetime import datetime
@@ -910,8 +914,8 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
         })
 
     #Get most relevant section from the document
-    sources = get_relevant_chunks(2, query, chat_id, user_email)
-    sources_str = " ".join([", ".join(str(elem) for elem in source) for source in sources])
+    sources = get_relevant_chunks(2, query, chat_id, user_email, include_metadata=True)
+    sources_str = sources_to_prompt_context(sources)
 
     if (model_type == 0):
         if model_key:
@@ -967,7 +971,11 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
     except:
         print("no sources")
 
-    return jsonify(answer=answer)
+    return jsonify(
+        answer=answer,
+        message_id=message_id,
+        sources=serialize_sources_for_api(sources),
+    )
 
 
 @app.route('/add-model-key', methods=['POST'])
@@ -1128,13 +1136,12 @@ def public_ingest_pdf():  # pragma: no cover
             agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
             result = agent.process_query(message.strip(), chat_id, user_email)
 
-            # Format sources for compatibility
-            sources_swapped = [[str(elem) for elem in source[::-1]] for source in result.get("sources", [])]
+            sources_payload = serialize_sources_for_api(result.get("sources", []))
 
             return jsonify(
                 message_id=result.get("message_id"),
                 answer=result["answer"],
-                sources=sources_swapped
+                sources=sources_payload
             )
 
         except Exception as e:
@@ -1156,10 +1163,8 @@ def _public_chat_fallback(message, chat_id, model_type, model_key, user_email): 
     add_message_to_db(query, chat_id, 1)
 
     #Get most relevant section from the document
-    sources = get_relevant_chunks(2, query, chat_id, user_email)
-    sources_str = " ".join([", ".join(str(elem) for elem in source) for source in sources])
-
-    sources_swapped = [[str(elem) for elem in source[::-1]] for source in sources]
+    sources = get_relevant_chunks(2, query, chat_id, user_email, include_metadata=True)
+    sources_str = sources_to_prompt_context(sources)
 
     if (model_type == 0):
         if model_key:
@@ -1210,7 +1215,11 @@ def _public_chat_fallback(message, chat_id, model_type, model_key, user_email): 
     except:
         print("no sources")
 
-    return jsonify(message_id=message_id, answer=answer, sources=sources_swapped)
+    return jsonify(
+        message_id=message_id,
+        answer=answer,
+        sources=serialize_sources_for_api(sources),
+    )
 
 @app.route('/public/evaluate', methods = ['POST'])
 @valid_api_key_required
