@@ -144,6 +144,27 @@ def get_usage_summary(
         conn.close()
 
 
+def count_monthly_searches(user_id: int) -> int:
+    """Return the number of chat/search API calls logged for *user_id* in the
+    current calendar month.  Used to enforce ``planToSearches`` quotas."""
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS cnt
+            FROM api_usage
+            WHERE user_id = %s
+              AND endpoint IN ('/public/chat', '/v1/chat/completions', '/v1/question-answer')
+              AND created >= DATE_FORMAT(CURRENT_TIMESTAMP, '%%Y-%%m-01')
+            """,
+            [user_id],
+        )
+        row = cursor.fetchone()
+        return int(row["cnt"]) if row else 0
+    finally:
+        conn.close()
+
+
 def user_and_key_ids_for_api_key(api_key: str) -> tuple[int | None, int | None]:
     """Return ``(user_id, api_key_id)`` for the given raw API key string."""
     conn, cursor = get_db_connection()

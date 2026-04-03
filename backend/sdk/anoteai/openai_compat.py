@@ -84,6 +84,28 @@ class ChatCompletion:
 
 
 @dataclass
+class ChoiceDelta:
+    role: str | None
+    content: str | None
+
+
+@dataclass
+class StreamChoice:
+    index: int
+    delta: ChoiceDelta
+    finish_reason: str | None
+
+
+@dataclass
+class ChatCompletionChunk:
+    id: str
+    object: str
+    created: int
+    model: str
+    choices: list[StreamChoice]
+
+
+@dataclass
 class Model:
     id: str
     object: str
@@ -113,8 +135,13 @@ class CompletionsClient:
         stream: bool = False,
         extra_body: dict | None = None,
         **kwargs: Any,
-    ) -> ChatCompletion:
-        """Call ``POST /v1/chat/completions`` and return a :class:`ChatCompletion`."""
+    ) -> "ChatCompletion | Generator[ChatCompletionChunk, None, None]":
+        """Call ``POST /v1/chat/completions``.
+
+        When *stream* is ``False`` (default) returns a :class:`ChatCompletion`.
+        When *stream* is ``True`` returns a generator of :class:`ChatCompletionChunk`
+        objects, one per SSE event — compatible with the OpenAI streaming interface.
+        """
         body: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -122,6 +149,9 @@ class CompletionsClient:
             **(extra_body or {}),
             **kwargs,
         }
+        if stream:
+            return self._http.stream_post("/v1/chat/completions", body)
+
         data = self._http.post("/v1/chat/completions", body)
         choices = [
             Choice(
@@ -232,6 +262,56 @@ class _HTTPClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+    def stream_post(
+        self, path: str, body: dict
+    ) -> "Generator[ChatCompletionChunk, None, None]":
+        """POST *path* with streaming=True and yield :class:`ChatCompletionChunk` objects.
+
+        The server is expected to respond with ``text/event-stream`` SSE lines of the form::
+
+            data: {"id":"...","choices":[{"index":0,"delta":{"content":"..."},...}], ...}
+            data: [DONE]
+        """
+        resp = requests.post(
+            f"{self.base_url}{path}",
+            headers=self._headers(),
+            json=body,
+            timeout=120,
+            stream=True,
+        )
+        resp.raise_for_status()
+        for raw_line in resp.iter_lines():
+            if not raw_line:
+                continue
+            line: str = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+            if not line.startswith("data:"):
+                continue
+            payload = line[len("data:"):].strip()
+            if payload == "[DONE]":
+                return
+            try:
+                data = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            choices = [
+                StreamChoice(
+                    index=c.get("index", 0),
+                    delta=ChoiceDelta(
+                        role=c.get("delta", {}).get("role"),
+                        content=c.get("delta", {}).get("content"),
+                    ),
+                    finish_reason=c.get("finish_reason"),
+                )
+                for c in data.get("choices", [])
+            ]
+            yield ChatCompletionChunk(
+                id=data.get("id", ""),
+                object=data.get("object", "chat.completion.chunk"),
+                created=data.get("created", 0),
+                model=data.get("model", ""),
+                choices=choices,
+            )
 
     def get(self, path: str) -> dict:
         resp = requests.get(
