@@ -79,7 +79,7 @@ _EXT_TO_MIME: dict[str, str] = {
 }
 
 
-def _resolve_mime(file) -> str:
+def _resolve_mime(file: Any) -> str:
     """Return the best-guess MIME type for an uploaded FileStorage object."""
     mime = (file.content_type or "").split(";")[0].strip().lower()
     if mime and mime != "application/octet-stream":
@@ -138,7 +138,7 @@ def IngestDocumentsHandler(
         category = _media_category(mime)
 
         if category == "text":
-            subcategory = _text_subcategory(mime, filename)
+            subcategory = _text_subcategory(mime, filename or "")
 
             if subcategory == "tabular":
                 # Native CSV / Excel parsing — preserves column structure

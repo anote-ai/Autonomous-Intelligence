@@ -1,5 +1,10 @@
 """Tests for Pydantic request validation schemas."""
+
+from __future__ import annotations
+
 import pytest
+from pydantic import ValidationError
+
 from api_endpoints.schemas import (
     ChatCompletionsRequest,
     ChatMessageSchema,
@@ -8,33 +13,32 @@ from api_endpoints.schemas import (
     PublicChatRequest,
     QuestionAnswerRequest,
 )
-from pydantic import ValidationError
 
 # ---------------------------------------------------------------------------
 # ChatMessageSchema
 # ---------------------------------------------------------------------------
 
-def test_chat_message_str_content():
+def test_chat_message_str_content() -> None:
     msg = ChatMessageSchema(role="user", content="Hello")
     assert msg.role == "user"
     assert msg.content == "Hello"
 
 
-def test_chat_message_list_content():
+def test_chat_message_list_content() -> None:
     msg = ChatMessageSchema(role="user", content=[{"type": "text", "text": "Hi"}])
     assert isinstance(msg.content, list)
 
 
-def test_chat_message_missing_role():
+def test_chat_message_missing_role() -> None:
     with pytest.raises(ValidationError):
-        ChatMessageSchema(content="Hello")  # type: ignore[call-arg]
+        ChatMessageSchema(content="Hello")
 
 
 # ---------------------------------------------------------------------------
 # ChatCompletionsRequest
 # ---------------------------------------------------------------------------
 
-def test_chat_completions_valid():
+def test_chat_completions_valid() -> None:
     req = ChatCompletionsRequest(
         model="gpt-4o",
         messages=[{"role": "user", "content": "Hello"}],
@@ -45,12 +49,12 @@ def test_chat_completions_valid():
     assert req.stream is False
 
 
-def test_chat_completions_default_model():
+def test_chat_completions_default_model() -> None:
     req = ChatCompletionsRequest(messages=[{"role": "user", "content": "Hi"}])
     assert req.model == "gpt-4o"
 
 
-def test_chat_completions_with_chat_id():
+def test_chat_completions_with_chat_id() -> None:
     req = ChatCompletionsRequest(
         messages=[{"role": "user", "content": "Q"}],
         chat_id=42,
@@ -58,48 +62,48 @@ def test_chat_completions_with_chat_id():
     assert req.chat_id == 42
 
 
-def test_chat_completions_missing_messages():
+def test_chat_completions_missing_messages() -> None:
     with pytest.raises(ValidationError):
-        ChatCompletionsRequest(model="gpt-4o")  # type: ignore[call-arg]
+        ChatCompletionsRequest(model="gpt-4o")
 
 
-def test_chat_completions_wrong_type_messages():
+def test_chat_completions_wrong_type_messages() -> None:
     with pytest.raises(ValidationError):
-        ChatCompletionsRequest(model="gpt-4o", messages="not-a-list")  # type: ignore[arg-type]
+        ChatCompletionsRequest(model="gpt-4o", messages="not-a-list")
 
 
 # ---------------------------------------------------------------------------
 # PublicChatRequest
 # ---------------------------------------------------------------------------
 
-def test_public_chat_valid():
+def test_public_chat_valid() -> None:
     req = PublicChatRequest(message="Hello", chat_id=1)
     assert req.message == "Hello"
     assert req.chat_id == 1
     assert req.model_key is None
 
 
-def test_public_chat_missing_message():
+def test_public_chat_missing_message() -> None:
     with pytest.raises(ValidationError):
-        PublicChatRequest(chat_id=1)  # type: ignore[call-arg]
+        PublicChatRequest(chat_id=1)
 
 
-def test_public_chat_missing_chat_id():
+def test_public_chat_missing_chat_id() -> None:
     with pytest.raises(ValidationError):
-        PublicChatRequest(message="Hello")  # type: ignore[call-arg]
+        PublicChatRequest(message="Hello")
 
 
 # ---------------------------------------------------------------------------
 # QuestionAnswerRequest
 # ---------------------------------------------------------------------------
 
-def test_qa_valid():
+def test_qa_valid() -> None:
     req = QuestionAnswerRequest(question="What is this?", chat_id=5)
     assert req.question == "What is this?"
     assert req.model == "gpt-4o"
 
 
-def test_qa_custom_model():
+def test_qa_custom_model() -> None:
     req = QuestionAnswerRequest(question="Q?", chat_id=1, model="claude-3-5-haiku-20241022")
     assert req.model == "claude-3-5-haiku-20241022"
 
@@ -108,26 +112,26 @@ def test_qa_custom_model():
 # EvaluateRequest
 # ---------------------------------------------------------------------------
 
-def test_evaluate_valid():
+def test_evaluate_valid() -> None:
     req = EvaluateRequest(message_id=99)
     assert req.message_id == 99
 
 
-def test_evaluate_missing_message_id():
+def test_evaluate_missing_message_id() -> None:
     with pytest.raises(ValidationError):
-        EvaluateRequest()  # type: ignore[call-arg]
+        EvaluateRequest()
 
 
 # ---------------------------------------------------------------------------
 # CreateChatRequest
 # ---------------------------------------------------------------------------
 
-def test_create_chat_defaults():
+def test_create_chat_defaults() -> None:
     req = CreateChatRequest()
     assert req.chat_type == 0
     assert req.model_type == 0
 
 
-def test_create_chat_custom():
+def test_create_chat_custom() -> None:
     req = CreateChatRequest(chat_type=1, model_type=1)
     assert req.chat_type == 1

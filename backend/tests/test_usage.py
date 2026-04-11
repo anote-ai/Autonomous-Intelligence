@@ -2,25 +2,30 @@
 
 from __future__ import annotations
 
+from typing import Any, Optional
 from unittest.mock import MagicMock, patch
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-def _make_cursor(rows=None, fetchone_return=None):
+def _make_cursor(
+    rows: Optional[list[Any]] = None,
+    fetchone_return: Optional[Any] = None,
+) -> MagicMock:
     cursor = MagicMock()
     cursor.fetchall.return_value = rows or []
     cursor.fetchone.return_value = fetchone_return
     return cursor
 
 
-def _make_conn(cursor):
+def _make_conn(cursor: MagicMock) -> MagicMock:
     conn = MagicMock()
     conn.__enter__ = lambda s: s
     conn.__exit__ = MagicMock(return_value=False)
     return conn
 
 
-def _patch_db(cursor, conn=None):
+def _patch_db(cursor: MagicMock, conn: Optional[MagicMock] = None) -> Any:
     """Return a context manager that patches get_db_connection."""
     if conn is None:
         conn = _make_conn(cursor)
@@ -30,7 +35,7 @@ def _patch_db(cursor, conn=None):
 # ── log_api_usage ─────────────────────────────────────────────────────────────
 
 class TestLogApiUsage:
-    def test_inserts_row_with_correct_total(self):
+    def test_inserts_row_with_correct_total(self) -> None:
         cursor = _make_cursor()
         conn = _make_conn(cursor)
         with _patch_db(cursor, conn):
@@ -50,7 +55,7 @@ class TestLogApiUsage:
         assert 150 in params  # total_tokens = 100 + 50
         conn.commit.assert_called_once()
 
-    def test_swallows_db_errors(self):
+    def test_swallows_db_errors(self) -> None:
         """log_api_usage must never propagate exceptions."""
         with patch("database.usage.get_db_connection", side_effect=RuntimeError("db down")):
             from database.usage import log_api_usage
@@ -64,7 +69,7 @@ class TestLogApiUsage:
                 completion_tokens=0,
             )
 
-    def test_handles_none_user_and_key(self):
+    def test_handles_none_user_and_key(self) -> None:
         cursor = _make_cursor()
         conn = _make_conn(cursor)
         with _patch_db(cursor, conn):
@@ -85,7 +90,7 @@ class TestLogApiUsage:
 # ── get_usage_rows ─────────────────────────────────────────────────────────────
 
 class TestGetUsageRows:
-    def test_returns_rows_as_dicts(self):
+    def test_returns_rows_as_dicts(self) -> None:
         fake_row = {
             "id": 1, "endpoint": "/v1/chat/completions", "model": "gpt-4o",
             "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150,
@@ -99,7 +104,7 @@ class TestGetUsageRows:
         assert result[0]["model"] == "gpt-4o"
         assert result[0]["total_tokens"] == 150
 
-    def test_passes_date_filters_to_query(self):
+    def test_passes_date_filters_to_query(self) -> None:
         cursor = _make_cursor(rows=[])
         with _patch_db(cursor):
             from database.usage import get_usage_rows
@@ -110,7 +115,7 @@ class TestGetUsageRows:
         assert "2024-01-01" in params
         assert "2024-01-31" in params
 
-    def test_caps_limit_at_1000(self):
+    def test_caps_limit_at_1000(self) -> None:
         cursor = _make_cursor(rows=[])
         with _patch_db(cursor):
             from database.usage import get_usage_rows
@@ -118,7 +123,7 @@ class TestGetUsageRows:
         _, params = cursor.execute.call_args[0]
         assert 1000 in params
 
-    def test_returns_empty_list_when_no_rows(self):
+    def test_returns_empty_list_when_no_rows(self) -> None:
         cursor = _make_cursor(rows=[])
         with _patch_db(cursor):
             from database.usage import get_usage_rows
@@ -129,7 +134,7 @@ class TestGetUsageRows:
 # ── get_usage_summary ──────────────────────────────────────────────────────────
 
 class TestGetUsageSummary:
-    def test_returns_aggregated_totals(self):
+    def test_returns_aggregated_totals(self) -> None:
         fake_summary = {
             "total_requests": 10,
             "prompt_tokens": 800,
@@ -144,7 +149,7 @@ class TestGetUsageSummary:
         assert result["total_requests"] == 10
         assert result["total_tokens"] == 1200
 
-    def test_returns_zeros_when_no_data(self):
+    def test_returns_zeros_when_no_data(self) -> None:
         cursor = _make_cursor(fetchone_return=None)
         with _patch_db(cursor):
             from database.usage import get_usage_summary
@@ -156,7 +161,7 @@ class TestGetUsageSummary:
 # ── user_and_key_ids_for_api_key ───────────────────────────────────────────────
 
 class TestUserAndKeyIdsForApiKey:
-    def test_returns_ids_when_key_found(self):
+    def test_returns_ids_when_key_found(self) -> None:
         cursor = _make_cursor(fetchone_return={"user_id": 7, "key_id": 3})
         with _patch_db(cursor):
             from database.usage import user_and_key_ids_for_api_key
@@ -164,7 +169,7 @@ class TestUserAndKeyIdsForApiKey:
         assert uid == 7
         assert kid == 3
 
-    def test_returns_nones_when_key_not_found(self):
+    def test_returns_nones_when_key_not_found(self) -> None:
         cursor = _make_cursor(fetchone_return=None)
         with _patch_db(cursor):
             from database.usage import user_and_key_ids_for_api_key
