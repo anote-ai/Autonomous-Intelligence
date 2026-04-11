@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from "react";
 import Chatbot from "./Chatbot";
-import fetcher from "../../http/RequestConfig";
 import Sidebar from "../Sidebar";
 import { useChatHistory } from "../useChatHistory";
+
 
 function HomeChatbot({
   isGuestMode = false,
   onSidebarCollapsedChange = () => {},
 }) {
   const [selectedChatId, setSelectedChatId] = useState(isGuestMode ? 0 : null);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  // Default expanded on desktop (md+), collapsed on mobile
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+    () => window.innerWidth < 768
+  );
   const [errorMessage, setErrorMessage] = useState("");
   const isPrivate = 0;
   const currTask = 0;
-  const { chats, refreshChats, renameChatById, deleteChatById } =
+  const { chats, loading: chatsLoading, refreshChats, createChat, renameChatById, deleteChatById } =
     useChatHistory({
       enabled: !isGuestMode,
     });
@@ -38,40 +41,18 @@ function HomeChatbot({
 
   const createNewChat = async () => {
     try {
-      // Then create the chat
-      const response = await fetcher("create-new-chat", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ chat_type: currTask, model_type: isPrivate }),
-      });
-
-      const response_data = await response.json();
-
-      // Check if the response contains an error
-      if (response_data.error) {
-        // Show error to user with proper notification
-        showError(response_data.error);
-        throw new Error(response_data.error);
-      }
-
-      handleChatSelect(response_data.chat_id);
-      refreshChats();
-      return response_data.chat_id;
+      const chatId = await createChat({ chatType: currTask, modelType: isPrivate });
+      handleChatSelect(chatId);
+      return chatId;
     } catch (error) {
-      // Only log errors that aren't silent network errors
-      if (!error.silent) {
-        console.error("Error creating new chat:", error);
-      }
+      if (!error.silent) console.error("Error creating new chat:", error);
       if (error.type === "NETWORK_ERROR") {
-        // Backend is offline, create a temporary local chat ID
-        const tempChatId = Date.now(); // Use timestamp as temp ID
+        const tempChatId = Date.now();
         handleChatSelect(tempChatId);
         return tempChatId;
       }
-      throw error; // Re-throw non-network errors
+      showError(error.message || "Failed to create chat");
+      throw error;
     }
   };
 
@@ -108,6 +89,7 @@ function HomeChatbot({
             isCollapsed={isSidebarCollapsed}
             onToggle={handleSidebarToggle}
             chats={chats}
+            chatsLoading={chatsLoading}
             onRefreshChats={refreshChats}
             onRenameChat={renameChatById}
             onDeleteChat={deleteChatById}

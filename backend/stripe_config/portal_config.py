@@ -1,8 +1,8 @@
 
-
+import os
 import stripe
 
-stripe.api_key = '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'
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
 # cancel_configuration = stripe.billing_portal.Configuration.create(
 #     features={

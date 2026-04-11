@@ -47,9 +47,21 @@ def _install_import_stubs() -> None:
     mysql_module = types.ModuleType("mysql")
     mysql_connector_module = types.ModuleType("mysql.connector")
     mysql_connector_module.connect = lambda *args, **kwargs: MagicMock()
+    mysql_pooling_module = types.ModuleType("mysql.connector.pooling")
+
+    class FakeMySQLConnectionPool:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.connection = MagicMock()
+
+        def get_connection(self) -> MagicMock:
+            return self.connection
+
+    mysql_pooling_module.MySQLConnectionPool = FakeMySQLConnectionPool
     mysql_module.connector = mysql_connector_module
     _register_module("mysql", mysql_module)
     _register_module("mysql.connector", mysql_connector_module)
+    _register_module("mysql.connector.pooling", mysql_pooling_module)
+    mysql_connector_module.pooling = mysql_pooling_module
 
     finance_module = types.ModuleType("api_endpoints.financeGPT.chatbot_endpoints")
 
@@ -65,6 +77,19 @@ def _install_import_stubs() -> None:
     finance_module.chunk_document = _RemoteCallable()
     finance_module.add_document_to_db = lambda *args, **kwargs: (1, False)
     finance_module.get_relevant_chunks = lambda *args, **kwargs: [("chunk", "doc", 1)]
+    finance_module.serialize_sources_for_api = lambda sources: [
+        {
+            "id": source.get("id", f"source-{index}") if isinstance(source, dict) else f"source-{index}",
+            "document_name": source.get("document_name", "Unknown document") if isinstance(source, dict) else source[1],
+            "chunk_text": source.get("chunk_text", "") if isinstance(source, dict) else source[0],
+            "page_number": source.get("page_number") if isinstance(source, dict) else (source[2] if len(source) > 2 else None),
+            "start_index": source.get("start_index") if isinstance(source, dict) else (source[3] if len(source) > 3 else None),
+            "end_index": source.get("end_index") if isinstance(source, dict) else (source[4] if len(source) > 4 else None),
+            "source_type": source.get("source_type", "document_chunk") if isinstance(source, dict) else "document_chunk",
+        }
+        for index, source in enumerate(sources or [])
+    ]
+    finance_module.sources_to_prompt_context = lambda sources: " ".join(str(source) for source in (sources or []))
     finance_module.create_chat_shareable_url = lambda chat_id: f"/playbook/{chat_id}"
     finance_module.access_sharable_chat = lambda playbook_url: {"url": playbook_url}
     finance_module._get_model = lambda: None

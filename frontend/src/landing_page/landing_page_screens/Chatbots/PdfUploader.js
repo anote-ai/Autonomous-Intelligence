@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import { pdfjs } from "react-pdf";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFileUpload } from "@fortawesome/free-solid-svg-icons";
-import fetcher from "../../../http/RequestConfig";
+import { useLandingChatApi } from "./useLandingChatApi";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
@@ -14,6 +14,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/$
 function PDFUploader({ chat_id, handleForceUpdate }) {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef();
+  const { uploadDemoDocuments } = useLandingChatApi();
 
   const splashScreenStyle = {
     position: "fixed",
@@ -33,22 +34,10 @@ function PDFUploader({ chat_id, handleForceUpdate }) {
   const uploadFile = async (e) => {
     const files = e.target.files;
 
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      formData.append("files[]", files[i]);
-    }
-
-    //console.log("chat_id", chat_id);
-    formData.append("chat_id", chat_id);
-
     setIsUploading(true);
 
     try {
-      const response = await fetcher("ingest-pdf-demo", {
-        method: "POST",
-        body: formData,
-      });
-      await response.json();
+      await uploadDemoDocuments(chat_id, files);
       setIsUploading(false);
       handleForceUpdate();
     } catch (error) {

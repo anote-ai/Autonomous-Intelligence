@@ -1,3 +1,4 @@
+import os
 
 from flask import jsonify
 from database.db import add_subscription, delete_subscription, stripe_subscription_for_user, config_for_payment_tiers, user_has_free_trial, stripe_customer_for_user
@@ -8,6 +9,10 @@ from constants.global_constants import PaidUserStatus
 from database.db import user_has_free_trial, refresh_credits, user_email_for_id, user_email_for_customer_id, no_subscriptions_with_end_date_null
 from database.db_auth import user_id_for_email
 from datetime import datetime
+
+# Allow the frontend URL to be configured via environment variable so the same
+# backend binary can be pointed at different deployments (local, staging, prod).
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "https://privatechatbot.ai").rstrip("/")
 
 
 def CreateCheckoutSessionHandler(request, userEmail):
@@ -52,8 +57,8 @@ def CreateCheckoutSessionHandler(request, userEmail):
                     },
                 ],
                 mode='subscription',
-                success_url="https://privatechatbot.ai/account",
-                cancel_url="https://privatechatbot.ai/account",
+                success_url=f"{_FRONTEND_URL}/account",
+                cancel_url=f"{_FRONTEND_URL}/account",
                 metadata={
                     'user_id': user_id
                 },
@@ -83,7 +88,7 @@ def CreatePortalSessionHandler(request, userEmail):
     if no_subscriptions_with_end_date_null(userEmail):
         return jsonify({'status': "Already canceled."}), 400
 
-    return_url = "https://privatechatbot.ai/account"
+    return_url = f"{_FRONTEND_URL}/account"
     print("return_url")
     config = config_for_payment_tiers(userEmail, request.json["paymentTier"])
     print("config")

@@ -11,7 +11,7 @@ import openai
 import ray
 import requests
 import stripe
-from anthropic import AI_PROMPT, HUMAN_PROMPT, Anthropic
+from anthropic import Anthropic
 from api_endpoints.chat.handler import (
     CreateNewChatHandler,
     DeleteChatHandler,
@@ -61,11 +61,14 @@ from database.db import (
     access_shareable_chat,
     create_user_if_does_not_exist,
     create_chat_shareable_url,
+    ensure_demo_user_exists,
     ensure_sdk_user_exists as ensure_SDK_user_exists,
     get_chat_info,
     get_message_info,
     retrieve_messages as retrieve_message_from_db,
+    retrieve_messages_from_share_uuid,
     update_chat_name as update_chat_name_in_db,
+    update_user_profile,
 )
 from database.db_auth import (
     api_key_access_invalid,
@@ -93,20 +96,12 @@ from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
 from jwt import InvalidTokenError
 from pip._vendor import cachecontrol
-from services.finance_gpt import (
-    _get_model,
-    chunk_document,
-    fetch_external_url,
-    get_relevant_chunks,
-    get_text_from_url,
-)
 from tika import parser as p
 
-_get_model()
 from datetime import datetime
 
+from features import is_finance_gpt_enabled, is_agent_enabled
 from agents.config import AgentConfig
-from agents.reactive_agent import ReactiveDocumentAgent
 from api_endpoints.languages.arabic import arabic_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
 from api_endpoints.languages.gtm import gpt4_blueprint
@@ -114,10 +109,29 @@ from api_endpoints.languages.japanese import japanese_blueprint
 from api_endpoints.languages.korean import korean_blueprint
 from api_endpoints.languages.spanish import spanish_blueprint
 
+if is_finance_gpt_enabled():
+    from services.finance_gpt import (
+        _get_model,
+        chunk_document,
+        fetch_external_url,
+        get_relevant_chunks,
+        get_text_from_url,
+    )
+    from api_endpoints.financeGPT.chatbot_endpoints import (
+        serialize_sources_for_api,
+        sources_to_prompt_context,
+    )
+    _get_model()
+
+if is_agent_enabled():
+    from agents.autonomous_agent import AutonomousDocumentAgent
+    from agents.reactive_agent import ReactiveDocumentAgent
+
 load_dotenv(override=True)
 
 # Backward-compatible alias while callers migrate off the legacy misspelling.
 access_sharable_chat = access_shareable_chat
+DEMO_USER_EMAIL = "anon@anote.ai"
 
 app = Flask(__name__)
 app.register_blueprint(gpt4_blueprint)
@@ -127,7 +141,7 @@ app.register_blueprint(korean_blueprint)
 app.register_blueprint(spanish_blueprint)
 app.register_blueprint(arabic_blueprint)
 
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="http://host.docker.internal:11434/v1")
+client = get_openai_client()
 def ensure_ray_started():  # pragma: no cover
     if not ray.is_initialized():
         try:
@@ -155,10 +169,20 @@ config = {
 
 CORS(app, resources={ r'/*': {'origins': config['ORIGINS']}}, supports_credentials=True)
 
-app.secret_key = '6cac159dd02c902f822635ee0a6c3078'
+_flask_secret = os.getenv("FLASK_SECRET_KEY") or os.getenv("JWT_SECRET_KEY", "")
+if not _flask_secret:
+    import warnings
+    warnings.warn(
+        "FLASK_SECRET_KEY / JWT_SECRET_KEY env var is not set. "
+        "Using an insecure default — set this variable before deploying to production.",
+        stacklevel=1,
+    )
+    _flask_secret = "change-me-in-production"
+
+app.secret_key = _flask_secret
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_COOKIE_HTTPONLY'] = False
-app.config["JWT_SECRET_KEY"] = "6cac159dd02c902f822635ee0a6c3078"
+app.config["JWT_SECRET_KEY"] = _flask_secret
 app.config["JWT_REFRESH_TOKEN_EXPIRES"] = kSessionTokenExpirationTime
 app.config["JWT_TOKEN_LOCATION"] = "headers"
 app.config.from_object(__name__)
@@ -166,13 +190,13 @@ app.config.from_object(__name__)
 jwt_manager = JWTManager(app)
 app.jwt_manager = jwt_manager
 
-# Configure Flask-Mail
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'vidranatan@gmail.com'
-app.config['MAIL_PASSWORD'] = 'fhytlgpsjyzutlnm'
-app.config['MAIL_DEFAULT_SENDER'] = 'vidranatan@gmail.com'
+# Configure Flask-Mail — all values read from environment variables
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', '587'))
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() != 'false'
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', '')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', '')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', os.getenv('MAIL_USERNAME', ''))
 mail = Mail(app)
 
 
@@ -189,6 +213,44 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 ensure_ray_started()
 
+# ---------------------------------------------------------------------------
+# Swagger / OpenAPI documentation  (available at /docs)
+# ---------------------------------------------------------------------------
+from flasgger import Swagger  # noqa: E402
+
+_swagger_template = {
+    "info": {
+        "title": "Anote AI API",
+        "description": (
+            "Private document Q&A and chat completions API.  "
+            "Authenticate with `Authorization: Bearer <api-key>`."
+        ),
+        "version": "1.0.0",
+        "contact": {"name": "Anote AI", "url": "https://anote.ai"},
+    },
+    "securityDefinitions": {
+        "BearerAuth": {"type": "apiKey", "name": "Authorization", "in": "header"}
+    },
+}
+swagger = Swagger(
+    app,
+    template=_swagger_template,
+    config={
+        "headers": [],
+        "specs": [
+            {
+                "endpoint": "apispec",
+                "route": "/apispec.json",
+                "rule_filter": lambda rule: True,
+                "model_filter": lambda tag: True,
+            }
+        ],
+        "static_url_path": "/flasgger_static",
+        "swagger_ui": True,
+        "specs_route": "/docs",
+    },
+)
+
 def valid_api_key_required(fn):
   @wraps(fn)
   def wrapper(*args, **kwargs):
@@ -199,10 +261,11 @@ def valid_api_key_required(fn):
           api_key = auth_header.split(' ')[1]
           if is_api_key_valid(api_key):
             # Check if the user has credits before allowing API usage
-            from database.db_auth import api_key_user_has_credits
+            from database.db_auth import api_key_user_has_credits, touch_api_key_last_used
             if not api_key_user_has_credits(api_key, min_credits=1):
               return jsonify({"error": "Insufficient credits. Please add credits to your account to use the API."}), 403
-            # If api key is valid and user has credits, return the decorated function
+            # Record usage timestamp for this key (best-effort)
+            touch_api_key_last_used(api_key)
             return fn(*args, **kwargs)
     # If API key is not present or valid, return an error message or handle it as needed
     return "Unauthorized", 401
@@ -261,6 +324,15 @@ def import_shared_chat(playbook_url):
 
 @app.route('/health', methods=['GET'])
 def health_check():
+    """
+    Health check endpoint.
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: Server is running
+    """
     return "Healthy", 200
 
 # Auth
@@ -482,7 +554,7 @@ def customer_portal():
   verifyAuthForPortalSession(request, user_email, mail)
   return CreatePortalSessionHandler(request, user_email)
 
-STRIPE_WEBHOOK_SECRET = "whsec_Ustl52CpxewYc33WdamF06lDCjgg3a2e"
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 
 @app.route('/stripeWebhook', methods=['POST'])
 def stripe_webhook():
@@ -505,6 +577,40 @@ def ViewUser():
     # If the JWT is invalid, return an error
     return jsonify({"error": "Invalid JWT"}), 401
   return ViewUserHandler(request, user_email)
+
+
+@app.route('/update-profile', methods=['POST'])
+@jwt_or_session_token_required
+def UpdateProfile():
+    """Update the authenticated user's display name and/or profile picture URL.
+
+    Request body (JSON) — all fields optional:
+    {
+        "person_name": "Jane Doe",
+        "profile_pic_url": "https://example.com/avatar.png"
+    }
+    """
+    try:
+        user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+
+    body = request.get_json(silent=True) or {}
+    person_name = body.get("person_name")
+    profile_pic_url = body.get("profile_pic_url")
+
+    if person_name is None and profile_pic_url is None:
+        return jsonify({"error": "No fields to update"}), 400
+
+    # Basic validation
+    if person_name is not None and (not isinstance(person_name, str) or len(person_name) > 256):
+        return jsonify({"error": "person_name must be a string up to 256 characters"}), 400
+    if profile_pic_url is not None and (not isinstance(profile_pic_url, str) or len(profile_pic_url) > 2048):
+        return jsonify({"error": "profile_pic_url must be a string up to 2048 characters"}), 400
+
+    update_user_profile(user_email, person_name, profile_pic_url)
+    return jsonify({"success": True}), 200
+
 
 # Example of a background task that can consistently do
 # some processing in the background independently of your
@@ -613,13 +719,26 @@ def retrieve_messages_from_chat():
 
     return RetrieveMessagesHandler(request, user_email)
 
+
+@app.route('/retrieve-messages-from-chat-demo', methods=['POST'])
+def retrieve_messages_from_chat_demo():
+    ensure_demo_user_exists(DEMO_USER_EMAIL)
+    return RetrieveMessagesHandler(request, DEMO_USER_EMAIL)
+
 @app.route('/retrieve-shared-messages-from-chat', methods=['POST'])
 def get_playbook_messages():
     chat_type = 0
-    chat_id = request.json.get('chat_id')
-
+    body = request.get_json(force=True) or {}
+    # Support both legacy chat_id lookup and UUID-based playbook lookup
+    playbook_url = body.get('playbook_url')
+    if playbook_url:
+        messages = retrieve_messages_from_share_uuid(playbook_url)
+        return jsonify(messages=[
+            {"message_text": m["message_text"], "sent_from_user": 1 if m["role"] == "user" else 0}
+            for m in messages
+        ])
+    chat_id = body.get('chat_id')
     messages = retrieve_message_from_db("anon@anote.ai", chat_id, chat_type)
-
     return jsonify(messages=messages)
 
 @app.route('/update-chat-name', methods=['POST'])
@@ -693,6 +812,26 @@ def ingest_pdfs():
     return IngestDocumentsHandler(request, user_email, p, chunk_document)
 
 
+@app.route('/ingest-pdf-demo', methods=['POST'])
+def ingest_pdfs_demo():
+    ensure_demo_user_exists(DEMO_USER_EMAIL)
+    chat_id = request.form.getlist("chat_id")[0] if request.form.getlist("chat_id") else None
+    if not chat_id:
+        chat_id = add_chat_to_db(DEMO_USER_EMAIL, 0, 0)
+
+    files = request.files.getlist("files[]")
+    max_chunk_size = 1000
+    for file in files:
+        result = p.from_buffer(file)
+        text = result["content"].strip()
+        filename = file.filename
+        doc_id, does_exist = add_document_to_db(text, filename, chat_id=chat_id)
+        if not does_exist:
+            chunk_document.remote(text, max_chunk_size, doc_id)
+
+    return jsonify({"Success": "Document Uploaded", "chat_id": chat_id}), 200
+
+
     #return text, filename
 
 @app.route('/retrieve-current-docs', methods=['POST'])
@@ -702,6 +841,12 @@ def retrieve_current_docs():
     except InvalidTokenError:
         return jsonify({"error": "Invalid JWT"}), 401
     return RetrieveCurrentDocsHandler(request, user_email)
+
+
+@app.route('/retrieve-current-docs-demo', methods=['POST'])
+def retrieve_current_docs_demo():
+    ensure_demo_user_exists(DEMO_USER_EMAIL)
+    return RetrieveCurrentDocsHandler(request, DEMO_USER_EMAIL)
 
 @app.route('/delete-doc', methods=['POST'])
 def delete_doc():
@@ -741,28 +886,65 @@ class CustomJSONEncoder(json.JSONEncoder):
             return asdict(o)
         return super().default(o)
 
+def _parse_message_request(req):
+    """Extract (message_text, chat_id, model_type, model_key, is_guest, media_attachments)
+    from either a JSON body or a multipart/form-data request.
+
+    Multipart is used when the client attaches inline image files alongside the
+    chat message.  The form fields mirror the JSON keys; files are sent under
+    the field name ``attachments[]``.
+    """
+    content_type = req.content_type or ""
+    if "multipart/form-data" in content_type:
+        raw_message = req.form.get("message", "")
+        chat_id = req.form.get("chat_id")
+        model_type = int(req.form.get("model_type", 0))
+        model_key = req.form.get("model_key", "")
+        is_guest = req.form.get("is_guest", "false").lower() == "true"
+
+        media_attachments = []
+        for f in req.files.getlist("attachments[]"):
+            mime = (f.content_type or "application/octet-stream").split(";")[0].strip()
+            media_category = "image"
+            if mime.startswith("video/"):
+                media_category = "video"
+            elif mime.startswith("audio/"):
+                media_category = "audio"
+            import base64
+            data_b64 = base64.b64encode(f.read()).decode("utf-8")
+            media_attachments.append({
+                "media_type": media_category,
+                "mime_type": mime,
+                "data": data_b64,
+                "original_filename": f.filename,
+            })
+    else:
+        body = req.get_json(force=True) or {}
+        raw_message = body.get("message", "")
+        chat_id = body.get("chat_id")
+        model_type = body.get("model_type", 0)
+        model_key = body.get("model_key", "")
+        is_guest = body.get("is_guest", False)
+        # Allow clients to pass pre-encoded attachments in JSON for small images
+        media_attachments = body.get("attachments", [])
+
+    # Normalise message to a plain string
+    if isinstance(raw_message, dict):
+        message_text = raw_message.get("text") or raw_message.get("content") or str(raw_message)
+    else:
+        message_text = str(raw_message) if raw_message is not None else ""
+
+    return message_text, chat_id, model_type, model_key, is_guest, media_attachments
+
+
 @app.route('/process-message-pdf', methods=['POST'])
 def process_message_pdf():  # pragma: no cover
     print("=== DEBUG: process_message_pdf called ===")
-    message = request.json.get('message')
-    chat_id = request.json.get('chat_id')
-    model_type = request.json.get('model_type', 0)
-    model_key = request.json.get('model_key', "")
-    is_guest = request.json.get("is_guest", False)
 
-    print(f"DEBUG: is_guest = {is_guest}")
-    print(f"DEBUG: message type = {type(message)}")
-    print(f"DEBUG: message content = {message}")
-    print(f"DEBUG: request headers: {dict(request.headers)}")
+    message_text, chat_id, model_type, model_key, is_guest, media_attachments = _parse_message_request(request)
 
-    # Handle message extraction - it might be a dict or string
-    if isinstance(message, dict):
-        # If message is a dict, extract the actual message text
-        message_text = message.get('text') or message.get('content') or str(message)
-        print(f"DEBUG: Extracted message_text from dict: {message_text}")
-    else:
-        message_text = str(message) if message is not None else ""
-        print(f"DEBUG: Using message as string: {message_text}")
+    print(f"DEBUG: is_guest={is_guest}, model_type={model_type}, attachments={len(media_attachments)}")
+    print(f"DEBUG: message_text={message_text!r}")
 
     # Handle user authentication based on guest status
     user_email = None
@@ -783,8 +965,8 @@ def process_message_pdf():  # pragma: no cover
     # Check if agents are enabled
     if AgentConfig.is_agent_enabled():
         try:
-            # Initialize the reactive agent
-            agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
+            # Use the autonomous agent (tool-calling loop with optional extended thinking)
+            agent = AutonomousDocumentAgent(model_type=model_type, model_key=model_key)
 
             # Process the query using the appropriate method based on guest status
             if is_guest:
@@ -794,7 +976,12 @@ def process_message_pdf():  # pragma: no cover
                 # Use regular method for authenticated users
                 if not user_email or not isinstance(user_email, str):
                     return jsonify({"error": "User email is missing or invalid"}), 401
-                result = agent.process_query_stream(message_text.strip(), chat_id, user_email)
+                result = agent.process_query_stream(
+                    message_text.strip(),
+                    chat_id,
+                    user_email,
+                    media_attachments=media_attachments or None,
+                )
 
             def generate():
                 for chunk in result:
@@ -835,17 +1022,22 @@ def process_message_pdf():  # pragma: no cover
         # Agents disabled, use original implementation
         return _process_message_pdf_fallback(message_text, chat_id, model_type, model_key, user_email, is_guest)
 
+
+@app.route('/process-message-pdf-demo', methods=['POST'])
+def process_message_pdf_demo():  # pragma: no cover
+    ensure_demo_user_exists(DEMO_USER_EMAIL)
+    message = request.json.get('message')
+    chat_id = request.json.get('chat_id')
+    model_type = request.json.get('model_type', 0)
+    model_key = request.json.get('model_key', "")
+    return _process_message_pdf_fallback(message, chat_id, model_type, model_key, DEMO_USER_EMAIL, False)
+
 def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email, is_guest=False):  # pragma: no cover
-    """Fallback implementation using the original direct LLM approach without the ReActive Agent"""
+    """Fallback implementation using the original direct LLM approach without the ReActive Agent.
 
-    # Handle message extraction - it might be a dict or string
-    if isinstance(message, dict):
-        # If message is a dict, extract the actual message text
-        message_text = message.get('text') or message.get('content') or str(message)
-    else:
-        message_text = str(message) if message is not None else ""
-
-    query = message_text.strip()
+    ``message`` is already a plain string at this point (normalised upstream).
+    """
+    query = str(message).strip()
 
     # For guest users, skip database operations
     if not is_guest:
@@ -864,8 +1056,8 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
         })
 
     #Get most relevant section from the document
-    sources = get_relevant_chunks(2, query, chat_id, user_email)
-    sources_str = " ".join([", ".join(str(elem) for elem in source) for source in sources])
+    sources = get_relevant_chunks(2, query, chat_id, user_email, include_metadata=True)
+    sources_str = sources_to_prompt_context(sources)
 
     if (model_type == 0):
         if model_key:
@@ -897,21 +1089,26 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
     else:
         print("using Claude")
 
-        anthropic = Anthropic(
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
+        anthropic = get_anthropic_client()
 
-        completion = anthropic.completions.create(
-            model="claude-2",
-            max_tokens_to_sample=700,
-            prompt = (
-              f"{HUMAN_PROMPT} "
-              f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. "
-              f"please address the question: {query}. "
-              f"Consider the provided text as evidence: {sources_str}. "
-              f"{AI_PROMPT}")
+        completion = anthropic.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=700,
+            system=(
+                "You are a factual chatbot that answers questions about uploaded documents. "
+                "You only answer with answers you find in the text, no outside information."
+            ),
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"These are the sources from the text: {sources_str}\n"
+                        f"And this is the question: {query}."
+                    ),
+                }
+            ],
         )
-        answer = completion.completion
+        answer = completion.content[0].text
 
     #This adds bot message
     message_id = add_message_to_db(answer, chat_id, 0)
@@ -921,7 +1118,11 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
     except:
         print("no sources")
 
-    return jsonify(answer=answer)
+    return jsonify(
+        answer=answer,
+        message_id=message_id,
+        sources=serialize_sources_for_api(sources),
+    )
 
 
 @app.route('/add-model-key', methods=['POST'])
@@ -947,12 +1148,27 @@ def add_model_key():
 @app.route("/generateAPIKey", methods=["POST"])
 @jwt_or_session_token_required
 def generateAPIKey():
-  try:
-    user_email = extractUserEmailFromRequest(request)
-  except InvalidTokenError:
-    # If the JWT is invalid, return an error
-    return jsonify({"error": "Invalid JWT"}), 401
-  return GenerateAPIKeyHandler(request, user_email)
+    """
+    Generate a new API key for the authenticated user.
+    ---
+    tags:
+      - API Keys
+    responses:
+      200:
+        description: New API key created
+        schema:
+          type: object
+          properties:
+            api_key:
+              type: string
+      401:
+        description: Unauthorized
+    """
+    try:
+        user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+    return GenerateAPIKeyHandler(request, user_email)
 
 
 @app.route("/deleteAPIKey", methods=["POST"])
@@ -964,12 +1180,29 @@ def deleteAPIKey():
 @app.route('/getAPIKeys', methods = ['GET'])
 @jwt_or_session_token_required
 def getAPIKeys():
-  try:
-    user_email = extractUserEmailFromRequest(request)
-  except InvalidTokenError:
-    # If the JWT is invalid, return an error
-    return jsonify({"error": "Invalid JWT"}), 401
-  return GetAPIKeysHandler(request, user_email)
+    """
+    List all API keys for the authenticated user.
+    ---
+    tags:
+      - API Keys
+    responses:
+      200:
+        description: List of API keys
+        schema:
+          type: object
+          properties:
+            api_keys:
+              type: array
+              items:
+                type: object
+      401:
+        description: Unauthorized
+    """
+    try:
+      user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+    return GetAPIKeysHandler(request, user_email)
 
 
 #For the SDK
@@ -980,6 +1213,41 @@ USER_EMAIL_API = "api@example.com"
 @app.route('/public/upload', methods = ['POST'])
 @valid_api_key_required
 def upload():  # pragma: no cover
+    """
+    Upload documents to a new chat session.
+    ---
+    tags:
+      - Public SDK
+    security:
+      - BearerAuth: []
+    consumes:
+      - multipart/form-data
+    parameters:
+      - in: formData
+        name: files[]
+        type: file
+        description: One or more document files (PDF, DOCX, CSV, TXT, etc.)
+      - in: formData
+        name: task_type
+        type: string
+        description: '"documents" or 0 for Q&A (default)'
+      - in: formData
+        name: model_type
+        type: string
+        description: '"gpt" / 0 for OpenAI, "claude" / 1 for Anthropic'
+    responses:
+      200:
+        description: Upload successful — returns chat_id for subsequent /public/chat calls
+        schema:
+          type: object
+          properties:
+            chat_id:
+              type: integer
+            id:
+              type: integer
+      403:
+        description: Insufficient credits
+    """
     print("Form data:", request.form)
     print("Files:", request.files)
 
@@ -1001,8 +1269,20 @@ def upload():  # pragma: no cover
     #chat_type = int(request.form.getlist('task_type')[0])  # Convert to int
     #model_type = int(request.form.getlist('model_type')[0])
 
-    chat_type = request.form.getlist('task_type')[0]
-    model_type = request.form.getlist('model_type')[0]
+    raw_task = request.form.getlist('task_type')
+    raw_model = request.form.getlist('model_type')
+    chat_type = raw_task[0] if raw_task else "documents"
+    model_type = raw_model[0] if raw_model else "gpt"
+
+    # Accept both numeric (0/1) and string ("gpt"/"claude") model_type
+    _model_str_map = {"0": "gpt", "1": "claude", "2": "llama"}
+    if str(model_type) in _model_str_map:
+        model_type = _model_str_map[str(model_type)]
+
+    # Accept both numeric (0) and string ("documents") task_type
+    _task_str_map = {"0": "documents", "1": "edgar"}
+    if str(chat_type) in _task_str_map:
+        chat_type = _task_str_map[str(chat_type)]
 
     user_email = USER_EMAIL_API
 
@@ -1050,23 +1330,84 @@ def upload():  # pragma: no cover
                 result_id = chunk_document.remote(text, MAX_CHUNK_SIZE, doc_id)
                 result = ray.get(result_id)
     else:
-        return jsonify({"id": "Please enter a valid task type"}), 400
+        return jsonify({"error": f"Invalid task type: {chat_type!r}. Use 'documents' or 0."}), 400
 
-    return jsonify({"id": chat_id}), 200
+    return jsonify({"chat_id": chat_id, "id": chat_id}), 200  # 'id' kept for backward compat
 
 
 @app.route('/public/chat', methods=['POST'])
 @valid_api_key_required
 def public_ingest_pdf():  # pragma: no cover
+    """
+    Send a message to the chatbot and get a grounded answer.
+    ---
+    tags:
+      - Public SDK
+    security:
+      - BearerAuth: []
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          required: [message, chat_id]
+          properties:
+            message:
+              type: string
+              example: What is the main finding in the document?
+            chat_id:
+              type: integer
+              description: Session ID from /public/upload
+            model_key:
+              type: string
+              description: Optional fine-tuned OpenAI key
+    responses:
+      200:
+        description: Answer with source citations
+        schema:
+          type: object
+          properties:
+            answer:
+              type: string
+            message_id:
+              type: integer
+            sources:
+              type: array
+      403:
+        description: Insufficient credits
+    """
     user_email = USER_EMAIL_API
     ensure_SDK_user_exists(user_email)
 
-    # Extract API key for credit deduction
+    # Extract API key for credit deduction / quota check
     auth_header = request.headers.get('Authorization')
     api_key = auth_header.split(' ')[1] if auth_header and auth_header.startswith('Bearer ') else None
 
+    # Enforce monthly search quota (planToSearches)
+    from constants.global_constants import planToSearches
+    from database.db_auth import paid_user_for_user_email_with_cursor, deduct_credits_from_api_key_user
+    from database.db_pool import get_db_connection as _get_conn
+    from database.usage import count_monthly_searches, user_and_key_ids_for_api_key
+    from db_enums import PaidUserStatus
+
+    _quota_conn, _quota_cursor = _get_conn()
+    try:
+        plan_level = paid_user_for_user_email_with_cursor(_quota_conn, _quota_cursor, user_email)
+    finally:
+        _quota_conn.close()
+
+    plan_status = PaidUserStatus(plan_level) if plan_level in [e.value for e in PaidUserStatus] else PaidUserStatus.FREE_TIER
+    monthly_limit = planToSearches.get(plan_status, 0)
+
+    if monthly_limit > 0:  # 0 means unlimited for enterprise / no cap defined
+        _uid, _ = user_and_key_ids_for_api_key(api_key)
+        if _uid and count_monthly_searches(_uid) >= monthly_limit:
+            return jsonify({
+                "error": f"Monthly search quota exceeded ({monthly_limit} searches/month on your plan). "
+                         "Upgrade your plan to continue."
+            }), 429
+
     # Deduct 1 credit for each chat message
-    from database.db_auth import deduct_credits_from_api_key_user
     if not deduct_credits_from_api_key_user(api_key, 1):
         return jsonify({"error": "Insufficient credits. You need 1 credit per chat message."}), 403
 
@@ -1082,13 +1423,12 @@ def public_ingest_pdf():  # pragma: no cover
             agent = ReactiveDocumentAgent(model_type=model_type, model_key=model_key)
             result = agent.process_query(message.strip(), chat_id, user_email)
 
-            # Format sources for compatibility
-            sources_swapped = [[str(elem) for elem in source[::-1]] for source in result.get("sources", [])]
+            sources_payload = serialize_sources_for_api(result.get("sources", []))
 
             return jsonify(
                 message_id=result.get("message_id"),
                 answer=result["answer"],
-                sources=sources_swapped
+                sources=sources_payload
             )
 
         except Exception as e:
@@ -1110,10 +1450,8 @@ def _public_chat_fallback(message, chat_id, model_type, model_key, user_email): 
     add_message_to_db(query, chat_id, 1)
 
     #Get most relevant section from the document
-    sources = get_relevant_chunks(2, query, chat_id, user_email)
-    sources_str = " ".join([", ".join(str(elem) for elem in source) for source in sources])
-
-    sources_swapped = [[str(elem) for elem in source[::-1]] for source in sources]
+    sources = get_relevant_chunks(2, query, chat_id, user_email, include_metadata=True)
+    sources_str = sources_to_prompt_context(sources)
 
     if (model_type == 0):
         if model_key:
@@ -1143,18 +1481,25 @@ def _public_chat_fallback(message, chat_id, model_type, model_key, user_email): 
         if model_key:
            return jsonify({"Error": "You cannot enter a fine-tuned model key when using Claude"}), 400
 
-        anthropic = Anthropic(api_key = os.getenv("ANTHROPIC_API_KEY"))
-        completion = anthropic.completions.create(
-            model="claude-2",
-            max_tokens_to_sample=700,
-            prompt = (
-              f"{HUMAN_PROMPT} "
-              f"You are a factual chatbot that answers questions about uploaded documents. You only answer with answers you find in the text, no outside information. "
-              f"please address the question: {query}. "
-              f"Consider the provided text as evidence: {sources_str}. "
-              f"{AI_PROMPT}")
+        anthropic = get_anthropic_client()
+        completion = anthropic.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=700,
+            system=(
+                "You are a factual chatbot that answers questions about uploaded documents. "
+                "You only answer with answers you find in the text, no outside information."
+            ),
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"These are the sources from the text: {sources_str}\n"
+                        f"And this is the question: {query}."
+                    ),
+                }
+            ],
         )
-        answer = completion.completion
+        answer = completion.content[0].text
 
     #This adds bot message
     message_id = add_message_to_db(answer, chat_id, 0)
@@ -1164,12 +1509,22 @@ def _public_chat_fallback(message, chat_id, model_type, model_key, user_email): 
     except:
         print("no sources")
 
-    return jsonify(message_id=message_id, answer=answer, sources=sources_swapped)
+    return jsonify(
+        message_id=message_id,
+        answer=answer,
+        sources=serialize_sources_for_api(sources),
+    )
 
 @app.route('/public/evaluate', methods = ['POST'])
 @valid_api_key_required
 def evaluate():
-    message_id = request.json['message_id']
+    from api_endpoints.schemas import EvaluateRequest
+    from pydantic import ValidationError as _ValidationError
+    try:
+        req = EvaluateRequest.model_validate(request.get_json(force=True) or {})
+    except _ValidationError as exc:
+        return jsonify({"error": {"message": str(exc), "type": "validation_error"}}), 422
+    message_id = req.message_id
     user_email = USER_EMAIL_API
 
     question_json, answer_json = get_message_info(message_id, user_email)
@@ -1250,6 +1605,535 @@ def get_user_companies():
 
 api = Blueprint('api', __name__)
 app.register_blueprint(api)
+
+
+# ---------------------------------------------------------------------------
+# OpenAI-compatible Chat Completions API  (/v1/*)
+# ---------------------------------------------------------------------------
+# These endpoints let any OpenAI-compatible client (e.g. the openai Python
+# SDK, LangChain, etc.) talk directly to this server:
+#
+#   client = OpenAI(base_url="http://localhost:5000/v1", api_key="<your-key>")
+#   client.chat.completions.create(
+#       model="gpt-4o",
+#       messages=[{"role": "user", "content": "What is in my documents?"}],
+#   )
+#
+# Pass `chat_id` inside the optional `extra_body` / `extra_params` dict to
+# ground the answer in previously-uploaded documents.  Omit it (or set it to
+# null) for a plain, document-free chat-completion.
+# ---------------------------------------------------------------------------
+
+_SUPPORTED_MODELS = [
+    # OpenAI
+    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo",
+    # Anthropic
+    "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
+    "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022",
+    "claude-3-opus-20240229",
+    # Local / Ollama
+    "llama3", "llama2", "mistral",
+]
+
+
+@app.route("/v1/account", methods=["GET"])
+@valid_api_key_required
+def v1_account():
+    """Return account, subscription, and credit information for the caller.
+
+    This is an Anote-specific extension to the OpenAI-compatible API surface.
+    The response mirrors the shape returned by ``GET /viewUser`` but lives under
+    the ``/v1/`` namespace so SDK clients can reach it without a separate host.
+
+    Returns 200 with JSON:
+        id            – numeric user ID
+        email         – user email
+        plan          – string plan name (free / basic / standard / premium / enterprise)
+        plan_level    – integer 0-4 (matches PaidUserStatus enum)
+        credits_remaining – integer credits left this period
+        credits_monthly   – integer credits granted per billing period (0 = pay-as-you-go)
+        credits_refresh_date – ISO date of next credit reset, or null
+        subscription_status  – "active" | "trialing" | "canceled" | "none"
+        subscription_end_date – ISO date subscription expires, or null
+        is_free_trial – boolean
+        limits        – object with per-plan quotas
+    """
+    from database.db import view_user
+    from constants.global_constants import planToCredits
+
+    api_key = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    user_email = user_email_for_api_key(api_key)
+    result = view_user(user_email)
+
+    # view_user returns a Flask Response — unwrap it
+    if hasattr(result, "get_json"):
+        user_data = result.get_json()
+    elif isinstance(result, tuple):
+        user_data = result[0].get_json() if hasattr(result[0], "get_json") else {}
+    else:
+        user_data = {}
+
+    plan_level = int(user_data.get("paid_user") or 0)
+    plan_names = {0: "free", 1: "basic", 2: "standard", 3: "premium", 4: "enterprise"}
+
+    # Determine subscription status
+    end_date = user_data.get("end_date")
+    is_free_trial = bool(user_data.get("is_free_trial"))
+    if is_free_trial:
+        status = "trialing"
+    elif plan_level > 0:
+        status = "active" if not end_date else "canceled"
+    else:
+        status = "none"
+
+    monthly_credits = planToCredits.get(plan_level, 0)
+
+    return jsonify({
+        "object": "account",
+        "id": user_data.get("id"),
+        "email": user_data.get("email"),
+        "name": user_data.get("name"),
+        "plan": plan_names.get(plan_level, "free"),
+        "plan_level": plan_level,
+        "credits_remaining": user_data.get("credits", 0),
+        "credits_monthly": monthly_credits,
+        "credits_refresh_date": user_data.get("credits_refresh"),
+        "subscription_status": status,
+        "subscription_end_date": end_date,
+        "is_free_trial": is_free_trial,
+        "next_plan": user_data.get("next_plan"),
+        "limits": {
+            "credits_per_month": monthly_credits,
+            "models": _SUPPORTED_MODELS,
+        },
+    })
+
+
+@app.route("/v1/usage", methods=["GET"])
+@valid_api_key_required
+def v1_usage():
+    """Return API usage history and summary for the caller.
+
+    Query parameters:
+        start_date – ISO date string YYYY-MM-DD (optional, inclusive)
+        end_date   – ISO date string YYYY-MM-DD (optional, inclusive)
+        limit      – max rows to return (default 100, max 1000)
+
+    Returns 200 with JSON shaped like::
+
+        {
+          "object": "list",
+          "data": [
+            {
+              "id": 1,
+              "endpoint": "/v1/chat/completions",
+              "model": "gpt-4o",
+              "prompt_tokens": 120,
+              "completion_tokens": 85,
+              "total_tokens": 205,
+              "credits_used": 1,
+              "created": "2024-01-15T10:30:00"
+            },
+            …
+          ],
+          "summary": {
+            "total_requests": 42,
+            "prompt_tokens": 5100,
+            "completion_tokens": 3600,
+            "total_tokens": 8700,
+            "credits_used": 42,
+            "period_start": "2024-01-01",
+            "period_end": "2024-01-31"
+          }
+        }
+    """
+    from database.usage import get_usage_rows, get_usage_summary, user_and_key_ids_for_api_key
+
+    api_key = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    user_id, _ = user_and_key_ids_for_api_key(api_key)
+    if user_id is None:
+        return jsonify({"error": "API key not found"}), 401
+
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    try:
+        limit = int(request.args.get("limit", 100))
+    except (TypeError, ValueError):
+        limit = 100
+
+    rows = get_usage_rows(user_id, start_date=start_date, end_date=end_date, limit=limit)
+    summary = get_usage_summary(user_id, start_date=start_date, end_date=end_date)
+
+    # Serialize datetimes to ISO strings
+    serialized = []
+    for row in rows:
+        r = dict(row)
+        if hasattr(r.get("created"), "isoformat"):
+            r["created"] = r["created"].isoformat()
+        serialized.append(r)
+
+    return jsonify({
+        "object": "list",
+        "data": serialized,
+        "summary": {
+            **summary,
+            "period_start": start_date,
+            "period_end": end_date,
+        },
+    })
+
+
+@app.route("/v1/models", methods=["GET"])
+@valid_api_key_required
+def v1_list_models():
+    """Return the list of models that this server supports (OpenAI format)."""
+    now = int(__import__("time").time())
+    data = [
+        {
+            "id": m,
+            "object": "model",
+            "created": now,
+            "owned_by": "anote-ai",
+        }
+        for m in _SUPPORTED_MODELS
+    ]
+    return jsonify({"object": "list", "data": data})
+
+
+@app.route("/v1/chat/completions", methods=["POST"])
+@valid_api_key_required
+def v1_chat_completions():  # pragma: no cover
+    """OpenAI-compatible chat completions endpoint.
+
+    Required body fields:
+        model    – model name (any value from /v1/models)
+        messages – list of {"role": "user"|"assistant"|"system", "content": "…"}
+
+    Optional body fields:
+        chat_id  – integer chat / session ID.  When provided the answer is
+                   grounded in the documents that were uploaded to that chat.
+        stream   – boolean (default false).  Streaming is not yet supported
+                   through this compatibility shim; set to false.
+    """
+    import time
+    from api_endpoints.schemas import ChatCompletionsRequest
+    from pydantic import ValidationError as _ValidationError
+
+    try:
+        req = ChatCompletionsRequest.model_validate(request.get_json(force=True) or {})
+    except _ValidationError as exc:
+        return jsonify({"error": {"message": str(exc), "type": "validation_error"}}), 422
+
+    model = req.model
+    messages: list[dict] = [m.model_dump() for m in req.messages]
+    chat_id = req.chat_id
+    stream = req.stream
+
+    if not messages:
+        return jsonify({"error": {"message": "messages is required", "type": "invalid_request_error"}}), 400
+
+    # Extract the last user message as the primary query
+    user_message = ""
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            content = m.get("content", "")
+            if isinstance(content, list):
+                # Multimodal content blocks – concatenate text parts
+                user_message = " ".join(
+                    block.get("text", "") for block in content if block.get("type") == "text"
+                )
+            else:
+                user_message = str(content)
+            break
+
+    if not user_message:
+        return jsonify({"error": {"message": "No user message found in messages", "type": "invalid_request_error"}}), 400
+
+    # Build conversation history for context (all but the last user turn)
+    history_pairs: list[dict] = []
+    for m in messages[:-1]:
+        if m.get("role") in ("user", "assistant"):
+            history_pairs.append({"role": m["role"], "content": m.get("content", "")})
+
+    # Determine which provider / model to use
+    is_anthropic = model.startswith("claude")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+
+    answer = ""
+    prompt_tokens = 0
+    completion_tokens = 0
+
+    try:
+        if chat_id:
+            # ------------------------------------------------------------------
+            # Grounded answer: retrieve relevant document chunks first
+            # ------------------------------------------------------------------
+            user_email = USER_EMAIL_API
+            ensure_SDK_user_exists(user_email)
+
+            add_message_to_db(user_message, chat_id, 1)
+            sources = get_relevant_chunks(2, user_message, chat_id, user_email, include_metadata=True)
+            sources_str = sources_to_prompt_context(sources)
+
+            system_prompt = (
+                "You are a helpful assistant that answers questions grounded in the "
+                "provided document context.  Only use facts from the context below.  "
+                "If the answer is not in the context, say you don't know.\n\n"
+                f"Context:\n{sources_str}"
+            )
+
+            if is_anthropic:
+                from anthropic import Anthropic as _Anthropic
+                _client = _Anthropic(api_key=anthropic_api_key)
+                resp = _client.messages.create(
+                    model=model,
+                    max_tokens=1024,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": user_message}],
+                )
+                answer = resp.content[0].text
+                prompt_tokens = resp.usage.input_tokens
+                completion_tokens = resp.usage.output_tokens
+            else:
+                import openai as _openai
+                _client = _openai.OpenAI(api_key=openai_api_key)
+                resp = _client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                )
+                answer = resp.choices[0].message.content
+                if resp.usage:
+                    prompt_tokens = resp.usage.prompt_tokens
+                    completion_tokens = resp.usage.completion_tokens
+
+            message_id = add_message_to_db(answer, chat_id, 0)
+            try:
+                add_sources_to_db(message_id, sources)
+            except Exception:
+                pass
+
+            sources_payload = serialize_sources_for_api(sources)
+        else:
+            # ------------------------------------------------------------------
+            # Plain chat completion (no document grounding)
+            # ------------------------------------------------------------------
+            sources_payload = []
+            message_id = None
+
+            # Convert history + system messages into provider format
+            formatted: list[dict] = []
+            for m in messages:
+                role = m.get("role", "user")
+                content = m.get("content", "")
+                if isinstance(content, list):
+                    content = " ".join(
+                        block.get("text", "") for block in content if block.get("type") == "text"
+                    )
+                formatted.append({"role": role, "content": content})
+
+            if is_anthropic:
+                from anthropic import Anthropic as _Anthropic
+                _client = _Anthropic(api_key=anthropic_api_key)
+                # Separate system messages from the conversation
+                system_msgs = [m["content"] for m in formatted if m["role"] == "system"]
+                conv_msgs = [m for m in formatted if m["role"] != "system"]
+                system_text = "\n".join(system_msgs) if system_msgs else "You are a helpful assistant."
+                resp = _client.messages.create(
+                    model=model,
+                    max_tokens=1024,
+                    system=system_text,
+                    messages=conv_msgs,
+                )
+                answer = resp.content[0].text
+                prompt_tokens = resp.usage.input_tokens
+                completion_tokens = resp.usage.output_tokens
+            else:
+                import openai as _openai
+                _client = _openai.OpenAI(api_key=openai_api_key)
+                resp = _client.chat.completions.create(model=model, messages=formatted)
+                answer = resp.choices[0].message.content
+                if resp.usage:
+                    prompt_tokens = resp.usage.prompt_tokens
+                    completion_tokens = resp.usage.completion_tokens
+
+    except Exception as exc:
+        return jsonify({
+            "error": {
+                "message": str(exc),
+                "type": "server_error",
+                "code": "internal_error",
+            }
+        }), 500
+
+    # ------------------------------------------------------------------
+    # Log usage (best-effort — never fails the request)
+    # ------------------------------------------------------------------
+    try:
+        from database.usage import log_api_usage, user_and_key_ids_for_api_key as _uid_kid
+        _raw_key = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        _uid, _kid = _uid_kid(_raw_key)
+        log_api_usage(
+            user_id=_uid,
+            api_key_id=_kid,
+            endpoint="/v1/chat/completions",
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            credits_used=1,
+        )
+    except Exception:
+        pass
+
+    # ------------------------------------------------------------------
+    # Build OpenAI-compatible response envelope
+    # ------------------------------------------------------------------
+    completion_id = f"chatcmpl-anote-{int(time.time())}"
+    response_body = {
+        "id": completion_id,
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": answer,
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
+        # Anote-specific extension fields
+        "anote": {
+            "message_id": message_id,
+            "sources": sources_payload,
+        },
+    }
+
+    if stream:
+        # Return a minimal SSE stream with a single data chunk + [DONE]
+        def _stream():
+            chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": answer}, "finish_reason": "stop"}],
+            }
+            yield f"data: {json.dumps(chunk)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return Response(_stream(), mimetype="text/event-stream")
+
+    return jsonify(response_body)
+
+
+@app.route("/v1/question-answer", methods=["POST"])
+@valid_api_key_required
+def v1_question_answer():  # pragma: no cover
+    """Simple stateless Q&A endpoint — no chat session required.
+
+    Upload documents via /public/upload first to get a chat_id, then call
+    this endpoint to ask questions against those documents.
+
+    Body:
+        question  (str)  – the question to answer
+        chat_id   (int)  – session ID from /public/upload
+        model     (str)  – optional model name (default: gpt-4o)
+    """
+    body = request.get_json(force=True) or {}
+    question = body.get("question", "").strip()
+    chat_id = body.get("chat_id")
+    model = body.get("model", "gpt-4o")
+
+    if not question:
+        return jsonify({"error": "question is required"}), 400
+    if not chat_id:
+        return jsonify({"error": "chat_id is required — upload documents first via /public/upload"}), 400
+
+    # Delegate to the chat completions handler logic
+    request_body = {
+        "model": model,
+        "messages": [{"role": "user", "content": question}],
+        "chat_id": chat_id,
+        "stream": False,
+    }
+    # Temporarily swap request JSON so v1_chat_completions can read it
+    with app.test_request_context(
+        "/v1/question-answer",
+        method="POST",
+        json=request_body,
+        headers={"Authorization": request.headers.get("Authorization", "")},
+    ):
+        from flask import g as _g
+        pass
+
+    # Direct implementation (avoids nested request context complexity)
+    user_email = USER_EMAIL_API
+    ensure_SDK_user_exists(user_email)
+
+    add_message_to_db(question, chat_id, 1)
+    sources = get_relevant_chunks(2, question, chat_id, user_email, include_metadata=True)
+    sources_str = sources_to_prompt_context(sources)
+
+    is_anthropic = model.startswith("claude")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    system_prompt = (
+        "You are a helpful assistant that answers questions grounded in the "
+        "provided document context. Only use facts from the context below. "
+        "If the answer is not in the context, say you don't know.\n\n"
+        f"Context:\n{sources_str}"
+    )
+
+    try:
+        if is_anthropic:
+            from anthropic import Anthropic as _Anthropic
+            _client = _Anthropic(api_key=anthropic_api_key)
+            resp = _client.messages.create(
+                model=model,
+                max_tokens=1024,
+                system=system_prompt,
+                messages=[{"role": "user", "content": question}],
+            )
+            answer = resp.content[0].text
+        else:
+            import openai as _openai
+            _client = _openai.OpenAI(api_key=openai_api_key)
+            resp = _client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": question},
+                ],
+            )
+            answer = resp.choices[0].message.content
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    message_id = add_message_to_db(answer, chat_id, 0)
+    try:
+        add_sources_to_db(message_id, sources)
+    except Exception:
+        pass
+
+    return jsonify({
+        "answer": answer,
+        "message_id": message_id,
+        "sources": serialize_sources_for_api(sources),
+        "model": model,
+        "question": question,
+    })
+
 
 if __name__ == '__main__':
     debug_mode = os.getenv("FLASK_ENV") == "development"

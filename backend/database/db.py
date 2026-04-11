@@ -5,40 +5,20 @@ import time
 import uuid
 from datetime import datetime, timedelta
 
-import mysql.connector
 from dateutil.relativedelta import relativedelta
 from flask import jsonify
 
 from constants.global_constants import (
     chatgptLimit,
-    dbHost,
-    dbName,
-    dbPassword,
-    dbUser,
     kPasswordResetExpirationTime,
     kSessionTokenExpirationTime,
     planToCredits,
 )
 from db_enums import PaidUserStatus
+from database.db_pool import get_db_connection
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-def get_db_connection():
-    if ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
-        db_connect = mysql.connector.connect(
-                user='root',
-                unix_socket='/tmp/mysql.sock',
-                database="agents",
-        )
-    else:
-        db_connect = mysql.connector.connect(
-            host=dbHost,
-            user=dbUser,
-            password=dbPassword,
-            database=dbName,
-        )
-    return db_connect, db_connect.cursor(dictionary=True)
 
 
 def create_7_day_free_trial(user_id):
@@ -458,6 +438,35 @@ def view_user(user_email):
             "credits_refresh": credits_refresh_str,
             "profile_pic_url": user["profile_pic_url"],
         })
+    finally:
+        conn.close()
+
+
+def update_user_profile(user_email: str, person_name: str | None, profile_pic_url: str | None) -> None:
+    """Update mutable profile fields for *user_email*.
+
+    Only non-None arguments are written; passing ``None`` leaves the column untouched.
+    """
+    if person_name is None and profile_pic_url is None:
+        return
+    conn, cursor = get_db_connection()
+    try:
+        if person_name is not None and profile_pic_url is not None:
+            cursor.execute(
+                "UPDATE users SET person_name=%s, profile_pic_url=%s WHERE email=%s",
+                [person_name, profile_pic_url, user_email],
+            )
+        elif person_name is not None:
+            cursor.execute(
+                "UPDATE users SET person_name=%s WHERE email=%s",
+                [person_name, user_email],
+            )
+        else:
+            cursor.execute(
+                "UPDATE users SET profile_pic_url=%s WHERE email=%s",
+                [profile_pic_url, user_email],
+            )
+        conn.commit()
     finally:
         conn.close()
 
@@ -986,7 +995,14 @@ def change_chat_mode(chat_mode_to_change_to, chat_id, user_email):
     conn.close()
 
 
-def add_document(text, document_name, chat_id=None):
+def add_document(text, document_name, chat_id=None, media_type="text", mime_type=None):
+    """Insert a document record and return (doc_id, already_existed).
+
+    ``text`` may be None for binary-only media (images, video, audio) where
+    the textual representation is derived separately (e.g. via transcription).
+    ``media_type`` is one of: 'text', 'image', 'video', 'audio'.
+    ``mime_type`` is the MIME string (e.g. 'image/png', 'video/mp4').
+    """
     if chat_id == 0:
         return None, False
 
@@ -994,7 +1010,7 @@ def add_document(text, document_name, chat_id=None):
     try:
         cursor.execute(
             """
-            SELECT id, document_text
+            SELECT id
             FROM documents
             WHERE document_name = %s
             AND chat_id = %s
@@ -1003,16 +1019,15 @@ def add_document(text, document_name, chat_id=None):
         )
         existing_doc = cursor.fetchone()
         if existing_doc:
-            existing_doc_id, _ = existing_doc
-            return existing_doc_id, True
+            return existing_doc["id"], True
 
         storage_key = "temp"
         cursor.execute(
             """
-            INSERT INTO documents (document_text, document_name, storage_key, chat_id)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO documents (document_text, document_name, storage_key, chat_id, media_type, mime_type)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            (text, document_name, storage_key, chat_id),
+            (text, document_name, storage_key, chat_id, media_type, mime_type),
         )
         doc_id = cursor.lastrowid
         conn.commit()
@@ -1035,6 +1050,39 @@ def add_message(text, chat_id, is_user, reasoning=None):
     cursor.close()
     conn.close()
     return message_id
+
+
+def add_message_attachment(message_id, media_type, mime_type, storage_key, original_filename=None):
+    """Attach a media file record to an existing message row."""
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute(
+            """
+            INSERT INTO message_attachments (message_id, media_type, mime_type, storage_key, original_filename)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (message_id, media_type, mime_type, storage_key, original_filename),
+        )
+        attachment_id = cursor.lastrowid
+        conn.commit()
+        return attachment_id
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_message_attachments(message_id):
+    """Return all attachment records for a given message."""
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute(
+            "SELECT * FROM message_attachments WHERE message_id = %s",
+            (message_id,),
+        )
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def add_chunks_with_page_numbers(chunk_data):
@@ -1338,9 +1386,15 @@ def get_document_content(document_id, email):
 def _combine_sources(sources):
     combined_sources = ""
     for source in sources:
-        if len(source) < 2:
-            continue
-        chunk_text, document_name = source[0], source[1]
+        if isinstance(source, dict):
+            chunk_text = source.get("chunk_text")
+            document_name = source.get("document_name")
+            if not chunk_text or not document_name:
+                continue
+        else:
+            if len(source) < 2:
+                continue
+            chunk_text, document_name = source[0], source[1]
         combined_sources += f"Document: {document_name}: {chunk_text}\n\n"
     return combined_sources
 

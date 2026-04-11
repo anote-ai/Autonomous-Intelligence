@@ -37,3 +37,4 @@ export const LANGUAGE_ROUTES = {
 export const createcompany = "/companies/create";
 export const organizationsPath = "/organizations";
 export const personsPath = "/person";
+export const playbookPath = "/playbook/:uuid";

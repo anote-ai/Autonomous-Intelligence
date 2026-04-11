@@ -526,7 +526,20 @@ def test_public_chat_and_evaluate(client: Any, app_module: Any, monkeypatch: pyt
     monkeypatch.setattr(app_module, "ensure_SDK_user_exists", lambda user_email: 1)
     monkeypatch.setattr(app_module.AgentConfig, "is_agent_enabled", staticmethod(lambda: False))
     monkeypatch.setattr(app_module, "get_chat_info", lambda chat_id: (0, 0, "Chat"))
-    monkeypatch.setattr(app_module, "get_relevant_chunks", lambda *args: [("chunk", "doc", 1)])
+    monkeypatch.setattr(
+        app_module,
+        "get_relevant_chunks",
+        lambda *args, **kwargs: [
+            {
+                "chunk_text": "chunk",
+                "document_name": "doc",
+                "page_number": 1,
+                "start_index": 0,
+                "end_index": 5,
+                "source_type": "document_chunk",
+            }
+        ],
+    )
     monkeypatch.setattr(app_module, "add_message_to_db", lambda *args, **kwargs: 10)
     monkeypatch.setattr(app_module, "add_sources_to_db", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -544,7 +557,21 @@ def test_public_chat_and_evaluate(client: Any, app_module: Any, monkeypatch: pyt
         json={"chat_id": 9, "message": "hello"},
     )
     assert chat_response.status_code == 200
-    assert chat_response.get_json() == {"message_id": 10, "answer": "openai answer", "sources": [["1", "doc", "chunk"]]}
+    assert chat_response.get_json() == {
+        "message_id": 10,
+        "answer": "openai answer",
+        "sources": [
+            {
+                "id": "source-0",
+                "document_name": "doc",
+                "chunk_text": "chunk",
+                "page_number": 1,
+                "start_index": 0,
+                "end_index": 5,
+                "source_type": "document_chunk",
+            }
+        ],
+    }
 
     evaluate_response = client.post(
         "/public/evaluate",
@@ -631,6 +658,103 @@ def test_generate_and_get_api_keys_invalid_token(
     get_response = client.get("/getAPIKeys", headers=auth_headers)
     assert get_response.status_code == 401
     assert get_response.get_json() == {"error": "Invalid JWT"}
+
+
+def test_demo_chat_routes_use_demo_user(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(app_module, "ensure_demo_user_exists", lambda email: 1)
+    monkeypatch.setattr(app_module, "RetrieveMessagesHandler", lambda request, user_email: app_module.jsonify(user_email=user_email))
+    monkeypatch.setattr(app_module, "RetrieveCurrentDocsHandler", lambda request, user_email: app_module.jsonify(user_email=user_email))
+
+    messages_response = client.post("/retrieve-messages-from-chat-demo", json={"chat_id": 7, "chat_type": 0})
+    assert messages_response.status_code == 200
+    assert messages_response.get_json() == {"user_email": "anon@anote.ai"}
+
+    docs_response = client.post("/retrieve-current-docs-demo", json={"chat_id": 7})
+    assert docs_response.status_code == 200
+    assert docs_response.get_json() == {"user_email": "anon@anote.ai"}
+
+
+def test_process_message_pdf_demo_uses_fallback_with_demo_user(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(app_module, "ensure_demo_user_exists", lambda email: 1)
+    monkeypatch.setattr(
+        app_module,
+        "_process_message_pdf_fallback",
+        lambda message, chat_id, model_type, model_key, user_email, is_guest=False: app_module.jsonify(
+            message=message,
+            chat_id=chat_id,
+            user_email=user_email,
+            is_guest=is_guest,
+        ),
+    )
+
+    response = client.post("/process-message-pdf-demo", json={"message": "hello", "chat_id": 11, "model_type": 0})
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "message": "hello",
+        "chat_id": 11,
+        "user_email": "anon@anote.ai",
+        "is_guest": False,
+    }
+
+
+def test_generate_api_key_returns_correct_shape(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
+) -> None:
+    """Verifies generateAPIKey returns the shape expected by UserSlice.js (id, key, created, name)."""
+    _authenticate(monkeypatch, app_module)
+    fake_key = {
+        "id": 42,
+        "key": "anote-abc123",
+        "created": "2024-01-01T00:00:00",
+        "last_used": None,
+        "name": "My Key",
+    }
+    monkeypatch.setattr("api_endpoints.generate_api_key.handler.user_has_credits", lambda email, min_credits=1: True)
+    monkeypatch.setattr("api_endpoints.generate_api_key.handler.generate_api_key", lambda email, key_name: fake_key)
+    response = client.post("/generateAPIKey", json={"name": "My Key"}, headers=auth_headers)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["id"] == 42
+    assert data["key"] == "anote-abc123"
+    assert data["name"] == "My Key"
+    assert "created" in data
+    assert "last_used" in data
+
+
+def test_generate_api_key_insufficient_credits(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
+) -> None:
+    _authenticate(monkeypatch, app_module)
+    monkeypatch.setattr("api_endpoints.generate_api_key.handler.user_has_credits", lambda email, min_credits=1: False)
+    response = client.post("/generateAPIKey", json={}, headers=auth_headers)
+    assert response.status_code == 403
+    assert "error" in response.get_json()
+
+
+def test_get_api_keys_returns_keys_list(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
+) -> None:
+    """Verifies getAPIKeys returns {"keys": [...]} shape expected by UserSlice.js getAPIKeys.fulfilled."""
+    _authenticate(monkeypatch, app_module)
+    fake_keys = {
+        "keys": [
+            {"id": 1, "key": "anote-key1", "created": "2024-01-01T00:00:00", "last_used": None, "name": "Key 1"},
+            {"id": 2, "key": "anote-key2", "created": "2024-02-01T00:00:00", "last_used": None, "name": "Key 2"},
+        ]
+    }
+    monkeypatch.setattr("api_endpoints.get_api_keys.handler.get_api_keys", lambda email: fake_keys)
+    response = client.get("/getAPIKeys", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert "keys" in data
+    assert len(data["keys"]) == 2
+    for key in data["keys"]:
+        assert "id" in key
+        assert "key" in key
+        assert "created" in key
+        assert "name" in key
 
 
 def test_checkout_portal_and_view_user_reject_invalid_auth(

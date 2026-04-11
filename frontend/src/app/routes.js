@@ -6,6 +6,7 @@ import LanguagesDirectory from "../components/LanguagesDirectory";
 import PersonsDirectory from "../components/PersonsDirectory";
 import PersonChat from "../components/PersonChat";
 import Home from "../financeGPT/components/Home";
+import PlaybookView from "../financeGPT/components/PlaybookView";
 import GTMChatbot from "../landing_page/landing_page_screens/Chatbots/companies/GTMChatbot";
 import Languages from "../landing_page/landing_page_screens/Chatbots/languages/Languages";
 import Companies from "../landing_page/landing_page_screens/Chatbots/companies/Companies";
@@ -25,6 +26,7 @@ import {
   languagesDirectoryPath,
   organizationsPath,
   personsPath,
+  playbookPath,
   pricingRedirectPath,
 } from "../constants/RouteConstants";
 
@@ -75,6 +77,8 @@ export function buildRoutes({
         path={apiKeyDashboardPath}
         element={isLoggedIn ? <APISKeyDashboard /> : <Navigate replace to="/" />}
       />
+      {/* Playbook (shared chat) — accessible to anyone, no auth required */}
+      <Route path={playbookPath} element={<PlaybookView />} />
       <Route path="*" element={<Navigate replace to="/" />} />
     </>
   );

@@ -491,6 +491,31 @@ export function del(url, options = {}) {
   return fetcher(url, { method: "DELETE", ...options });
 }
 
+/**
+ * POST a FormData payload (multipart/form-data).
+ *
+ * Do NOT set Content-Type manually — the browser must set it so it includes
+ * the multipart boundary.  This is the correct way to upload files mixed with
+ * text fields (e.g. chat messages with inline image attachments).
+ *
+ * Usage:
+ *   const form = new FormData();
+ *   form.append("message", "What is in this image?");
+ *   form.append("chat_id", chatId);
+ *   form.append("attachments[]", imageFile);
+ *   await postFormData("process-message-pdf", form);
+ */
+export function postFormData(url, formData, options = {}) {
+  const { headers: extraHeaders, ...rest } = options;
+  // Deliberately omit Content-Type so the browser sets it with the boundary.
+  return fetcher(url, {
+    method: "POST",
+    headers: { ...extraHeaders },
+    body: formData,
+    ...rest,
+  });
+}
+
 // Guest mode convenience functions
 export function guestGet(url, options = {}) {
   return fetcher(url, { method: "GET", isGuest: true, ...options });

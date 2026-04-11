@@ -1,14 +1,12 @@
 import os
-import mysql.connector
 from flask import request
-import socket
 from jwt import InvalidTokenError
 from flask_jwt_extended import decode_token
 from db_enums import PaidUserStatus
 from flask_mail import Message
 from constants.global_constants import productHashMap
 from constants.global_constants import priceToPaymentPlan
-from constants.global_constants import dbName, dbHost, dbUser, dbPassword
+from database.db_pool import get_db_connection
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -45,23 +43,6 @@ def extractUserEmailFromRequest(request):
     else:
         raise InvalidTokenError()
 
-def get_db_connection():
-    # print('in db_auth')
-    if ('.local' in socket.gethostname() or '.lan' in socket.gethostname() or 'Shadow' in socket.gethostname()) or ('APP_ENV' in os.environ and os.environ['APP_ENV'] == 'local'):
-        conn = mysql.connector.connect(
-            user='root',
-            unix_socket='/tmp/mysql.sock',
-            database=dbName,
-        )
-    else:
-        conn = mysql.connector.connect(
-            host=dbHost,
-            user=dbUser,
-            password=dbPassword,
-            database=dbName,
-        )
-    return conn, conn.cursor(dictionary=True)
-
 def user_email_for_session_token(session_token):
     conn, cursor = get_db_connection()
     cursor.execute('SELECT email FROM users WHERE session_token=%s AND session_token_expiration > CURRENT_TIMESTAMP', [session_token])
@@ -76,6 +57,23 @@ def user_email_for_api_key(api_key):
     user = cursor.fetchone()
     conn.close()
     return user["email"]
+
+def touch_api_key_last_used(api_key: str) -> None:
+    """Stamp last_used = NOW() for the given API key (best-effort, never raises)."""
+    try:
+        conn, cursor = get_db_connection()
+        cursor.execute(
+            "UPDATE apiKeys SET last_used = CURRENT_TIMESTAMP WHERE api_key = %s",
+            [api_key],
+        )
+        conn.commit()
+    except Exception as exc:
+        print(f"[auth] touch_api_key_last_used failed: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def is_session_token_valid(session_token):
     conn, cursor = get_db_connection()

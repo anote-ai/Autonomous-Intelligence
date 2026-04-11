@@ -5,6 +5,7 @@ import { Dropdown } from "flowbite-react";
 
 function ChatHistory({
   chats = [],
+  loading = false,
   handleChatSelect,
   onRenameChat,
   onDeleteChat,
@@ -15,6 +16,7 @@ function ChatHistory({
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [chatIdToRename, setChatIdToRename] = useState(null);
   const [newChatName, setNewChatName] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -69,6 +71,12 @@ function ChatHistory({
     setChatIdToRename(null);
     setNewChatName("");
   };
+
+  const filteredChats = searchQuery.trim()
+    ? [...chats].reverse().filter((c) =>
+        c.chat_name?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : [...chats].reverse();
 
   return (
     <>
@@ -146,17 +154,34 @@ function ChatHistory({
         )}
 
       <div className="h-full py-2">
-        <div className="flex justify-between items-center ">
-          <h2
-            className={`text-gray-400 text-sm ${
-              chats.length === 0 ? "hidden" : ""
-            } font-bold`}
-          >
-            Chat History
-          </h2>
+        <div className="flex justify-between items-center mb-2">
+          <h2 className="text-gray-400 text-sm font-bold">Chat History</h2>
         </div>
-        <ul className="flex-col  w-full h-full py-2 flex">
-          {[...chats].reverse().map((chat, index) => (
+
+        {/* Search bar */}
+        {chats.length > 3 && (
+          <div className="mb-2">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search chats…"
+              className="w-full px-3 py-1.5 text-xs bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+          </div>
+        )}
+
+        {/* Loading skeleton */}
+        {loading && chats.length === 0 && (
+          <ul className="space-y-1">
+            {[...Array(4)].map((_, i) => (
+              <li key={i} className="h-7 rounded-md bg-gray-700/40 animate-pulse" />
+            ))}
+          </ul>
+        )}
+
+        <ul className="flex-col w-full h-full py-1 flex overflow-y-auto">
+          {filteredChats.map((chat, index) => (
             <li
               key={index}
               className={`group hover:bg-gray-800 rounded-md px-2 py-1 cursor-pointer text-sm mb-1 flex w-full items-center gap-4 relative ${
@@ -216,10 +241,17 @@ function ChatHistory({
               </Dropdown>
             </li>
           ))}
-          {chats.length === 0 && (
-            <li className="flex items-center justify-center h-full">
-              <div className="text-gray-400 text-sm text-center">
-                No chat yet. Start a conversation!
+          {!loading && chats.length === 0 && (
+            <li className="flex items-center justify-center py-6">
+              <div className="text-gray-500 text-xs text-center">
+                No chats yet. Start a conversation!
+              </div>
+            </li>
+          )}
+          {!loading && filteredChats.length === 0 && chats.length > 0 && (
+            <li className="flex items-center justify-center py-4">
+              <div className="text-gray-500 text-xs text-center">
+                No chats match "{searchQuery}"
               </div>
             </li>
           )}

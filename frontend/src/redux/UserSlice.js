@@ -393,8 +393,12 @@ export const userSlice = createSlice({
       .addCase(generateAPIKey.fulfilled, (state, action) => {
         ensureApiKeysState(state);
         var payload = action.payload;
-        state.entities.apiKeys.allIds.push(payload["id"]);
-        state.entities.apiKeys.byId[payload["id"]] = payload;
+        var id = payload["id"];
+        // Guard against duplicate IDs (e.g. double-dispatch or stale persisted state)
+        if (!state.entities.apiKeys.allIds.includes(id)) {
+          state.entities.apiKeys.allIds.push(id);
+        }
+        state.entities.apiKeys.byId[id] = payload;
       })
       .addCase(deleteAPIKey.fulfilled, (state, action) => {
         ensureApiKeysState(state);
