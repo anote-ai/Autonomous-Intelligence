@@ -1,4 +1,8 @@
 """Tests for SQLAlchemy ORM models."""
+from __future__ import annotations
+
+from typing import Any, Set
+
 from database.models import (
     ApiKey,
     Base,
@@ -11,46 +15,46 @@ from database.models import (
 )
 
 
-def _cols(model):
+def _cols(model: Any) -> Set[str]:
     return {c.name for c in model.__table__.columns}
 
 
-def test_user_columns():
+def test_user_columns() -> None:
     cols = _cols(User)
     assert {"id", "email", "credits", "password_hash", "session_token"}.issubset(cols)
 
 
-def test_chat_columns():
+def test_chat_columns() -> None:
     cols = _cols(Chat)
     assert {"id", "user_id", "model_type", "associated_task"}.issubset(cols)
 
 
-def test_message_columns():
+def test_message_columns() -> None:
     cols = _cols(Message)
     assert {"id", "chat_id", "message_text", "sent_from_user"}.issubset(cols)
 
 
-def test_document_columns():
+def test_document_columns() -> None:
     cols = _cols(Document)
     assert {"id", "chat_id", "document_name", "media_type"}.issubset(cols)
 
 
-def test_chunk_columns():
+def test_chunk_columns() -> None:
     cols = _cols(Chunk)
     assert {"id", "document_id", "start_index", "end_index"}.issubset(cols)
 
 
-def test_api_key_columns():
+def test_api_key_columns() -> None:
     cols = _cols(ApiKey)
     assert {"id", "user_id", "api_key", "key_name"}.issubset(cols)
 
 
-def test_message_attachment_columns():
+def test_message_attachment_columns() -> None:
     cols = _cols(MessageAttachment)
     assert {"id", "message_id", "media_type", "storage_key"}.issubset(cols)
 
 
-def test_relationships_defined():
+def test_relationships_defined() -> None:
     assert hasattr(User, "chats")
     assert hasattr(Chat, "messages")
     assert hasattr(Chat, "documents")
@@ -58,7 +62,7 @@ def test_relationships_defined():
     assert hasattr(Message, "attachments")
 
 
-def test_base_has_all_tables():
+def test_base_has_all_tables() -> None:
     table_names = set(Base.metadata.tables.keys())
     expected = {"users", "chats", "messages", "documents", "chunks", "apiKeys"}
     assert expected.issubset(table_names)

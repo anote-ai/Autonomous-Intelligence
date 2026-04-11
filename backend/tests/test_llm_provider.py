@@ -1,4 +1,7 @@
 """Tests for the centralized LLM provider module."""
+
+from __future__ import annotations
+
 import os
 from unittest.mock import MagicMock, patch
 
@@ -13,42 +16,42 @@ from services.llm_provider import (
 )
 
 
-def test_default_models_defined():
+def test_default_models_defined() -> None:
     assert DEFAULT_OPENAI_MODEL == "gpt-4o"
     assert DEFAULT_ANTHROPIC_MODEL == "claude-3-5-haiku-20241022"
 
 
-def test_llm_provider_enum_values():
+def test_llm_provider_enum_values() -> None:
     assert LLMProvider.OPENAI.value == "openai"
     assert LLMProvider.ANTHROPIC.value == "anthropic"
     assert LLMProvider.LOCAL.value == "local"
 
 
-def test_resolve_model_openai():
+def test_resolve_model_openai() -> None:
     assert resolve_model(0) == DEFAULT_OPENAI_MODEL
 
 
-def test_resolve_model_anthropic():
+def test_resolve_model_anthropic() -> None:
     assert resolve_model(1) == DEFAULT_ANTHROPIC_MODEL
 
 
-def test_resolve_model_unknown_defaults_to_openai():
+def test_resolve_model_unknown_defaults_to_openai() -> None:
     assert resolve_model(99) == DEFAULT_OPENAI_MODEL
 
 
-def test_get_openai_client_returns_client():
+def test_get_openai_client_returns_client() -> None:
     with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
         client = get_openai_client()
         assert client is not None
 
 
-def test_get_anthropic_client_returns_client():
+def test_get_anthropic_client_returns_client() -> None:
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
         client = get_anthropic_client()
         assert client is not None
 
 
-def test_get_chat_completion_openai():
+def test_get_chat_completion_openai() -> None:
     mock_resp = MagicMock()
     mock_resp.choices[0].message.content = "Hello!"
 
@@ -65,7 +68,7 @@ def test_get_chat_completion_openai():
         mock_client.chat.completions.create.assert_called_once()
 
 
-def test_get_chat_completion_anthropic():
+def test_get_chat_completion_anthropic() -> None:
     mock_resp = MagicMock()
     mock_resp.content = [MagicMock(text="Bonjour!")]
 
@@ -82,7 +85,7 @@ def test_get_chat_completion_anthropic():
         mock_client.messages.create.assert_called_once()
 
 
-def test_get_chat_completion_strips_system_from_anthropic_messages():
+def test_get_chat_completion_strips_system_from_anthropic_messages() -> None:
     mock_resp = MagicMock()
     mock_resp.content = [MagicMock(text="ok")]
 
