@@ -442,6 +442,35 @@ def view_user(user_email):
         conn.close()
 
 
+def update_user_profile(user_email: str, person_name: str | None, profile_pic_url: str | None) -> None:
+    """Update mutable profile fields for *user_email*.
+
+    Only non-None arguments are written; passing ``None`` leaves the column untouched.
+    """
+    if person_name is None and profile_pic_url is None:
+        return
+    conn, cursor = get_db_connection()
+    try:
+        if person_name is not None and profile_pic_url is not None:
+            cursor.execute(
+                "UPDATE users SET person_name=%s, profile_pic_url=%s WHERE email=%s",
+                [person_name, profile_pic_url, user_email],
+            )
+        elif person_name is not None:
+            cursor.execute(
+                "UPDATE users SET person_name=%s WHERE email=%s",
+                [person_name, user_email],
+            )
+        else:
+            cursor.execute(
+                "UPDATE users SET profile_pic_url=%s WHERE email=%s",
+                [profile_pic_url, user_email],
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def config_for_payment_tiers(userEmail, newPaymentTier):
     conn, cursor = get_db_connection()
     paidLevel = paid_user_for_user_email_with_cursor(conn, cursor, userEmail)

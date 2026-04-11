@@ -68,6 +68,7 @@ from database.db import (
     retrieve_messages as retrieve_message_from_db,
     retrieve_messages_from_share_uuid,
     update_chat_name as update_chat_name_in_db,
+    update_user_profile,
 )
 from database.db_auth import (
     api_key_access_invalid,
@@ -260,10 +261,11 @@ def valid_api_key_required(fn):
           api_key = auth_header.split(' ')[1]
           if is_api_key_valid(api_key):
             # Check if the user has credits before allowing API usage
-            from database.db_auth import api_key_user_has_credits
+            from database.db_auth import api_key_user_has_credits, touch_api_key_last_used
             if not api_key_user_has_credits(api_key, min_credits=1):
               return jsonify({"error": "Insufficient credits. Please add credits to your account to use the API."}), 403
-            # If api key is valid and user has credits, return the decorated function
+            # Record usage timestamp for this key (best-effort)
+            touch_api_key_last_used(api_key)
             return fn(*args, **kwargs)
     # If API key is not present or valid, return an error message or handle it as needed
     return "Unauthorized", 401
@@ -552,7 +554,7 @@ def customer_portal():
   verifyAuthForPortalSession(request, user_email, mail)
   return CreatePortalSessionHandler(request, user_email)
 
-STRIPE_WEBHOOK_SECRET = "whsec_Ustl52CpxewYc33WdamF06lDCjgg3a2e"
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 
 @app.route('/stripeWebhook', methods=['POST'])
 def stripe_webhook():
@@ -575,6 +577,40 @@ def ViewUser():
     # If the JWT is invalid, return an error
     return jsonify({"error": "Invalid JWT"}), 401
   return ViewUserHandler(request, user_email)
+
+
+@app.route('/update-profile', methods=['POST'])
+@jwt_or_session_token_required
+def UpdateProfile():
+    """Update the authenticated user's display name and/or profile picture URL.
+
+    Request body (JSON) — all fields optional:
+    {
+        "person_name": "Jane Doe",
+        "profile_pic_url": "https://example.com/avatar.png"
+    }
+    """
+    try:
+        user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+
+    body = request.get_json(silent=True) or {}
+    person_name = body.get("person_name")
+    profile_pic_url = body.get("profile_pic_url")
+
+    if person_name is None and profile_pic_url is None:
+        return jsonify({"error": "No fields to update"}), 400
+
+    # Basic validation
+    if person_name is not None and (not isinstance(person_name, str) or len(person_name) > 256):
+        return jsonify({"error": "person_name must be a string up to 256 characters"}), 400
+    if profile_pic_url is not None and (not isinstance(profile_pic_url, str) or len(profile_pic_url) > 2048):
+        return jsonify({"error": "profile_pic_url must be a string up to 2048 characters"}), 400
+
+    update_user_profile(user_email, person_name, profile_pic_url)
+    return jsonify({"success": True}), 200
+
 
 # Example of a background task that can consistently do
 # some processing in the background independently of your
@@ -1343,12 +1379,35 @@ def public_ingest_pdf():  # pragma: no cover
     user_email = USER_EMAIL_API
     ensure_SDK_user_exists(user_email)
 
-    # Extract API key for credit deduction
+    # Extract API key for credit deduction / quota check
     auth_header = request.headers.get('Authorization')
     api_key = auth_header.split(' ')[1] if auth_header and auth_header.startswith('Bearer ') else None
 
+    # Enforce monthly search quota (planToSearches)
+    from constants.global_constants import planToSearches
+    from database.db_auth import paid_user_for_user_email_with_cursor, deduct_credits_from_api_key_user
+    from database.db_pool import get_db_connection as _get_conn
+    from database.usage import count_monthly_searches, user_and_key_ids_for_api_key
+    from db_enums import PaidUserStatus
+
+    _quota_conn, _quota_cursor = _get_conn()
+    try:
+        plan_level = paid_user_for_user_email_with_cursor(_quota_conn, _quota_cursor, user_email)
+    finally:
+        _quota_conn.close()
+
+    plan_status = PaidUserStatus(plan_level) if plan_level in [e.value for e in PaidUserStatus] else PaidUserStatus.FREE_TIER
+    monthly_limit = planToSearches.get(plan_status, 0)
+
+    if monthly_limit > 0:  # 0 means unlimited for enterprise / no cap defined
+        _uid, _ = user_and_key_ids_for_api_key(api_key)
+        if _uid and count_monthly_searches(_uid) >= monthly_limit:
+            return jsonify({
+                "error": f"Monthly search quota exceeded ({monthly_limit} searches/month on your plan). "
+                         "Upgrade your plan to continue."
+            }), 429
+
     # Deduct 1 credit for each chat message
-    from database.db_auth import deduct_credits_from_api_key_user
     if not deduct_credits_from_api_key_user(api_key, 1):
         return jsonify({"error": "Insufficient credits. You need 1 credit per chat message."}), 403
 
