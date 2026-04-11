@@ -69,6 +69,7 @@ flask-mysql-connector
 mysqlclient
 SQLAlchemy>=2.0.0
 PyMySQL>=1.1.0
+alembic>=1.13.0
 
 # Evaluation
 ragas>=0.2.0
