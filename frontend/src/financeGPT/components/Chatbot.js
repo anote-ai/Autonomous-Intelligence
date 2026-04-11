@@ -64,7 +64,6 @@ const Chatbot = ({
   const location = useLocation();
   const {
     inferChatName: inferChatNameRequest,
-    processChatMessage,
     retrieveCurrentDocs,
     retrieveMessages,
     uploadDocuments,

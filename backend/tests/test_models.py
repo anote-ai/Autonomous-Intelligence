@@ -1,17 +1,12 @@
 """Tests for SQLAlchemy ORM models."""
-import pytest
 from database.models import (
     ApiKey,
     Base,
     Chat,
-    ChatShare,
     Chunk,
     Document,
     Message,
     MessageAttachment,
-    Prompt,
-    PromptAnswer,
-    Subscription,
     User,
 )
 
