@@ -2,8 +2,6 @@
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from services.llm_provider import (
     DEFAULT_ANTHROPIC_MODEL,
     DEFAULT_OPENAI_MODEL,

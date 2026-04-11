@@ -1,7 +1,5 @@
 """Tests for Pydantic request validation schemas."""
 import pytest
-from pydantic import ValidationError
-
 from api_endpoints.schemas import (
     ChatCompletionsRequest,
     ChatMessageSchema,
@@ -10,7 +8,7 @@ from api_endpoints.schemas import (
     PublicChatRequest,
     QuestionAnswerRequest,
 )
-
+from pydantic import ValidationError
 
 # ---------------------------------------------------------------------------
 # ChatMessageSchema
