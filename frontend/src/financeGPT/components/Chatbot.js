@@ -713,7 +713,7 @@ const Chatbot = ({
         )
       );
     }
-  }, [handleSSEStreamingResponse, isPrivate, processChatMessage, processMessagePath, streamResponses, user]);
+  }, [handleSSEStreamingResponse, isPrivate, streamResponses, user]);
 
   // Function to toggle reasoning expansion
   const toggleReasoningExpansion = (messageId) => {

@@ -4,8 +4,6 @@ import importlib
 import os
 from unittest.mock import patch
 
-import pytest
-
 
 def _reload_features():
     """Re-import the features module so env vars picked up at import time are fresh."""
