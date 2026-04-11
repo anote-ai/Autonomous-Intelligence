@@ -96,6 +96,7 @@ from google_auth_oauthlib.flow import Flow
 from jwt import InvalidTokenError
 from pip._vendor import cachecontrol
 from tika import parser as p
+
 from datetime import datetime
 
 from features import is_finance_gpt_enabled, is_agent_enabled
@@ -139,7 +140,7 @@ app.register_blueprint(korean_blueprint)
 app.register_blueprint(spanish_blueprint)
 app.register_blueprint(arabic_blueprint)
 
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="http://host.docker.internal:11434/v1")
+client = get_openai_client()
 def ensure_ray_started():  # pragma: no cover
     if not ray.is_initialized():
         try:
@@ -1052,9 +1053,7 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
     else:
         print("using Claude")
 
-        anthropic = Anthropic(
-            api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
+        anthropic = get_anthropic_client()
 
         completion = anthropic.messages.create(
             model="claude-3-5-haiku-20241022",
@@ -1423,7 +1422,7 @@ def _public_chat_fallback(message, chat_id, model_type, model_key, user_email): 
         if model_key:
            return jsonify({"Error": "You cannot enter a fine-tuned model key when using Claude"}), 400
 
-        anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        anthropic = get_anthropic_client()
         completion = anthropic.messages.create(
             model="claude-3-5-haiku-20241022",
             max_tokens=700,
