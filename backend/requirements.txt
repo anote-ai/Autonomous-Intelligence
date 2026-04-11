@@ -51,6 +51,9 @@ pycryptodome==3.20.0
 setuptools>=70.0.0
 tqdm>=4.66.3
 
+# API Docs
+flasgger>=0.9.7
+
 # Dev / test
 pytest
 pytest-cov
