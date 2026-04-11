@@ -9,7 +9,7 @@ boto3
 python-dotenv==1.0.0
 flask_mail
 redis
-Werkzeug==2.2.2
+Werkzeug>=3.0.3
 
 # ML/AI
 numpy==1.26.4
@@ -33,7 +33,10 @@ tika==1.24
 PyPDF2==3.0.1
 fpdf==1.7.2
 beautifulsoup4
-requests
+requests>=2.32.0
+urllib3>=2.2.2
+certifi>=2024.7.4
+idna>=3.7
 pandas
 
 # External services
@@ -45,6 +48,8 @@ flask-socketio>=5.3.6
 anthropic
 sec_api
 pycryptodome==3.20.0
+setuptools>=70.0.0
+tqdm>=4.66.3
 
 # Dev / test
 pytest
