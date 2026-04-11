@@ -1,7 +1,7 @@
 """Tests for SQLAlchemy ORM models."""
 from __future__ import annotations
 
-from typing import Any, Set
+from typing import Any
 
 from database.models import (
     ApiKey,
@@ -15,7 +15,7 @@ from database.models import (
 )
 
 
-def _cols(model: Any) -> Set[str]:
+def _cols(model: Any) -> set[str]:
     return {c.name for c in model.__table__.columns}
 
 

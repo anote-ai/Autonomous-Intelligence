@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 from unittest.mock import MagicMock, patch
-
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _make_cursor(
-    rows: Optional[list[Any]] = None,
-    fetchone_return: Optional[Any] = None,
+    rows: list[Any] | None = None,
+    fetchone_return: Any | None = None,
 ) -> MagicMock:
     cursor = MagicMock()
     cursor.fetchall.return_value = rows or []
@@ -25,7 +24,7 @@ def _make_conn(cursor: MagicMock) -> MagicMock:
     return conn
 
 
-def _patch_db(cursor: MagicMock, conn: Optional[MagicMock] = None) -> Any:
+def _patch_db(cursor: MagicMock, conn: MagicMock | None = None) -> Any:
     """Return a context manager that patches get_db_connection."""
     if conn is None:
         conn = _make_conn(cursor)
