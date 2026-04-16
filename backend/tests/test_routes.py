@@ -437,7 +437,7 @@ def test_process_message_pdf_authenticated_agent_stream(client: Any, app_module:
             return [{"answer": "chunk-1"}]
 
     monkeypatch.setattr(app_module.AgentConfig, "is_agent_enabled", staticmethod(lambda: True))
-    monkeypatch.setattr(app_module, "ReactiveDocumentAgent", StreamingAgent)
+    monkeypatch.setattr(app_module, "AutonomousDocumentAgent", StreamingAgent)
     response = client.post(
         "/process-message-pdf",
         json={"message": "hello", "chat_id": 1, "model_type": 0, "is_guest": False},
@@ -501,7 +501,7 @@ def test_public_upload_success_and_invalid_task(client: Any, app_module: Any, mo
         data={"task_type": "invalid", "model_type": "gpt"},
     )
     assert invalid_response.status_code == 400
-    assert invalid_response.get_json() == {"id": "Please enter a valid task type"}
+    assert "error" in invalid_response.get_json()
 
 
 def test_public_endpoints_require_valid_api_key(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -63,7 +63,7 @@ def test_document_handlers(app_module: Any, monkeypatch: pytest.MonkeyPatch) -> 
         add_document_calls: list[tuple[str, str, str]] = []
         remote_calls: list[tuple[str, int, int]] = []
 
-        def _add_document(text: str, filename: str, chat_id: str) -> tuple[int, bool]:
+        def _add_document(text: str, filename: str, chat_id: str, **kwargs: Any) -> tuple[int, bool]:
             add_document_calls.append((text, filename, chat_id))
             return 5, False
 
