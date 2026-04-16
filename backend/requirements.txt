@@ -1,15 +1,15 @@
 # Core
-Flask==2.0.3
-Flask-Cors==3.0.10
+Flask>=3.0.0
+Flask-Cors>=4.0.0
 mysql-connector-python
-flask-jwt-extended==4.4.4
+flask-jwt-extended>=4.6.0
 python-dateutil
 bcrypt==4.0.1
 boto3
 python-dotenv==1.0.0
 flask_mail
 redis
-Werkzeug>=3.0.3
+Werkzeug>=3.0.3,<4
 
 # ML/AI
 numpy==1.26.4
@@ -65,7 +65,6 @@ mkdocstrings-python
 ratelimit
 
 # DB
-flask-mysql-connector
 mysqlclient
 SQLAlchemy>=2.0.0
 PyMySQL>=1.1.0

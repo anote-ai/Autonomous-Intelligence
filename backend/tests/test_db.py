@@ -121,7 +121,7 @@ def test_change_chat_mode_updates_model(db_connection: tuple[MagicMock, MagicMoc
 
 def test_add_document_returns_existing_document(db_connection: tuple[MagicMock, MagicMock]) -> None:
     connection, cursor = db_connection
-    cursor.fetchone.return_value = (99, "existing")
+    cursor.fetchone.return_value = {"id": 99}
     assert db.add_document("text", "file.pdf", chat_id=1) == (99, True)
     connection.commit.assert_not_called()
 

@@ -70,6 +70,7 @@ from database.db import (
     update_chat_name as update_chat_name_in_db,
     update_user_profile,
 )
+from database.db_pool import get_db_connection
 from database.db_auth import (
     api_key_access_invalid,
     extractUserEmailFromRequest,
@@ -91,7 +92,6 @@ from flask_jwt_extended import (
     jwt_required,
 )
 from flask_mail import Mail
-from flask_mysql_connector import MySQL
 from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
 from jwt import InvalidTokenError
@@ -202,13 +202,6 @@ mail = Mail(app)
 
 #MySQL config -- could put these in a backend .env if there are different users
 app.config['MYSQL_HOST'] = 'db'
-app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = ''
-app.config['MYSQL_DATABASE'] = 'agents'
-
-mysql = MySQL(app)
-
-
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 ensure_ray_started()
@@ -1551,10 +1544,11 @@ def evaluate():
 
 @app.route('/api/companies', methods=['GET'])
 def get_companies():
-    cursor = mysql.connection.cursor(dictionary=True)
+    conn, cursor = get_db_connection()
     cursor.execute("SELECT id, name, path FROM companies")
     companies = cursor.fetchall()
     cursor.close()
+    conn.close()
     return jsonify(companies)
 
 
@@ -1562,11 +1556,13 @@ def get_user_from_token(token):
     if not token:
         return None
 
-    cursor = mysql.connection.cursor(dictionary=True)
+    conn, cursor = get_db_connection()
     cursor.execute("""
         SELECT * FROM users WHERE session_token = %s
     """, (token,))
     user = cursor.fetchone()
+    cursor.close()
+    conn.close()
 
     if user and user.get("session_token_expiration"):
         # session_token_expiration is usually stored as a datetime string
@@ -1583,7 +1579,7 @@ def get_user_from_token(token):
 def get_user_companies():
     user_email = get_jwt_identity()
 
-    cursor = mysql.connection.cursor(dictionary=True)
+    conn, cursor = get_db_connection()
 
     # Get user ID from email
     cursor.execute("SELECT id FROM users WHERE email = %s", (user_email,))
@@ -1591,6 +1587,7 @@ def get_user_companies():
 
     if not user:
         cursor.close()
+        conn.close()
         return jsonify({"error": "Invalid user"}), 401
 
     user_id = user["id"]
@@ -1600,6 +1597,7 @@ def get_user_companies():
     companies = cursor.fetchall()
 
     cursor.close()
+    conn.close()
     return jsonify(companies)
 
 
