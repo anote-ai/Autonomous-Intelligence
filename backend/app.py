@@ -101,6 +101,7 @@ from tika import parser as p
 from datetime import datetime
 
 from features import is_finance_gpt_enabled, is_agent_enabled
+from services.llm_provider import get_openai_client
 from agents.config import AgentConfig
 from api_endpoints.languages.arabic import arabic_blueprint
 from api_endpoints.languages.chinese import chinese_blueprint
