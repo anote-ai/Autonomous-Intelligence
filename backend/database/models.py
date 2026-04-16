@@ -16,6 +16,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BLOB,
+    TIMESTAMP,
     BigInteger,
     Column,
     Enum,
@@ -24,7 +25,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    Timestamp,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -43,7 +43,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     email = Column(String(255), unique=True, nullable=False)
     google_id = Column(String(255))
     person_name = Column(String(255))
@@ -51,12 +51,12 @@ class User(Base):
     password_hash = Column(String(255))
     salt = Column(String(255))
     session_token = Column(String(255))
-    session_token_expiration = Column(Timestamp)
+    session_token_expiration = Column(TIMESTAMP)
     password_reset_token = Column(String(255))
-    password_reset_token_expiration = Column(Timestamp)
+    password_reset_token_expiration = Column(TIMESTAMP)
     credits = Column(Integer, nullable=False, default=0)
-    credits_updated = Column(Timestamp, nullable=False, default=datetime.utcnow)
-    chat_gpt_date = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    credits_updated = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    chat_gpt_date = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     num_chatgpt_requests = Column(Integer, nullable=False, default=0)
 
     chats = relationship("Chat", back_populates="user")
@@ -72,8 +72,8 @@ class StripeInfo(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     stripe_customer_id = Column(String(255))
-    last_webhook_received = Column(Timestamp)
-    anchor_date = Column(Timestamp)
+    last_webhook_received = Column(TIMESTAMP)
+    anchor_date = Column(TIMESTAMP)
 
     user = relationship("User", back_populates="stripe_info")
     subscriptions = relationship("Subscription", back_populates="stripe_info")
@@ -85,8 +85,8 @@ class Subscription(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     stripe_info_id = Column(Integer, ForeignKey("StripeInfo.id"), nullable=False)
     subscription_id = Column(String(255), nullable=False)
-    start_date = Column(Timestamp, nullable=False, default=datetime.utcnow)
-    end_date = Column(Timestamp)
+    start_date = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    end_date = Column(TIMESTAMP)
     paid_user = Column(Integer, nullable=False)
     is_free_trial = Column(Integer, nullable=False, default=0)
 
@@ -97,11 +97,11 @@ class FreeTrialAllowlist(Base):
     __tablename__ = "freeTrialAllowlist"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     email = Column(String(255))
     token = Column(String(255))
     max_non_email_count = Column(Integer, nullable=False, default=0)
-    token_expiration = Column(Timestamp)
+    token_expiration = Column(TIMESTAMP)
 
     free_trials = relationship("FreeTrialAccessed", back_populates="allowlist_entry")
 
@@ -110,7 +110,7 @@ class FreeTrialAccessed(Base):
     __tablename__ = "freeTrialsAccessed"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     free_trial_allow_list_id = Column(Integer, ForeignKey("freeTrialAllowlist.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
 
@@ -126,7 +126,7 @@ class Chat(Base):
     __tablename__ = "chats"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     model_type = Column(Integer, nullable=False, default=0)
     chat_name = Column(Text)
@@ -147,7 +147,7 @@ class ChatShare(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     chat_id = Column(Integer, ForeignKey("chats.id"), nullable=False)
     share_uuid = Column(String(255), unique=True, nullable=False)
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
 
     chat = relationship("Chat", back_populates="share")
     messages = relationship("ChatShareMessage", back_populates="chat_share")
@@ -161,7 +161,7 @@ class ChatShareMessage(Base):
     chat_share_id = Column(Integer, ForeignKey("chat_shares.id"), nullable=False)
     role = Column(Enum("user", "chatbot"), nullable=False)
     message_text = Column(Text, nullable=False)
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
 
     chat_share = relationship("ChatShare", back_populates="messages")
 
@@ -176,7 +176,7 @@ class ChatShareDocument(Base):
     storage_key = Column(Text, nullable=False)
     media_type = Column(Enum("text", "image", "video", "audio"), nullable=False, default="text")
     mime_type = Column(String(255))
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
 
     chat_share = relationship("ChatShare", back_populates="documents")
     chunks = relationship("ChatShareChunk", back_populates="document")
@@ -204,7 +204,7 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     message_text = Column(Text, nullable=False)
     chat_id = Column(Integer, ForeignKey("chats.id"), nullable=False)
     sent_from_user = Column(Integer, nullable=False)
@@ -224,7 +224,7 @@ class MessageAttachment(Base):
     __tablename__ = "message_attachments"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     message_id = Column(Integer, ForeignKey("messages.id"), nullable=False)
     media_type = Column(Enum("image", "audio", "video"), nullable=False)
     mime_type = Column(String(255), nullable=False)
@@ -245,7 +245,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     chat_id = Column(Integer, ForeignKey("chats.id"))
     storage_key = Column(Text, nullable=False)
     document_name = Column(String(255), nullable=False)
@@ -313,8 +313,8 @@ class ApiKey(Base):
     __tablename__ = "apiKeys"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    created = Column(Timestamp, nullable=False, default=datetime.utcnow)
-    last_used = Column(Timestamp, nullable=False, default=datetime.utcnow)
+    created = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    last_used = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     api_key = Column(String(255))
     key_name = Column(String(255))
