@@ -612,6 +612,7 @@ def test_custom_json_encoder_and_user_from_token_none(app_module: Any) -> None:
 
 def test_company_routes_and_user_lookup(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     mock_cursor = MagicMock()
+    mock_conn = MagicMock()
     mock_cursor.fetchall.side_effect = [
         [{"id": 1, "name": "Acme", "path": "/acme"}],
         [{"name": "Acme", "path": "/acme"}],
@@ -620,7 +621,7 @@ def test_company_routes_and_user_lookup(client: Any, app_module: Any, monkeypatc
         {"id": 8},
         {"email": "test@example.com", "session_token_expiration": "2099-01-01 00:00:00"},
     ]
-    app_module.mysql.connection.cursor.return_value = mock_cursor
+    monkeypatch.setattr(app_module, "get_db_connection", lambda: (mock_conn, mock_cursor))
 
     companies_response = client.get("/api/companies")
     assert companies_response.status_code == 200
@@ -636,10 +637,11 @@ def test_company_routes_and_user_lookup(client: Any, app_module: Any, monkeypatc
     assert user == {"email": "test@example.com", "session_token_expiration": "2099-01-01 00:00:00"}
 
 
-def test_user_companies_invalid_user(client: Any, app_module: Any) -> None:
+def test_user_companies_invalid_user(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     mock_cursor = MagicMock()
+    mock_conn = MagicMock()
     mock_cursor.fetchone.return_value = None
-    app_module.mysql.connection.cursor.return_value = mock_cursor
+    monkeypatch.setattr(app_module, "get_db_connection", lambda: (mock_conn, mock_cursor))
     with app_module.app.app_context():
         jwt_token = app_module.create_access_token(identity="missing@example.com")
     response = client.get("/api/user/companies", headers={"Authorization": f"Bearer {jwt_token}"})

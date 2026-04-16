@@ -124,9 +124,8 @@ if is_finance_gpt_enabled():
     )
     _get_model()
 
-if is_agent_enabled():
-    from agents.autonomous_agent import AutonomousDocumentAgent
-    from agents.reactive_agent import ReactiveDocumentAgent
+from agents.autonomous_agent import AutonomousDocumentAgent
+from agents.reactive_agent import ReactiveDocumentAgent
 
 load_dotenv(override=True)
 
@@ -1326,7 +1325,7 @@ def upload():  # pragma: no cover
     else:
         return jsonify({"error": f"Invalid task type: {chat_type!r}. Use 'documents' or 0."}), 400
 
-    return jsonify({"chat_id": chat_id, "id": chat_id}), 200  # 'id' kept for backward compat
+    return jsonify({"id": chat_id}), 200
 
 
 @app.route('/public/chat', methods=['POST'])

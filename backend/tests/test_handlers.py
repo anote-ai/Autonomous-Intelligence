@@ -50,7 +50,8 @@ def test_chat_handlers(app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None
         assert captured == {"user_email": "user@example.com", "chat_id": 1, "chat_name": "Renamed"}
 
         monkeypatch.setattr(chat_handler, "delete_chat", lambda chat_id, user_email: "deleted")
-        assert chat_handler.DeleteChatHandler(_json_request({"chat_id": 1}), "user@example.com") == "deleted"
+        delete_response = chat_handler.DeleteChatHandler(_json_request({"chat_id": 1}), "user@example.com")
+        assert delete_response.get_json() == {"message": "deleted"}
 
         monkeypatch.setattr(chat_handler, "find_most_recent_chat", lambda user_email: {"id": 2})
         recent_response = chat_handler.FindMostRecentChatHandler("user@example.com")
@@ -73,7 +74,7 @@ def test_document_handlers(app_module: Any, monkeypatch: pytest.MonkeyPatch) -> 
 
         request = SimpleNamespace(
             form=SimpleNamespace(getlist=lambda key: ["11"]),
-            files=SimpleNamespace(getlist=lambda key: [SimpleNamespace(filename="sample.pdf")]),
+            files=SimpleNamespace(getlist=lambda key: [SimpleNamespace(filename="sample.pdf", content_type=None)]),
         )
         parser_module = SimpleNamespace(from_buffer=lambda file: {"content": "document text"})
 
