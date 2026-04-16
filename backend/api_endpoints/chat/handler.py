@@ -42,7 +42,7 @@ def UpdateChatNameHandler(request: Request, user_email: str) -> ResponseReturnVa
 
 def DeleteChatHandler(request: Request, user_email: str) -> ResponseReturnValue:
     payload = cast(dict[str, Any], request.get_json(force=True))
-    return delete_chat(payload.get("chat_id"), user_email)
+    return jsonify({"message": delete_chat(payload.get("chat_id"), user_email)})
 
 
 def FindMostRecentChatHandler(user_email: str) -> ResponseReturnValue:
