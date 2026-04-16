@@ -433,7 +433,7 @@ def test_process_message_pdf_authenticated_agent_stream(client: Any, app_module:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def process_query_stream(self, query: str, chat_id: int, user_email: str) -> list[dict[str, str]]:
+        def process_query_stream(self, query: str, chat_id: int, user_email: str, **kwargs: Any) -> list[dict[str, str]]:
             return [{"answer": "chunk-1"}]
 
     monkeypatch.setattr(app_module.AgentConfig, "is_agent_enabled", staticmethod(lambda: True))
