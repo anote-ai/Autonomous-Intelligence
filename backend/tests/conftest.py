@@ -103,7 +103,20 @@ def _install_import_stubs() -> None:
     )
     finance_module.get_text_from_url = lambda url: "page text"
     finance_module.retrieve_message_from_db = lambda *args, **kwargs: []
+    finance_module.retrieve_docs_from_db = lambda *args, **kwargs: []
     _register_module("api_endpoints.financeGPT.chatbot_endpoints", finance_module)
+
+    autonomous_agent_module = types.ModuleType("agents.autonomous_agent")
+
+    class FakeAutonomousDocumentAgent:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def process_query(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            return {"answer": "autonomous answer", "message_id": 1, "sources": []}
+
+    autonomous_agent_module.AutonomousDocumentAgent = FakeAutonomousDocumentAgent
+    _register_module("agents.autonomous_agent", autonomous_agent_module)
 
     reactive_agent_module = types.ModuleType("agents.reactive_agent")
 
