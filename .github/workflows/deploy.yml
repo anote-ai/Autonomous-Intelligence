@@ -99,3 +99,17 @@ jobs:
         run: |
           aws cloudfront create-invalidation \
             --distribution-id $CF_DISTRIBUTION --paths "/*"
+
+  notify:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend]
+    if: failure()
+    steps:
+      - uses: slackapi/slack-github-action@v1
+        continue-on-error: true
+        with:
+          payload: |
+            {"text": "Deploy FAILED on `${{ github.ref_name }}` — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
