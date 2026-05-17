@@ -1,136 +1,105 @@
-# Codebase Development Environment
+# Autonomous Intelligence (Panacea) — Codebase Setup
 
-## Quick Start
+## What is Autonomous Intelligence?
 
-There are now two supported local development paths:
+Autonomous Intelligence, also known as Panacea, is a multi-agent orchestration framework available at [chat.anote.ai](https://chat.anote.ai). It enables building, deploying, and monitoring autonomous AI agents that can reason, plan, and execute complex multi-step tasks.
 
-1. Docker for the full app stack
-2. Native frontend + native backend for faster iteration
+## Architecture
 
-The Docker path is the easiest way to get the app, database, Redis, and Tika running together.
+| Layer | Technology | Location |
+|-------|-----------|----------|
+| Frontend | React (Node 18) | `frontend/` |
+| Backend | Python 3.11, FastAPI | `backend/` |
+| Container orchestration | Docker Compose | `docker-compose.yml` |
 
-## Option 1: Full Stack with Docker
+## Prerequisites
 
-Prerequisites:
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) (v2+)
+- Node 18 (only needed for manual frontend setup)
+- Python 3.11 (only needed for manual backend setup)
 
-- Docker Desktop
-
-Setup:
-
-```bash
-cp backend/.env.example backend/.env
-docker compose up --build
-```
-
-Services:
-
-- Frontend: `http://localhost:3000`
-- Backend: `http://localhost:5000`
-- MySQL: `localhost:3307`
-- Redis: `localhost:6380`
-- Tika: `http://localhost:9999`
-
-Helpful commands:
+## Quick Start with Docker Compose (RECOMMENDED)
 
 ```bash
-make dev-up
-make dev-down
-make dev-logs
+# 1. Clone the repo
+git clone https://github.com/anote-ai/Autonomous-Intelligence.git
+cd Autonomous-Intelligence
+
+# 2. Copy and fill in environment variables
+cp .env.example .env
+# Edit .env and set required values (see Environment Variables below)
+
+# 3. Start all services
+docker-compose up --build
+
+# 4. Open the app
+open http://localhost:3000
 ```
 
-Notes:
+The backend API will be available at `http://localhost:8000`.
 
-- The root [`docker-compose.yml`](/Users/natanvidra/Workspace/Autonomous-Intelligence/docker-compose.yml) is the preferred Docker entry point.
-- The frontend container uses `REACT_APP_BACK_END_HOST=http://localhost:5000`, so the browser talks to the backend directly on the host-mapped port.
-- If you need credentials or API keys, populate them in `backend/.env`.
+## Manual Setup (without Docker)
 
-## Option 2: Native Local Development
+### Backend
+
+```bash
+cd backend
+pip install -e ".[dev]"
+uvicorn app:app --reload --host 0.0.0.0 --port 8000
+```
+
+Dependencies are declared in `pyproject.toml`. The `[dev]` extra includes linting and testing tools.
 
 ### Frontend
 
-Prerequisites:
-
-- Node 20 recommended
-
-Setup:
-
 ```bash
 cd frontend
-cp .env.example .env.local
 npm install
 npm start
 ```
 
-The frontend will run at `http://localhost:3000`.
+The dev server starts at `http://localhost:3000`.
 
-If `REACT_APP_BACK_END_HOST` is omitted, the frontend client now supports same-origin/proxy mode. With the current `package.json` proxy, local `npm start` expects the backend at `http://localhost:5000`.
+## Environment Variables
 
-### Backend
+Copy `.env.example` to `.env` and fill in the values.
 
-Prerequisites:
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | OpenAI API key for agent execution |
+| `ANTHROPIC_API_KEY` | No | Anthropic API key for Claude models |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `SECRET_KEY` | Yes | Random secret for session signing |
+| `REACT_APP_BACK_END_HOST` | Yes | Backend URL seen by the browser |
 
-- Python 3.10 recommended
-- MySQL
-- JDK 8+ for Apache Tika workflows
+## Python Dependency Management
 
-Setup:
-
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-export FLASK_APP=app.py
-export FLASK_ENV=development
-export FLASK_DEBUG=1
-flask run --host=0.0.0.0 --port=5000
-```
-
-### MySQL
-
-Create the database:
+Python dependencies live in `pyproject.toml`. To add a dependency:
 
 ```bash
-mysql -u root -p
-create database agents;
+# Add to [project.dependencies] or [project.optional-dependencies] in pyproject.toml
+pip install -e ".[dev]"  # reinstall in editable mode to pick up changes
 ```
 
-Initialize schema:
+## CI/CD
 
-```bash
-cd backend/database
-python init_db_dev.py
-```
+| Workflow | Trigger | What it does |
+|----------|---------|-------------|
+| CI workflow(s) | PR / push to main | Runs lint, type checks, and tests — blocks merging bad PRs |
+| `deploy.yml` | Manual (`workflow_dispatch`) | Builds Docker image → ECR → ECS (backend); React build → S3 → CloudFront (frontend) |
 
-## Running Tests
+### Required GitHub Secrets for Deployment
 
-Frontend build:
+Configure these in **Settings → Secrets and variables → Actions**:
 
-```bash
-cd frontend
-npm run build
-```
-
-Frontend tests:
-
-```bash
-cd frontend
-npm run test:ci
-```
-
-Backend tests:
-
-```bash
-cd backend
-pytest
-```
-
-## Common Issues
-
-- If `vitest` fails locally with Node 16 errors, upgrade to Node 18+ or use the CRA/Jest runner shown above.
-- If the frontend cannot reach the backend, confirm the backend is actually listening on `http://localhost:5000`.
-- If Docker healthchecks fail, verify `backend/.env` exists and MySQL finished initializing.
-- The backend container healthcheck relies on `curl`, which is now installed in the backend image.
-- Tika is started as a dependency, but the backend no longer waits on a brittle container-local Tika healthcheck.
-- If file upload flows fail, verify Tika is running.
+| Secret | Description |
+|--------|-------------|
+| `AWS_ACCESS_KEY_ID` | IAM access key with ECR/ECS/S3/CloudFront permissions |
+| `AWS_SECRET_ACCESS_KEY` | Corresponding IAM secret key |
+| `AWS_REGION` | AWS region (defaults to `us-east-1`) |
+| `ECS_CLUSTER` | ECS cluster name |
+| `ECS_SERVICE_BACKEND` | ECS service name (ECR repository: `autonomous-intelligence-backend`) |
+| `S3_BUCKET_FRONTEND` | S3 bucket for the React build |
+| `CLOUDFRONT_DISTRIBUTION_ID` | CloudFront distribution ID |
+| `REACT_APP_BACK_END_HOST` | Backend URL injected at React build time |
+| `SLACK_WEBHOOK_URL` | (Optional) Slack webhook for failure alerts |
