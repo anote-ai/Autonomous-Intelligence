@@ -86,7 +86,13 @@ def test_document_handlers(app_module: Any, monkeypatch: pytest.MonkeyPatch) -> 
             _Chunker(),
         )
         assert ingest_status == 200
-        assert ingest_response.get_json() == {"Success": "Document Uploaded"}
+        body = ingest_response.get_json()
+        assert body["Success"] == "Document Uploaded"
+        assert body["uploaded"] == [
+            {"filename": "sample.pdf", "category": "text", "doc_id": 5}
+        ]
+        assert body["failed"] == []
+        assert body["skipped"] == []
         assert add_document_calls == [("document text", "sample.pdf", "11")]
         assert remote_calls == [("document text", 1000, 5)]
 
