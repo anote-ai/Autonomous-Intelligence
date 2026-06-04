@@ -45,6 +45,16 @@ def test_get_openai_client_returns_client() -> None:
         assert client is not None
 
 
+def test_get_openai_client_uses_local_placeholder_without_key() -> None:
+    with patch.dict(os.environ, {}, clear=True), patch("services.llm_provider.openai.OpenAI") as openai_factory:
+        client = get_openai_client()
+        assert client is openai_factory.return_value
+        openai_factory.assert_called_once_with(
+            api_key="local-dev-placeholder",
+            base_url="http://host.docker.internal:11434/v1",
+        )
+
+
 def test_get_anthropic_client_returns_client() -> None:
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
         client = get_anthropic_client()

@@ -9,7 +9,10 @@ import PyPDF2
 import ray
 import requests
 from dotenv import load_dotenv
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+try:
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+except ModuleNotFoundError:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import OpenAI
 from tika import parser as p
 
@@ -23,7 +26,8 @@ MAX_CHUNK_SIZE = 1500
 CHUNK_OVERLAP = 200
 
 _embedding_model = None
-_client = OpenAI()
+_client = None
+_client_lock = threading.Lock()
 _model_lock = threading.Lock()
 _splitter_lock = threading.RLock()
 _text_splitters = {}
@@ -88,6 +92,17 @@ def fetch_external_url(web_url: str) -> requests.Response:
     return requests.get(safe_url, timeout=10, allow_redirects=False)
 
 
+def _get_client() -> OpenAI:
+    global _client
+
+    if _client is None:
+        with _client_lock:
+            if _client is None:
+                _client = OpenAI()
+
+    return _client
+
+
 def _get_model():
     global _embedding_model
 
@@ -103,7 +118,7 @@ def _get_model():
                 if isinstance(texts, str):
                     texts = [texts]
 
-                response = _client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
+                response = _get_client().embeddings.create(model=EMBEDDING_MODEL, input=texts)
                 return [item.embedding for item in response.data]
 
             _embedding_model = embed_fn

@@ -1,5 +1,9 @@
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.tools import BaseTool
+try:
+    from langchain.agents import AgentExecutor, create_react_agent
+except ImportError:
+    from langchain_classic.agents import AgentExecutor, create_react_agent
+
+from langchain_core.tools import BaseTool
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
