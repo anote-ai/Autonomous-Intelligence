@@ -423,7 +423,36 @@ def test_process_message_pdf_guest_fallback_success(client: Any, app_module: Any
         json={"message": "hello", "chat_id": 0, "model_type": 0, "is_guest": True},
     )
     assert response.status_code == 200
-    assert "guest mode" in response.get_json()["answer"]
+    data = response.get_json()
+    assert "guest mode" in data["answer"]
+    assert data["suggested_follow_ups"] == []
+
+
+def test_generate_follow_up_questions_returns_list(app_module: Any) -> None:
+    # FakeOpenAIClient in conftest returns content="openai answer" for any chat completion
+    result = app_module.generate_follow_up_questions("What is X?", "X is Y.", 0)
+    assert isinstance(result, list)
+    assert all(isinstance(q, str) for q in result)
+
+
+def test_generate_follow_up_questions_handles_error(app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _raise(**kwargs: Any) -> None:
+        raise RuntimeError("LLM unavailable")
+
+    monkeypatch.setattr(app_module.client.chat.completions, "create", _raise)
+    result = app_module.generate_follow_up_questions("Q", "A", 0)
+    assert result == []
+
+
+def test_generate_follow_up_questions_caps_at_three(app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    many_lines = "Q1?\nQ2?\nQ3?\nQ4?\nQ5?"
+
+    class _FakeCompletion:
+        choices = [MagicMock(message=MagicMock(content=many_lines))]
+
+    monkeypatch.setattr(app_module.client.chat.completions, "create", lambda **kwargs: _FakeCompletion())
+    result = app_module.generate_follow_up_questions("What?", "Because.", 0)
+    assert len(result) <= 3
 
 
 def test_process_message_pdf_authenticated_agent_stream(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]) -> None:

@@ -96,6 +96,7 @@ export function formatChatMessages(rawMessages, chatId) {
         ? normalizeSources(message.sources)
         : parseRelevantChunks(message.relevant_chunks),
     charts: message.charts || [],
+    suggested_follow_ups: message.suggested_follow_ups || [],
     timestamp: new Date(message.created).getTime(),
   }));
 }
@@ -246,6 +247,7 @@ export function updateMessageWithStreamData(message, eventData) {
         ...(updatedMessage.charts || []),
         ...(eventData.charts || []),
       ];
+      updatedMessage.suggested_follow_ups = eventData.suggested_follow_ups || [];
       updatedMessage.isThinking = false;
       updatedMessage.currentStep = null;
       updatedMessage.reasoning = [
@@ -263,6 +265,7 @@ export function updateMessageWithStreamData(message, eventData) {
     case "step-complete": {
       updatedMessage.content = eventData.answer || "";
       updatedMessage.sources = normalizeSources(eventData.sources);
+      updatedMessage.suggested_follow_ups = eventData.suggested_follow_ups || [];
       updatedMessage.isThinking = false;
       updatedMessage.currentStep = null;
       updatedMessage.reasoning = [

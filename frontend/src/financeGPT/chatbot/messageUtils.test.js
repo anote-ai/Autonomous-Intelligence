@@ -3,6 +3,7 @@ import {
   normalizeSources,
   parseRelevantChunks,
   formatChatMessages,
+  updateMessageWithStreamData,
 } from "./messageUtils";
 
 // ---------------------------------------------------------------------------
@@ -191,5 +192,73 @@ describe("formatChatMessages", () => {
     const result = formatChatMessages(rawMessages, 42);
     expect(typeof result[0].timestamp).toBe("number");
     expect(result[0].timestamp).toBeGreaterThan(0);
+  });
+
+  it("defaults suggested_follow_ups to empty array", () => {
+    const result = formatChatMessages(rawMessages, 42);
+    expect(result[0].suggested_follow_ups).toEqual([]);
+  });
+
+  it("preserves suggested_follow_ups from raw message", () => {
+    const msgs = [{ ...rawMessages[0], suggested_follow_ups: ["Q1?", "Q2?"] }];
+    const result = formatChatMessages(msgs, 42);
+    expect(result[0].suggested_follow_ups).toEqual(["Q1?", "Q2?"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateMessageWithStreamData — suggested_follow_ups
+// ---------------------------------------------------------------------------
+
+describe("updateMessageWithStreamData — suggested_follow_ups", () => {
+  const baseMsg = {
+    id: "1",
+    content: "",
+    sources: [],
+    charts: [],
+    reasoning: [],
+    isThinking: true,
+    currentStep: null,
+  };
+
+  it("sets suggested_follow_ups on complete event", () => {
+    const result = updateMessageWithStreamData(baseMsg, {
+      type: "complete",
+      answer: "The answer.",
+      sources: [],
+      charts: [],
+      suggested_follow_ups: ["Q1?", "Q2?", "Q3?"],
+    });
+    expect(result.suggested_follow_ups).toEqual(["Q1?", "Q2?", "Q3?"]);
+  });
+
+  it("defaults suggested_follow_ups to [] when missing on complete", () => {
+    const result = updateMessageWithStreamData(baseMsg, {
+      type: "complete",
+      answer: "The answer.",
+      sources: [],
+      charts: [],
+    });
+    expect(result.suggested_follow_ups).toEqual([]);
+  });
+
+  it("sets suggested_follow_ups on step-complete event", () => {
+    const result = updateMessageWithStreamData(baseMsg, {
+      type: "step-complete",
+      answer: "Done.",
+      sources: [],
+      suggested_follow_ups: ["Follow-up?"],
+    });
+    expect(result.suggested_follow_ups).toEqual(["Follow-up?"]);
+  });
+
+  it("does not set suggested_follow_ups on unrelated event types", () => {
+    const msg = { ...baseMsg, suggested_follow_ups: ["existing?"] };
+    const result = updateMessageWithStreamData(msg, {
+      type: "agent_thinking",
+      thought: "thinking...",
+      action: "search",
+    });
+    expect(result.suggested_follow_ups).toEqual(["existing?"]);
   });
 });
