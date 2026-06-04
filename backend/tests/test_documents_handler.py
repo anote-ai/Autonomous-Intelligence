@@ -196,7 +196,9 @@ def test_per_file_failure_does_not_poison_batch(
     assert body["uploaded"][0]["filename"] == "good.pdf"
     assert len(body["failed"]) == 1
     assert body["failed"][0]["filename"] == "bad.pdf"
-    assert "tika exploded" in body["failed"][0]["error"]
+    # Response carries class name only — exception message stays in server logs
+    # to avoid leaking internal details (CodeQL: information exposure).
+    assert body["failed"][0]["error"] == "RuntimeError"
     assert body["Success"] == "Partial success"
     # add_document only called for the good file
     assert add_doc_calls == [("good content", "good.pdf")]
@@ -217,3 +219,18 @@ def test_file_size_falls_back_to_stream_tell() -> None:
     assert documents_handler._file_size_bytes(f) == 999
     # stream position must be restored to original
     assert f.stream.tell() == 0
+
+
+# ---------------------------------------------------------------------------
+# _mask_email helper (PII hygiene for logs)
+# ---------------------------------------------------------------------------
+
+
+def test_mask_email_keeps_domain_visible() -> None:
+    assert documents_handler._mask_email("alice@example.com") == "a***@example.com"
+
+
+def test_mask_email_handles_empty_and_malformed() -> None:
+    assert documents_handler._mask_email("") == "***"
+    assert documents_handler._mask_email("noatsign") == "***"
+    assert documents_handler._mask_email("@example.com") == "***@example.com"

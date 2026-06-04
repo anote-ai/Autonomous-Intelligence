@@ -2,6 +2,9 @@ import logging
 from datetime import datetime
 from typing import Any, cast
 
+from flask import Request, jsonify
+from flask.typing import ResponseReturnValue
+
 from agents.config import AgentConfig
 from database.db import (
     add_document,
@@ -11,8 +14,6 @@ from database.db import (
     reset_uploaded_docs,
     retrieve_docs,
 )
-from flask import Request, jsonify
-from flask.typing import ResponseReturnValue
 from services.audio_service import transcribe_audio
 from services.tabular_service import ingest_plaintext, ingest_tabular
 from services.video_service import describe_video
@@ -137,6 +138,21 @@ def _media_category(mime: str) -> str:
     return "text"
 
 
+def _mask_email(email: str) -> str:
+    """Mask the local part of an email for safe logging.
+
+    `alice@example.com` → `a***@example.com`. Keeps the domain visible so
+    operators can still group log lines by tenant / org while avoiding direct
+    PII exposure in log aggregators (GDPR / CCPA hygiene).
+    """
+    if not email or "@" not in email:
+        return "***"
+    local, _, domain = email.partition("@")
+    if not local:
+        return "***@" + domain
+    return local[0] + "***@" + domain
+
+
 def _file_size_bytes(file: Any) -> int:
     """Return the upload size in bytes without reading the body into memory.
 
@@ -190,7 +206,8 @@ def IngestDocumentsHandler(
     chunk_document_fn: Any,
 ) -> ResponseReturnValue:
     start_time = datetime.now()
-    logger.info("ingest_documents start user=%s", user_email)
+    safe_user = _mask_email(user_email)
+    logger.info("ingest_documents start user=%s", safe_user)
 
     # --- chat_id: safe extraction with 400 on missing -------------------------
     chat_ids = request.form.getlist("chat_id")
@@ -264,17 +281,21 @@ def IngestDocumentsHandler(
                 "doc_id": doc_id,
             })
         except Exception as exc:  # noqa: BLE001 — surface any failure to the user
+            # Full stack trace + exception message goes to server logs only.
+            # The HTTP response carries the exception class name (a stable,
+            # non-sensitive identifier) so clients can branch on failure type
+            # without internal paths / SQL / secrets leaking out.
             logger.exception("ingest failed for '%s'", filename)
             failed.append({
                 "filename": filename,
                 "category": category,
-                "error": str(exc) or exc.__class__.__name__,
+                "error": exc.__class__.__name__,
             })
 
     elapsed = (datetime.now() - start_time).total_seconds()
     logger.info(
         "ingest_documents done user=%s elapsed=%.2fs uploaded=%d failed=%d skipped=%d",
-        user_email, elapsed, len(uploaded), len(failed), len(skipped),
+        safe_user, elapsed, len(uploaded), len(failed), len(skipped),
     )
 
     # Backward-compatible Success key kept for existing frontend code; new
