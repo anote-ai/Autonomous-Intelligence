@@ -12,6 +12,11 @@ from flask import Response
 
 
 def build_oauth_state(redirect_uri: str, product_hash: str | None, free_trial_code: str | None) -> dict[str, str]:
+    """Build the OAuth ``state`` dict carried through the auth round-trip.
+
+    Includes the redirect URI plus optional product/free-trial context that
+    needs to survive the provider callback.
+    """
     state = {"redirect_uri": redirect_uri}
     if product_hash:
         state["product_hash"] = product_hash
@@ -27,6 +32,12 @@ def build_callback_redirect_url(
     product_hash: str | None,
     free_trial_code: str | None,
 ) -> str:
+    """Build the frontend redirect URL after a successful OAuth callback.
+
+    Always appends the JWT access/refresh tokens; product hash and free-trial
+    code are tacked on only when supplied so the URL stays clean for plain
+    sign-in flows.
+    """
     redirect_url = f"{default_referrer}?accessToken={access_token}&refreshToken={refresh_token}"
     if product_hash is not None:
         redirect_url += f"&product_hash={product_hash}"
@@ -36,6 +47,16 @@ def build_callback_redirect_url(
 
 
 def pair_chat_messages(messages: list[dict[str, Any]] | None) -> list[tuple[str, str, str | None, str | None]]:
+    """Pair consecutive user/assistant messages and surface the top two RAG chunks.
+
+    Walks the message list looking for a user message immediately followed by
+    an assistant reply, then parses ``relevant_chunks`` (a ``Document: ...``
+    string) for up to two paragraphs. Each pair is returned as
+    ``(query, response, chunk1, chunk2)`` with ``None`` filling missing chunks.
+
+    Raises:
+        TypeError: If ``messages`` is ``None``.
+    """
     if messages is None:
         raise TypeError("messages must not be None")
 
@@ -81,6 +102,7 @@ def pair_chat_messages(messages: list[dict[str, Any]] | None) -> list[tuple[str,
 def chat_history_csv_response(
     paired_messages: Iterable[tuple[str, str, str | None, str | None]]
 ) -> Response:
+    """Serialize paired chat messages into a downloadable ``chat_history.csv`` Flask response."""
     csv_output = io.StringIO()
     writer = csv.writer(csv_output)
     writer.writerow(["query", "response", "chunk1", "chunk2"])
@@ -94,6 +116,12 @@ def chat_history_csv_response(
 
 
 def reset_local_chat_artifacts(source_documents_path: str, output_document_path: str) -> str:
+    """Wipe local chat artifacts and reinitialize an empty ``chat_history.csv``.
+
+    Removes the source-documents and output directories if present, recreates
+    the output directory, and writes a fresh CSV with only the
+    ``query,response`` header row so subsequent chats start from a clean slate.
+    """
     if os.path.exists(source_documents_path):
         shutil.rmtree(source_documents_path)
     if os.path.exists(output_document_path):

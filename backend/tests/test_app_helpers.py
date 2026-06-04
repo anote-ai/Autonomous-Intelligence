@@ -69,6 +69,20 @@ def test_pair_chat_messages_single_paragraph_and_none() -> None:
         pair_chat_messages(None)
 
 
+def test_pair_chat_messages_returns_empty_for_unpairable_input() -> None:
+    # Empty list should yield no pairs without raising.
+    assert pair_chat_messages([]) == []
+
+    # Two consecutive user messages with no assistant reply between them
+    # cannot form a valid pair and should be skipped.
+    assert pair_chat_messages(
+        [
+            {"sent_from_user": 1, "message_text": "Q1", "relevant_chunks": None},
+            {"sent_from_user": 1, "message_text": "Q2", "relevant_chunks": None},
+        ]
+    ) == []
+
+
 def test_chat_history_csv_response() -> None:
     response = chat_history_csv_response([("Q1", "A1", "Chunk1", None)])
     assert response.mimetype == "text/csv"
