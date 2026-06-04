@@ -10,7 +10,16 @@ from flask import Blueprint, jsonify, request
 from openai import OpenAI
 from werkzeug.utils import secure_filename
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = None
+
+
+def get_client():
+    global client
+
+    if client is None:
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    return client
 
 
 def extract_text_from_file(file_storage):
@@ -92,7 +101,7 @@ def make_language_blueprint(
 
             full_messages = [{"role": "system", "content": system_prompt}] + messages
 
-            completion = client.chat.completions.create(
+            completion = get_client().chat.completions.create(
                 model=model_name,
                 messages=full_messages,
             )

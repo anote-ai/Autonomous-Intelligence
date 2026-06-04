@@ -50,7 +50,7 @@ def get_openai_client() -> openai.OpenAI:
     when the variable ``OPENAI_BASE_URL`` is set; otherwise the official
     OpenAI endpoint is used.
     """
-    api_key = os.getenv("OPENAI_API_KEY", "")
+    api_key = os.getenv("OPENAI_API_KEY") or "local-dev-placeholder"
     base_url = os.getenv("OPENAI_BASE_URL", "http://host.docker.internal:11434/v1")
     return openai.OpenAI(api_key=api_key, base_url=base_url)
 
