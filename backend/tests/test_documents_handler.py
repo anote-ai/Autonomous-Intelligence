@@ -18,7 +18,6 @@ import pytest
 
 from api_endpoints.documents import handler as documents_handler
 
-
 # ---------------------------------------------------------------------------
 # Test doubles
 # ---------------------------------------------------------------------------
