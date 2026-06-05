@@ -2,9 +2,6 @@ import logging
 from datetime import datetime
 from typing import Any, cast
 
-from flask import Request, jsonify
-from flask.typing import ResponseReturnValue
-
 from agents.config import AgentConfig
 from database.db import (
     add_document,
@@ -14,6 +11,8 @@ from database.db import (
     reset_uploaded_docs,
     retrieve_docs,
 )
+from flask import Request, jsonify
+from flask.typing import ResponseReturnValue
 from services.audio_service import transcribe_audio
 from services.tabular_service import ingest_plaintext, ingest_tabular
 from services.video_service import describe_video
@@ -206,8 +205,7 @@ def IngestDocumentsHandler(
     chunk_document_fn: Any,
 ) -> ResponseReturnValue:
     start_time = datetime.now()
-    safe_user = _mask_email(user_email)
-    logger.info("ingest_documents start user=%s", safe_user)
+    logger.info("ingest_documents start")
 
     # --- chat_id: safe extraction with 400 on missing -------------------------
     chat_ids = request.form.getlist("chat_id")
@@ -294,8 +292,8 @@ def IngestDocumentsHandler(
 
     elapsed = (datetime.now() - start_time).total_seconds()
     logger.info(
-        "ingest_documents done user=%s elapsed=%.2fs uploaded=%d failed=%d skipped=%d",
-        safe_user, elapsed, len(uploaded), len(failed), len(skipped),
+        "ingest_documents done elapsed=%.2fs uploaded=%d failed=%d skipped=%d",
+        elapsed, len(uploaded), len(failed), len(skipped),
     )
 
     # Backward-compatible Success key kept for existing frontend code; new
@@ -340,7 +338,7 @@ def _ingest_single_file(
         )
         if not does_exist:
             chunk_document_fn.remote(text, max_chunk_size, doc_id)
-        return doc_id
+        return cast(int, doc_id)
 
     if category == "image":
         image_bytes = file.read()
@@ -350,7 +348,7 @@ def _ingest_single_file(
         )
         if not does_exist and description:
             chunk_document_fn.remote(description, max_chunk_size, doc_id)
-        return doc_id
+        return cast(int, doc_id)
 
     if category == "audio":
         audio_bytes = file.read()
@@ -360,7 +358,7 @@ def _ingest_single_file(
         )
         if not does_exist and transcript:
             chunk_document_fn.remote(transcript, max_chunk_size, doc_id)
-        return doc_id
+        return cast(int, doc_id)
 
     # video
     video_bytes = file.read()
@@ -370,7 +368,7 @@ def _ingest_single_file(
     )
     if not does_exist and analysis:
         chunk_document_fn.remote(analysis, max_chunk_size, doc_id)
-    return doc_id
+    return cast(int, doc_id)
 
 
 def RetrieveCurrentDocsHandler(request: Request, user_email: str) -> ResponseReturnValue:

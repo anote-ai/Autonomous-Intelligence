@@ -15,7 +15,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
 from api_endpoints.documents import handler as documents_handler
 
 # ---------------------------------------------------------------------------
