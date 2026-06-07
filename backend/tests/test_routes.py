@@ -447,6 +447,29 @@ def test_process_message_pdf_authenticated_agent_stream(client: Any, app_module:
     assert "chunk-1" in response.get_data(as_text=True)
 
 
+def test_process_message_pdf_streaming_sets_sse_headers(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]) -> None:
+    _authenticate(monkeypatch, app_module)
+
+    class StreamingAgent:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def process_query_stream(self, query: str, chat_id: int, user_email: str, **kwargs: Any) -> list[dict[str, str]]:
+            return [{"answer": "chunk-1"}]
+
+    monkeypatch.setattr(app_module.AgentConfig, "is_agent_enabled", staticmethod(lambda: True))
+    monkeypatch.setattr(app_module, "AutonomousDocumentAgent", StreamingAgent)
+    response = client.post(
+        "/process-message-pdf",
+        json={"message": "hello", "chat_id": 1, "model_type": 0, "is_guest": False},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.headers["Content-Type"].startswith("text/event-stream")
+    assert response.headers["Cache-Control"] == "no-cache"
+    assert response.headers["X-Accel-Buffering"] == "no"
+
+
 def test_process_message_pdf_invalid_token(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]) -> None:
     monkeypatch.setattr(app_module.AgentConfig, "is_agent_enabled", staticmethod(lambda: False))
     _invalidate_token(monkeypatch, app_module)

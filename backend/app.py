@@ -997,7 +997,16 @@ def process_message_pdf():  # pragma: no cover
                     except (TypeError, ValueError) as e:
                         print(f"Error serializing chunk {chunk}: {e}")
 
-            return Response(generate(), status=200)
+            return Response(
+                generate(),
+                status=200,
+                mimetype="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                    "Connection": "keep-alive",
+                },
+            )
 
 
             # return jsonify({
