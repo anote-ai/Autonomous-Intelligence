@@ -111,7 +111,7 @@ class BaseSpecializedAgent:
     
     def _initialize_llm(self):
         if self.model_type == 0:  # OpenAI/GPT
-            model_name = self.model_key if self.model_key else "gpt-4"
+            model_name = self.model_key if self.model_key else AgentConfig.OPENAI_TEXT_MODEL
             return ChatOpenAI(
                 model=model_name,
                 temperature=AgentConfig.AGENT_TEMPERATURE,
@@ -119,8 +119,9 @@ class BaseSpecializedAgent:
                 streaming=True
             )
         else:  # Anthropic/Claude
+            model_name = self.model_key if self.model_key else AgentConfig.ANTHROPIC_TEXT_MODEL
             return ChatAnthropic(
-                model="claude-3-sonnet-20240229",
+                model=model_name,
                 temperature=AgentConfig.AGENT_TEMPERATURE,
                 anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
                 streaming=True
