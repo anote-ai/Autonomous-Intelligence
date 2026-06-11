@@ -2,9 +2,30 @@
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
 from typing import Any
 
-from agents.config import AgentConfig
+
+def _load_real_agent_config() -> Any:
+    """Load the real agents/config.py directly by file path.
+
+    conftest injects a lightweight FakeAgentConfig into sys.modules for
+    `agents.config` so importing app.py does not pull the heavy `agents`
+    package (langchain et al.). These unit tests exercise the *real* key-check
+    logic, so we load config.py by path, bypassing both that stub and the
+    package __init__. config.py only imports the standard library, so loading
+    it standalone is safe.
+    """
+    path = Path(__file__).resolve().parents[1] / "agents" / "config.py"
+    spec = importlib.util.spec_from_file_location("_real_agents_config", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.AgentConfig
+
+
+AgentConfig = _load_real_agent_config()
 
 
 def test_check_api_keys_openai_always_required(monkeypatch: Any) -> None:
