@@ -20,6 +20,7 @@ export const financeGPTPath = "/privategpt";
 export const customersPath = "/customers";
 export const customerCaseStudyPath = "/customercasestudy";
 export const apiKeyDashboardPath = "/api";
+export const usageDashboardPath = "/usage";
 export const registryPath = "/registry";
 export const homePath = "/home";
 export const gtmPath = "/companies/anote";

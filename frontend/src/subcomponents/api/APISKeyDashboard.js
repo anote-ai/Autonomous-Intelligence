@@ -27,7 +27,8 @@ import {
   TextInput,
   Label,
 } from "flowbite-react";
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom";
+import { usageDashboardPath } from "../../constants/RouteConstants";
 
 export function APISKeyDashboard() {
   const dispatch = useDispatch();
@@ -146,6 +147,12 @@ export function APISKeyDashboard() {
             </div>
           </div>
 
+          <div className="flex items-center gap-3">
+            <Link to={usageDashboardPath}>
+              <Button color="gray" outline size="sm" className="border-gray-600 text-gray-300">
+                View Usage
+              </Button>
+            </Link>
           <div className="flex flex-col items-end gap-2">
             <Button
               onClick={handleGenerateAPIKeys}
@@ -164,6 +171,7 @@ export function APISKeyDashboard() {
                 Need at least 1 credit to create API keys
               </p>
             )}
+          </div>
           </div>
         </div>
 

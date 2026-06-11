@@ -14,6 +14,7 @@ import CreateCompany from "../landing_page/landing_page_screens/Chatbots/compani
 import PaymentsComponent from "../subcomponents/payments/PaymentsComponent";
 import PaymentsProduct from "../subcomponents/payments/PaymentsProduct";
 import { APISKeyDashboard } from "../subcomponents/api/APISKeyDashboard";
+import { UsageDashboard } from "../subcomponents/usage/UsageDashboard";
 import {
   apiKeyDashboardPath,
   billingPath,
@@ -28,6 +29,7 @@ import {
   personsPath,
   playbookPath,
   pricingRedirectPath,
+  usageDashboardPath,
 } from "../constants/RouteConstants";
 
 export function buildRoutes({
@@ -76,6 +78,10 @@ export function buildRoutes({
       <Route
         path={apiKeyDashboardPath}
         element={isLoggedIn ? <APISKeyDashboard /> : <Navigate replace to="/" />}
+      />
+      <Route
+        path={usageDashboardPath}
+        element={isLoggedIn ? <UsageDashboard /> : <Navigate replace to="/" />}
       />
       {/* Playbook (shared chat) — accessible to anyone, no auth required */}
       <Route path={playbookPath} element={<PlaybookView />} />

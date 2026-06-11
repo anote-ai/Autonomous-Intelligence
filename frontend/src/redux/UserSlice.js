@@ -129,6 +129,20 @@ export const getAPIKeys = createAsyncThunk("user/getAPIKeys", async (thunk) => {
   return response_str;
 });
 
+export const getUsageHistory = createAsyncThunk(
+  "user/getUsageHistory",
+  async ({ startDate, endDate } = {}) => {
+    let path = "v1/usage";
+    const params = new URLSearchParams();
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    if ([...params].length > 0) path += `?${params.toString()}`;
+    const response = await fetcher(path);
+    const response_str = await response.json();
+    return response_str;
+  }
+);
+
 export const viewUser = createAsyncThunk("user/viewUser", async (thunk) => {
   const response = await fetcher("viewUser");
   const response_str = await response.json();
@@ -243,6 +257,10 @@ export function selectAPIKeys(state) {
 
 export function useAPIKeys() {
   return useSelector(selectAPIKeys);
+}
+
+export function useUsageHistory() {
+  return useSelector((state) => state.userReducer.usageHistory);
 }
 
 export function useAccessTokenIsSet() {
@@ -410,11 +428,15 @@ export const userSlice = createSlice({
         }
         delete state.entities.apiKeys.byId[id];
       })
+      .addCase(getUsageHistory.fulfilled, (state, action) => {
+        state.usageHistory = action.payload;
+      })
       .addCase(logout.fulfilled, (state, action) => {
         // Clear user data and reset credits on logout
         clearUser(state);
         clearApiKeys(state);
         state.numCredits = 0;
+        state.usageHistory = null;
       });
   },
 });
