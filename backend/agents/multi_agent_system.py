@@ -1,6 +1,7 @@
 from langgraph.graph import StateGraph, END
 from typing import Dict, List, Any, Optional, Generator, TypedDict
 import json
+import logging
 import time
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -13,6 +14,10 @@ from api_endpoints.financeGPT.chatbot_endpoints import (
     retrieve_message_from_db, retrieve_docs_from_db
 )
 from .config import AgentConfig
+from .routing import route_boolean
+
+logger = logging.getLogger(__name__)
+
 
 class AgentState(TypedDict):
     """Shared state between all agents in the network"""
@@ -249,7 +254,20 @@ class ChatHistoryAgent(BaseSpecializedAgent):
             
             # Check if query needs historical context
             context_keywords = ["it", "that", "the one", "shorter", "longer", "what I said", "previous", "before", "earlier", "last", "prior", "context", "history", "refer to", "mentioned"]
-            needs_context = any(keyword in query.lower() for keyword in context_keywords)
+            keyword_needs_context = any(keyword in query.lower() for keyword in context_keywords)
+            needs_context, _route_src, _route_reason = route_boolean(
+                self.llm,
+                "Does answering this query require earlier conversation history or context?",
+                query,
+                keyword_needs_context,
+                getattr(AgentConfig, "ENABLE_LLM_ROUTING", False),
+            )
+            if _route_src == "llm" and needs_context != keyword_needs_context:
+                # A/B evidence only — no user content logged (CodeQL/privacy safe).
+                logger.info(
+                    "%s LLM routing override: needs_context keyword=%s model=%s",
+                    self.name, keyword_needs_context, needs_context,
+                )
             
             if not needs_context:
                 reasoning_step = {
@@ -357,7 +375,19 @@ class DocumentListAgent(BaseSpecializedAgent):
             
             # Check if query is asking about available documents
             list_keywords = ["list", "documents", "files", "available", "what documents", "show me", "which documents"]
-            is_list_query = any(keyword in query.lower() for keyword in list_keywords)
+            keyword_is_list_query = any(keyword in query.lower() for keyword in list_keywords)
+            is_list_query, _route_src, _route_reason = route_boolean(
+                self.llm,
+                "Is the user asking to list or show the available documents/files (rather than asking about their contents)?",
+                query,
+                keyword_is_list_query,
+                getattr(AgentConfig, "ENABLE_LLM_ROUTING", False),
+            )
+            if _route_src == "llm" and is_list_query != keyword_is_list_query:
+                logger.info(
+                    "%s LLM routing override: is_list_query keyword=%s model=%s",
+                    self.name, keyword_is_list_query, is_list_query,
+                )
             
             if not is_list_query:
                 reasoning_step = {
