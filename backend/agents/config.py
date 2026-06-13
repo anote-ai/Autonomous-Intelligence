@@ -12,6 +12,9 @@ class AgentConfig:
     AGENT_FALLBACK_ENABLED = os.getenv("AGENT_FALLBACK_ENABLED", "true").lower() == "true"
     ENABLE_GENERAL_KNOWLEDGE = os.getenv("ENABLE_GENERAL_KNOWLEDGE", "true").lower() == "true"
     ENABLE_MULTI_AGENT_SYSTEM = os.getenv("ENABLE_MULTI_AGENT_SYSTEM", "true").lower() == "true"
+    # Route agent branch decisions with the model (reasoning over intent) instead of
+    # keyword matching. Default OFF — opt-in so production behaviour is unchanged.
+    ENABLE_LLM_ROUTING = os.getenv("ENABLE_LLM_ROUTING", "false").lower() == "true"
 
     # MCP Server settings
     MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000")
@@ -59,6 +62,7 @@ class AgentConfig:
             "fallback_enabled": cls.AGENT_FALLBACK_ENABLED,
             "enable_general_knowledge": cls.ENABLE_GENERAL_KNOWLEDGE,
             "enable_multi_agent": cls.ENABLE_MULTI_AGENT_SYSTEM,
+            "enable_llm_routing": cls.ENABLE_LLM_ROUTING,
             "mcp_server_url": cls.MCP_SERVER_URL,
             "mcp_timeout": cls.MCP_SERVER_TIMEOUT,
             "default_model_type": cls.DEFAULT_AGENT_MODEL_TYPE,
