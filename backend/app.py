@@ -141,6 +141,9 @@ app.register_blueprint(korean_blueprint)
 app.register_blueprint(spanish_blueprint)
 app.register_blueprint(arabic_blueprint)
 
+# Issue #217: surface missing provider API keys at startup (non-blocking).
+AgentConfig.log_api_key_status()
+
 client = get_openai_client()
 def ensure_ray_started():  # pragma: no cover
     if not ray.is_initialized():
@@ -327,6 +330,20 @@ def health_check():
         description: Server is running
     """
     return "Healthy", 200
+
+@app.route('/health/keys', methods=['GET'])
+def health_keys():
+    """
+    API-key readiness check (issue #217).
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: Returns an ok flag for required provider API keys. Which keys are missing is intentionally kept out of this public endpoint and logged at startup instead.
+    """
+    # Public endpoint: expose only an ok flag; missing-key details stay in logs.
+    return jsonify({"ok": AgentConfig.check_api_keys()["ok"]}), 200
 
 # Auth
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"  #this is to set our environment to https because OAuth 2.0 only supports https environments

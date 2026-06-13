@@ -1,5 +1,8 @@
+import logging
 import os
-from typing import Dict, Any
+from typing import Any, Dict
+
+logger = logging.getLogger(__name__)
 
 class AgentConfig:
     """Configuration settings for the reactive agent system"""
@@ -91,3 +94,40 @@ class AgentConfig:
     def is_multi_agent_enabled(cls) -> bool:
         """Check if multi-agent system is enabled"""
         return cls.ENABLE_MULTI_AGENT_SYSTEM
+
+    @classmethod
+    def check_api_keys(cls) -> Dict[str, Any]:
+        """Report which required provider API keys are present (non-blocking).
+
+        OPENAI_API_KEY is always required; ANTHROPIC_API_KEY is required when the
+        agent system is configured to use Anthropic (DEFAULT_AGENT_MODEL_TYPE == 1).
+        Only key *names* and presence are reported — never the key values.
+        """
+        required = ["OPENAI_API_KEY"]
+        if cls.DEFAULT_AGENT_MODEL_TYPE == 1:
+            required.append("ANTHROPIC_API_KEY")
+        present = {name: bool(os.getenv(name)) for name in required}
+        missing = [name for name, ok in present.items() if not ok]
+        return {
+            "ok": not missing,
+            "required": required,
+            "present": present,
+            "missing": missing,
+        }
+
+    @classmethod
+    def log_api_key_status(cls) -> Dict[str, Any]:
+        """Log the startup API-key check. Does NOT raise or block startup."""
+        status = cls.check_api_keys()
+        if status["missing"]:
+            logger.warning(
+                "Startup API-key check: missing %s. The backend will still start, "
+                "but agent calls that need these providers will fail at request time.",
+                ", ".join(status["missing"]),
+            )
+        else:
+            logger.info(
+                "Startup API-key check: all required keys present (%s).",
+                ", ".join(status["required"]),
+            )
+        return status

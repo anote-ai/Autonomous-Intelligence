@@ -140,6 +140,8 @@ def _install_import_stubs() -> None:
     agents_config_module = types.ModuleType("agents.config")
 
     class FakeAgentConfig:
+        DEFAULT_AGENT_MODEL_TYPE = 0
+
         @staticmethod
         def is_agent_enabled() -> bool:
             return False
@@ -147,6 +149,19 @@ def _install_import_stubs() -> None:
         @staticmethod
         def should_use_fallback() -> bool:
             return True
+
+        @staticmethod
+        def check_api_keys() -> dict:
+            return {
+                "ok": True,
+                "required": ["OPENAI_API_KEY"],
+                "present": {"OPENAI_API_KEY": True},
+                "missing": [],
+            }
+
+        @staticmethod
+        def log_api_key_status() -> dict:
+            return FakeAgentConfig.check_api_keys()
 
     agents_config_module.AgentConfig = FakeAgentConfig
     _register_module("agents.config", agents_config_module)
