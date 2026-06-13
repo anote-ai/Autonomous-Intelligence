@@ -1054,6 +1054,35 @@ def process_message_pdf_demo():  # pragma: no cover
     model_key = request.json.get('model_key', "")
     return _process_message_pdf_fallback(message, chat_id, model_type, model_key, DEMO_USER_EMAIL, False)
 
+def generate_follow_up_questions(query: str, answer: str, model_type: int, model_key: str = "") -> list[str]:
+    """Return up to 3 follow-up questions based on a Q&A exchange."""
+    prompt = (
+        "Based on this Q&A exchange, generate exactly 3 concise follow-up questions "
+        "a user might ask next. Return only the questions, one per line, with no numbering or bullets.\n\n"
+        f"Q: {query}\nA: {answer}"
+    )
+    try:
+        if model_type == 0:
+            model_use = model_key or "llama2:latest"
+            completion = client.chat.completions.create(
+                model=model_use,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = completion.choices[0].message.content.strip()
+        else:
+            anthropic_client = get_anthropic_client()
+            completion = anthropic_client.messages.create(
+                model="claude-3-5-haiku-20241022",
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = completion.content[0].text.strip()
+        questions = [q.strip() for q in raw.split("\n") if q.strip()]
+        return questions[:3]
+    except Exception:
+        return []
+
+
 def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_email, is_guest=False):  # pragma: no cover
     """Fallback implementation using the original direct LLM approach without the ReActive Agent.
 
@@ -1074,7 +1103,8 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
             "answer": simple_response,
             "message_id": None,
             "sources": [],
-            "reasoning": []
+            "reasoning": [],
+            "suggested_follow_ups": [],
         })
 
     #Get most relevant section from the document
@@ -1140,10 +1170,13 @@ def _process_message_pdf_fallback(message, chat_id, model_type, model_key, user_
     except:
         print("no sources")
 
+    follow_ups = generate_follow_up_questions(query, answer, model_type, model_key)
+
     return jsonify(
         answer=answer,
         message_id=message_id,
         sources=serialize_sources_for_api(sources),
+        suggested_follow_ups=follow_ups,
     )
 
 

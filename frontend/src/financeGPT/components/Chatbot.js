@@ -310,14 +310,20 @@ const Chatbot = ({
     return [];
   }, [retrieveCurrentDocs, retrieveDocsPath]);
 
-  const handleSendMessage = async (event) => {
+  const handleFollowUpClick = useCallback((question) => {
+    const fakeEvent = { preventDefault: () => {} };
+    handleSendMessage(fakeEvent, question);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSendMessage = async (event, overrideText = null) => {
     event.preventDefault();
     console.log(
       "handleSendMessage called for user:",
       user ? "authenticated" : "guest"
     );
 
-    if (!message.trim() && pendingAttachments.length === 0) return;
+    if (overrideText === null && !message.trim() && pendingAttachments.length === 0) return;
+    if (overrideText !== null && !overrideText.trim()) return;
 
     // For authenticated users, check credits and deduct them
     if (user) {
@@ -331,7 +337,7 @@ const Chatbot = ({
     }
     // For guests, we skip credit checks and allow them to chat
 
-    const currentMessage = message.trim();
+    const currentMessage = (overrideText !== null ? overrideText : message).trim();
     const currentAttachments = pendingAttachments;
     setMessage("");
     setPendingAttachments([]);
@@ -590,6 +596,7 @@ const Chatbot = ({
                               ...(msg.charts || []),
                               ...(eventData.charts || []),
                             ],
+                            suggested_follow_ups: eventData.suggested_follow_ups || [],
                           }
                         : msg
                     )
@@ -685,6 +692,7 @@ const Chatbot = ({
                   isThinking: false,
                   sources: data.sources || [],
                   reasoning: data.reasoning || [],
+                  suggested_follow_ups: data.suggested_follow_ups || [],
                 }
               : msg
           )
@@ -1066,6 +1074,26 @@ const Chatbot = ({
                                         {source.chunk_text}
                                       </p>
                                     </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          {msg.role === "assistant" &&
+                            !msg.isThinking &&
+                            msg.suggested_follow_ups?.length > 0 && (
+                              <div className="mt-4 border-t border-[#2e3a4c] pt-3">
+                                <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+                                  Suggested follow-ups
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {msg.suggested_follow_ups.map((q, qi) => (
+                                    <button
+                                      key={qi}
+                                      onClick={() => handleFollowUpClick(q)}
+                                      className="text-xs px-3 py-1.5 rounded-full border border-[#2e3a4c] bg-[#0f1419] text-gray-300 hover:border-[#defe47] hover:text-[#defe47] transition-colors text-left"
+                                    >
+                                      {q}
+                                    </button>
                                   ))}
                                 </div>
                               </div>
