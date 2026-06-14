@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Anote AI",
+    "slug": "anote-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.anote.app"
+    },
+    "android": {
+      "package": "ai.anote.app"
+    },
+    "scheme": "anote"
+  }
+}
