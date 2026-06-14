@@ -9,8 +9,9 @@ Autonomous Intelligence, also known as **Panacea**, is a multi-agent orchestrati
 | Layer | Technology | Location |
 |-------|-----------|----------|
 | Frontend | React (Create React App) | `frontend/` |
-| Backend | Python 3.11, FastAPI | `backend/` |
-| Container orchestration | Docker Compose | `docker-compose.yml` |
+| Backend | Python 3.11, **Flask** | `backend/` |
+| Database | **MySQL 8.0** | schema in `backend/database/schema.sql` |
+| Container orchestration | Docker Compose | `docker-compose.yml` (default) · `docker-compose.local.yml` (host-port-shifted) |
 
 ## Prerequisites
 
@@ -28,14 +29,18 @@ cd Autonomous-Intelligence
 # 2. Create your local env file and fill in values
 cp .env.example .env
 
-# 3. Start all services
+# 3. Start all services (default: frontend :3000, backend :5000)
 docker-compose up --build
 
+#    macOS note: port 5000 is often taken by AirPlay Receiver / Control Center.
+#    Use the local override, which maps frontend :3001 and backend :5001:
+docker-compose -f docker-compose.local.yml up --build
+
 # 4. Open the app
-open http://localhost:3000
+open http://localhost:3000     # or http://localhost:3001 with the .local override
 ```
 
-The backend API will be available at `http://localhost:8000`.
+The backend API is available at `http://localhost:5000` (`:5001` with the `.local` override); health check at `/health`.
 
 ## Manual Setup (without Docker)
 
@@ -43,11 +48,11 @@ The backend API will be available at `http://localhost:8000`.
 
 ```bash
 cd backend
-pip install -e ".[dev]"
-uvicorn app:app --reload --port 8000
+pip install -r requirements.txt
+flask --app app run --port 5000        # Flask app (FLASK_APP=app.py)
 ```
 
-Dependencies are declared in `pyproject.toml` at the repo root. The `[dev]` extra includes linters and test tools.
+Runtime dependencies are in `backend/requirements.txt`. Lint/type/test tooling (ruff, mypy, pytest) is configured in the repo-root `pyproject.toml`.
 
 ### Frontend
 
@@ -65,16 +70,16 @@ Copy `.env.example` to `.env` and set the following:
 |----------|-------------|
 | `OPENAI_API_KEY` | OpenAI API key for agent LLM calls |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude-based agents |
-| `DATABASE_URL` | PostgreSQL connection string |
+| MySQL settings | DB is **MySQL 8.0** (not Postgres); connection is provided by the compose files locally and read in `backend/database/db_pool.py` |
 | `SECRET_KEY` | Random secret used for JWT signing |
 | `REACT_APP_BACK_END_HOST` | Backend URL consumed by the React app |
 
 ## Dependency Management
 
-Python dependencies are managed via `pyproject.toml` (PEP 517/518). Install everything including dev tools with:
+Runtime Python dependencies are in `backend/requirements.txt`; lint/type/test tooling (ruff, mypy, pytest) is configured in the repo-root `pyproject.toml`. Install the backend deps with:
 
 ```bash
-pip install -e ".[dev]"
+pip install -r backend/requirements.txt
 ```
 
 ## CI / CD
