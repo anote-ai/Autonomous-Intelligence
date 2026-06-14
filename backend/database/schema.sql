@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS prompt_answers;
 DROP TABLE IF EXISTS prompts;
 DROP TABLE IF EXISTS chunks;
 DROP TABLE IF EXISTS documents;
+DROP TABLE IF EXISTS qa_feedback;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS chat_share_chunks;
 DROP TABLE IF EXISTS chat_share_documents;
@@ -135,6 +136,23 @@ CREATE TABLE messages (
     FOREIGN KEY (chat_id) REFERENCES chats(id)
 );
 
+-- RSI feedback signals on Q&A answers (issue #220): training signal for the
+-- retrieval re-ranker / answer self-consistency loop. Written only when
+-- ENABLE_RSI_FEEDBACK is set; see database/qa_feedback.py.
+CREATE TABLE qa_feedback (
+    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    chat_id INTEGER NOT NULL,
+    message_id INTEGER DEFAULT(NULL),
+    question TEXT NOT NULL,
+    retrieved_chunks TEXT,
+    answer TEXT NOT NULL,
+    feedback_signal VARCHAR(32) NOT NULL,
+    session_id VARCHAR(255) DEFAULT(NULL),
+    source VARCHAR(16) NOT NULL DEFAULT 'implicit',
+    FOREIGN KEY (chat_id) REFERENCES chats(id)
+);
+
 -- Stores media files attached to user messages (images, audio clips, video clips)
 CREATE TABLE message_attachments (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -244,3 +262,4 @@ CREATE UNIQUE INDEX idx_user_chatbot_unique ON user_company_chatbots(user_id, pa
 CREATE INDEX idx_api_usage_user_id  ON api_usage(user_id);
 CREATE INDEX idx_api_usage_key_id   ON api_usage(api_key_id);
 CREATE INDEX idx_api_usage_created  ON api_usage(created);
+CREATE INDEX idx_qa_feedback_chat_id ON qa_feedback(chat_id);
