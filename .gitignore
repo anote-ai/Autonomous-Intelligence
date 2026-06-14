@@ -1,4 +1,47 @@
-.claude
+# Node
+node_modules/
+dist/
+build/
+.next/
+*.tsbuildinfo
+.turbo/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Electron
+out/
+packages/desktop/appdist/
+
+# Docs
+packages/docs/site/
+
+# OS
 .DS_Store
-backend/client_secret.json
-backend/client_secret*.json
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+
+# Docker
+.docker/
+
+# Secrets
+*.pem
+*.key
+.env.local
+.env.production

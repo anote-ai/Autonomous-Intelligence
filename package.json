@@ -1,0 +1,21 @@
+{
+  "name": "anote-ai",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/cli",
+    "packages/vscode",
+    "packages/web",
+    "packages/mobile",
+    "packages/desktop",
+    "packages/sdk"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
