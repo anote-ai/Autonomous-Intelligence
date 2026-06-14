@@ -1,0 +1,89 @@
+"""Document endpoints — upload, list, delete, Q&A via RAG."""
+from __future__ import annotations
+
+import os
+import uuid
+from pathlib import Path
+
+from flask import Blueprint, jsonify, request
+
+from services.rag import ingest_document, query_documents
+
+documents_bp = Blueprint("documents", __name__, url_prefix="/api/documents")
+
+UPLOAD_FOLDER = Path(os.environ.get("UPLOAD_FOLDER", "/tmp/anote_uploads"))
+UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".docx", ".csv"}
+
+_docs: dict[str, dict] = {}
+
+
+def _allowed(filename: str) -> bool:
+    return Path(filename).suffix.lower() in ALLOWED_EXTENSIONS
+
+
+@documents_bp.post("/upload")
+def upload() -> tuple:
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    file = request.files["file"]
+    if not file.filename or not _allowed(file.filename):
+        return jsonify({"error": "Unsupported file type"}), 400
+
+    doc_id = str(uuid.uuid4())
+    ext = Path(file.filename).suffix.lower()
+    save_path = UPLOAD_FOLDER / f"{doc_id}{ext}"
+    file.save(save_path)
+
+    try:
+        chunk_count = ingest_document(doc_id=doc_id, file_path=save_path)
+    except Exception as exc:
+        save_path.unlink(missing_ok=True)
+        return jsonify({"error": f"Ingestion failed: {exc}"}), 500
+
+    _docs[doc_id] = {
+        "id": doc_id,
+        "filename": file.filename,
+        "path": str(save_path),
+        "chunks": chunk_count,
+    }
+    return jsonify(_docs[doc_id]), 201
+
+
+@documents_bp.get("")
+def list_documents() -> tuple:
+    return jsonify({"documents": list(_docs.values())}), 200
+
+
+@documents_bp.get("/<doc_id>")
+def get_document(doc_id: str) -> tuple:
+    doc = _docs.get(doc_id)
+    if not doc:
+        return jsonify({"error": "Document not found"}), 404
+    return jsonify(doc), 200
+
+
+@documents_bp.delete("/<doc_id>")
+def delete_document(doc_id: str) -> tuple:
+    doc = _docs.pop(doc_id, None)
+    if not doc:
+        return jsonify({"error": "Document not found"}), 404
+    Path(doc["path"]).unlink(missing_ok=True)
+    return jsonify({"deleted": True}), 200
+
+
+@documents_bp.post("/<doc_id>/ask")
+def ask_document(doc_id: str) -> tuple:
+    if doc_id not in _docs:
+        return jsonify({"error": "Document not found"}), 404
+    data = request.get_json(silent=True) or {}
+    question = data.get("question", "").strip()
+    if not question:
+        return jsonify({"error": "question is required"}), 400
+    model = data.get("model", "claude-sonnet-4-6")
+    try:
+        answer = query_documents(question=question, doc_ids=[doc_id], model=model)
+        return jsonify({"answer": answer, "docId": doc_id}), 200
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
