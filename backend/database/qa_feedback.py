@@ -46,7 +46,7 @@ def log_qa_feedback(
     answer: str,
     feedback_signal: str,
     message_id: int | None = None,
-    retrieved_chunks: Sequence[Any] | None = None,
+    retrieved_chunks: str | Sequence[Any] | None = None,
     session_id: str | None = None,
     source: str = "implicit",
 ) -> bool:
@@ -60,7 +60,14 @@ def log_qa_feedback(
     if feedback_signal not in VALID_SIGNALS:
         return False
 
-    chunks_json = json.dumps(list(retrieved_chunks)) if retrieved_chunks else None
+    # retrieved_chunks may be a pre-serialized string (e.g. messages.relevant_chunks
+    # from the DB) or a fresh sequence of chunks — handle both.
+    if retrieved_chunks is None:
+        chunks_json = None
+    elif isinstance(retrieved_chunks, str):
+        chunks_json = retrieved_chunks
+    else:
+        chunks_json = json.dumps(list(retrieved_chunks))
     conn = None
     try:
         conn, cursor = get_db_connection()
