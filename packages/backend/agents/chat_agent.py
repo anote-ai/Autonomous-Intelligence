@@ -14,7 +14,7 @@ def run_chat_agent(
     history = history or []
     try:
         from langchain_anthropic import ChatAnthropic
-        from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
         llm = ChatAnthropic(model=model, api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
         messages: list[Any] = [SystemMessage(content="You are Anote, a helpful AI assistant.")]
         for h in history:
