@@ -73,10 +73,14 @@ export function initCommand(): Command {
             const envPath = path.join(cwd, ".env");
             if (fs.existsSync(envPath)) {
               const envContent = fs.readFileSync(envPath, "utf8");
-              if (!envContent.includes("ANTHROPIC_API_KEY")) { fs.appendFileSync(envPath, `\nANTHROPIC_API_KEY=${keyInput}\n`); console.log(chalk.green("  ✓ Added ANTHROPIC_API_KEY to .env")); }
+              if (!envContent.includes("ANTHROPIC_API_KEY")) {
+                fs.appendFileSync(envPath, `\nANTHROPIC_API_KEY=${keyInput}\n`);
+                console.log(chalk.green("  ✓ Added ANTHROPIC_API_KEY to .env"));
+              }
             } else {
-              const maskedKey = keyInput.slice(0, 8) + "...";
-              console.log(chalk.cyan(`  Add this to your shell profile:\n  export ANTHROPIC_API_KEY=${maskedKey}`));
+              // Never log the key — just instruct the user
+              console.log(chalk.cyan("  Add this to your shell profile (~/.bashrc or ~/.zshrc):"));
+              console.log(chalk.gray("  export ANTHROPIC_API_KEY=<your-api-key>"));
             }
           }
         }
@@ -112,7 +116,7 @@ export function doctorCommand(): Command {
 
       const checks = [
         { label: "Node.js ≥ 18", ok: (() => { const v = process.versions.node.split(".").map(Number); return v[0] >= 18; })(), detail: `Node.js ${process.versions.node}` },
-        { label: "ANTHROPIC_API_KEY set", ok: !!process.env.ANTHROPIC_API_KEY, detail: process.env.ANTHROPIC_API_KEY ? `sk-ant-...${process.env.ANTHROPIC_API_KEY.slice(-4)}` : "not set" },
+        { label: "ANTHROPIC_API_KEY set", ok: !!process.env.ANTHROPIC_API_KEY, detail: process.env.ANTHROPIC_API_KEY ? "set ✓" : "not set" },
         { label: ".anote.json present", ok: fs.existsSync(path.join(cwd, ".anote.json")), detail: fs.existsSync(path.join(cwd, ".anote.json")) ? "found" : "run anote init" },
         { label: "CLAW.md present", ok: fs.existsSync(path.join(cwd, "CLAW.md")), detail: fs.existsSync(path.join(cwd, "CLAW.md")) ? "found" : "run anote init" },
         { label: "git installed", ok: !!cmd("git --version"), detail: cmd("git --version") || "not found" },
