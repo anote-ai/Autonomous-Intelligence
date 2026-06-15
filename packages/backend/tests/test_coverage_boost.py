@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from importlib import reload
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -68,7 +69,6 @@ def test_run_chat_agent_with_mock():
 
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}):
         with patch("langchain_anthropic.ChatAnthropic", return_value=mock_llm):
-            from importlib import reload
             import agents.chat_agent as mod
             reload(mod)
             result = mod.run_chat_agent("hello", history=[
@@ -113,7 +113,6 @@ def test_coding_agent_with_mock():
 
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}):
         with patch("langchain_anthropic.ChatAnthropic", return_value=mock_llm):
-            from importlib import reload
             import agents.coding_agent as mod
             reload(mod)
             result = mod.run_coding_agent("write hello world", cwd="/tmp")
@@ -134,7 +133,6 @@ def test_llm_complete_anthropic_mock():
 
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}):
         with patch("anthropic.Anthropic", return_value=mock_client):
-            from importlib import reload
             import services.llm as mod
             reload(mod)
             result = mod.complete("hello", model="claude-sonnet-4-6")
@@ -151,7 +149,6 @@ def test_llm_complete_anthropic_with_system():
 
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}):
         with patch("anthropic.Anthropic", return_value=mock_client):
-            from importlib import reload
             import services.llm as mod
             reload(mod)
             result = mod.complete("hello", model="claude-sonnet-4-6", system="be concise")
@@ -166,7 +163,6 @@ def test_llm_complete_anthropic_empty_content():
 
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}):
         with patch("anthropic.Anthropic", return_value=mock_client):
-            from importlib import reload
             import services.llm as mod
             reload(mod)
             result = mod.complete("hello", model="claude-sonnet-4-6")
@@ -183,7 +179,6 @@ def test_llm_complete_openai_mock():
 
     with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
         with patch("openai.OpenAI", return_value=mock_client):
-            from importlib import reload
             import services.llm as mod
             reload(mod)
             result = mod.complete("hello", model="gpt-4o")
@@ -200,7 +195,6 @@ def test_llm_complete_openai_with_system():
 
     with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
         with patch("openai.OpenAI", return_value=mock_client):
-            from importlib import reload
             import services.llm as mod
             reload(mod)
             result = mod.complete("hello", model="gpt-4o", system="be brief")
@@ -215,7 +209,6 @@ def test_llm_complete_openai_empty():
 
     with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
         with patch("openai.OpenAI", return_value=mock_client):
-            from importlib import reload
             import services.llm as mod
             reload(mod)
             result = mod.complete("hello", model="gpt-4o")
@@ -228,7 +221,6 @@ def test_llm_complete_ollama_mock():
     mock_resp.raise_for_status = MagicMock()
 
     with patch("requests.post", return_value=mock_resp):
-        from importlib import reload
         import services.llm as mod
         reload(mod)
         result = mod.complete("hello", model="llama3")
@@ -258,7 +250,6 @@ def test_ingest_document_no_chromadb(tmp_path):
     # Patch chromadb import to raise so the except branch executes
     with patch.dict("sys.modules", {"chromadb": None, "chromadb.utils": None,
                                      "chromadb.utils.embedding_functions": None}):
-        from importlib import reload
         import services.rag as mod
         reload(mod)
         count = mod.ingest_document("test1", test_file)
@@ -302,7 +293,6 @@ def test_query_documents_no_context_no_key():
     """With no chromadb and no API key, returns the 'not found' message."""
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
         with patch.dict("sys.modules", {"chromadb": None}):
-            from importlib import reload
             import services.rag as mod
             reload(mod)
             result = mod.query_documents("what is this?")
@@ -323,7 +313,6 @@ def test_query_documents_context_no_key():
         with patch.dict("sys.modules", {"chromadb": mock_chroma,
                                          "chromadb.utils": mock_ef_module,
                                          "chromadb.utils.embedding_functions": mock_ef_module}):
-            from importlib import reload
             import services.rag as mod
             reload(mod)
             result = mod.query_documents("what is this?", doc_ids=["doc1"])
@@ -336,7 +325,6 @@ def test_query_documents_context_no_key():
 
 def test_stream_agent_no_api_key():
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
-        from importlib import reload
         import services.streaming as mod
         reload(mod)
         events = list(mod.stream_agent_response("hello"))
@@ -356,7 +344,6 @@ def test_stream_agent_with_mock():
 
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}):
         with patch("anthropic.Anthropic", return_value=mock_client):
-            from importlib import reload
             import services.streaming as mod
             reload(mod)
             events = list(mod.stream_agent_response("hello"))
@@ -371,7 +358,6 @@ def test_stream_agent_error_path():
 
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}):
         with patch("anthropic.Anthropic", return_value=mock_client):
-            from importlib import reload
             import services.streaming as mod
             reload(mod)
             events = list(mod.stream_agent_response("hello"))
@@ -380,7 +366,6 @@ def test_stream_agent_error_path():
 
 def test_stream_llm_no_api_key():
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
-        from importlib import reload
         import services.streaming as mod
         reload(mod)
         with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
@@ -398,7 +383,6 @@ def test_stream_llm_with_mock():
 
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}):
         with patch("anthropic.Anthropic", return_value=mock_client):
-            from importlib import reload
             import services.streaming as mod
             reload(mod)
             result = mod.stream_llm_response("hello", history=[{"role": "user", "content": "hi"}])
