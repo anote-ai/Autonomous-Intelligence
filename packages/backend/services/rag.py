@@ -22,9 +22,10 @@ def ingest_document(doc_id: str, file_path: Path) -> int:
     if not chunks:
         return 0
     try:
+        import os
+
         import chromadb
         from chromadb.utils import embedding_functions
-        import os
         client = chromadb.PersistentClient(path=os.environ.get("CHROMA_PERSIST_DIR", "./chroma_db"))
         ef = embedding_functions.DefaultEmbeddingFunction()
         collection = client.get_or_create_collection(
