@@ -1264,7 +1264,7 @@ class WorkflowReactiveAgent(ReactiveDocumentAgent):
                 max_tokens_to_sample=700,
                 prompt=(
                     f"{HUMAN_PROMPT} "
-                    f"You are a factual chatbot that answers questions about 10-K documents. "
+                    f"You are a factual chatbot that answers questions about uploaded documents. "
                     f"You only answer with answers you find in the text, no outside information. "
                     f"Please address the question: {query}. "
                     f"Consider the provided text as evidence: {sources_str}. "

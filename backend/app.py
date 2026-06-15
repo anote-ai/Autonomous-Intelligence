@@ -1334,8 +1334,8 @@ def upload():  # pragma: no cover
     if str(model_type) in _model_str_map:
         model_type = _model_str_map[str(model_type)]
 
-    # Accept both numeric (0) and string ("documents") task_type
-    _task_str_map = {"0": "documents", "1": "edgar"}
+    # Accept both numeric (0) and string ("documents") task_type.
+    _task_str_map = {"0": "documents"}
     if str(chat_type) in _task_str_map:
         chat_type = _task_str_map[str(chat_type)]
 
@@ -1355,7 +1355,7 @@ def upload():  # pragma: no cover
 
         #create new chat
         model_number = 0 if model_type == "gpt" else 1 if model_type == "claude" else None
-        chat_number = 0 if chat_type == "documents" else 1 if chat_type == "edgar" else None
+        chat_number = 0 if chat_type == "documents" else None
         chat_id = add_chat_to_db(user_email, chat_number, model_number)
 
         #Ingest pdf
