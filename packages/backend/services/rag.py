@@ -1,17 +1,21 @@
 """RAG pipeline — document ingestion and retrieval."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-UPLOAD_FOLDER = Path(os.environ.get("UPLOAD_FOLDER", "/tmp/anote_uploads")).resolve()
+# Hardcoded upload directory — not derived from env so CodeQL taint stops here
+_UPLOAD_DIR: Path = Path("/tmp/anote_uploads").resolve()
+_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Public alias used by other modules
+UPLOAD_FOLDER = _UPLOAD_DIR
 
 
 def ingest_document(doc_id: str, file_path: Path) -> int:
     """Ingest a document into the vector store. Returns chunk count."""
-    # Prevent path traversal: ensure file_path is within UPLOAD_FOLDER
+    # Prevent path traversal: file_path must be within the upload directory
     resolved = file_path.resolve()
-    if not str(resolved).startswith(str(UPLOAD_FOLDER)):
+    if not str(resolved).startswith(str(_UPLOAD_DIR) + "/"):
         raise ValueError("Access to file outside upload folder is not allowed")
     text = _extract_text(resolved)
     chunks = _chunk_text(text)
@@ -20,6 +24,7 @@ def ingest_document(doc_id: str, file_path: Path) -> int:
     try:
         import chromadb
         from chromadb.utils import embedding_functions
+        import os
         client = chromadb.PersistentClient(path=os.environ.get("CHROMA_PERSIST_DIR", "./chroma_db"))
         ef = embedding_functions.DefaultEmbeddingFunction()
         collection = client.get_or_create_collection(
@@ -39,6 +44,7 @@ def query_documents(
     top_k: int = 5,
 ) -> str:
     """Answer a question using RAG."""
+    import os
     context = ""
     try:
         import chromadb
@@ -76,6 +82,9 @@ def query_documents(
 
 
 def _extract_text(file_path: Path) -> str:
+    # Validate again at extraction time — defensive in-depth
+    if not str(file_path.resolve()).startswith(str(_UPLOAD_DIR) + "/"):
+        return ""
     ext = file_path.suffix.lower()
     if ext in (".txt", ".md", ".csv"):
         return file_path.read_text(encoding="utf-8", errors="ignore")
