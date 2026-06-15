@@ -1,7 +1,6 @@
 """Document endpoints — upload, list, delete, Q&A via RAG."""
 from __future__ import annotations
 
-import os
 import uuid
 from pathlib import Path
 
