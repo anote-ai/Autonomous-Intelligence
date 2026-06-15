@@ -7,7 +7,7 @@ from typing import Any
 
 def run_chat_agent(
     message: str,
-    history: list[dict] | None = None,
+    history: list[dict] | None = None,  # type: ignore[type-arg]
     model: str = "claude-sonnet-4-6",
 ) -> str:
     """Run a chat agent with conversation history."""
@@ -15,7 +15,10 @@ def run_chat_agent(
     try:
         from langchain_anthropic import ChatAnthropic
         from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-        llm = ChatAnthropic(model=model, api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+        from pydantic import SecretStr
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        llm = ChatAnthropic(model_name=model, api_key=SecretStr(api_key))  # type: ignore[call-arg]
         messages: list[Any] = [SystemMessage(content="You are Anote, a helpful AI assistant.")]
         for h in history:
             if h.get("role") == "user":
