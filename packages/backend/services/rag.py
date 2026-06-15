@@ -22,7 +22,9 @@ def ingest_document(doc_id: str, file_path: Path) -> int:
         from chromadb.utils import embedding_functions
         client = chromadb.PersistentClient(path=os.environ.get("CHROMA_PERSIST_DIR", "./chroma_db"))
         ef = embedding_functions.DefaultEmbeddingFunction()
-        collection = client.get_or_create_collection("documents", embedding_function=ef)
+        collection = client.get_or_create_collection(
+            "documents", embedding_function=ef  # type: ignore[arg-type]
+        )
         ids = [f"{doc_id}-{i}" for i in range(len(chunks))]
         collection.add(documents=chunks, ids=ids, metadatas=[{"doc_id": doc_id}] * len(chunks))
     except Exception:
@@ -43,10 +45,13 @@ def query_documents(
         from chromadb.utils import embedding_functions
         client = chromadb.PersistentClient(path=os.environ.get("CHROMA_PERSIST_DIR", "./chroma_db"))
         ef = embedding_functions.DefaultEmbeddingFunction()
-        collection = client.get_or_create_collection("documents", embedding_function=ef)
-        where: dict | None = {"doc_id": {"$in": doc_ids}} if doc_ids else None
+        collection = client.get_or_create_collection(
+            "documents", embedding_function=ef  # type: ignore[arg-type]
+        )
+        where: dict | None = {"doc_id": {"$in": doc_ids}} if doc_ids else None  # type: ignore[type-arg]
         results = collection.query(query_texts=[question], n_results=top_k, where=where)
-        docs = results.get("documents", [[]])[0]
+        raw_docs = results.get("documents")
+        docs: list[str] = raw_docs[0] if raw_docs else []  # type: ignore[index]
         context = "\n\n".join(docs)
     except Exception:
         pass
@@ -62,9 +67,12 @@ def query_documents(
     client_llm = anthropic.Anthropic(api_key=api_key)
     prompt = f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
     response = client_llm.messages.create(
-        model=model, max_tokens=2048, messages=[{"role": "user", "content": prompt}]
+        model=model,
+        max_tokens=2048,
+        messages=[{"role": "user", "content": prompt}],  # type: ignore[list-item]
     )
-    return response.content[0].text if response.content else ""
+    block = response.content[0] if response.content else None
+    return block.text if block and hasattr(block, "text") else ""  # type: ignore[union-attr]
 
 
 def _extract_text(file_path: Path) -> str:
