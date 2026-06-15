@@ -677,7 +677,7 @@ def reset_everything():
     try:
         return reset_local_chat_artifacts(source_documents_path, output_document_path)
     except Exception as e:
-        return f'Failed to delete DB folder: {str(e)}', 500
+        return 'Internal server error', 500
 
 @app.route('/download-chat-history', methods=['POST'])
 def download_chat_history():
@@ -697,7 +697,7 @@ def download_chat_history():
         return chat_history_csv_response(paired_messages)
     except Exception as e:
         print("error is,", str(e))
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @app.route('/create-new-chat', methods=['POST'])
@@ -1492,7 +1492,7 @@ def public_ingest_pdf():  # pragma: no cover
             if AgentConfig.should_use_fallback():
                 return _public_chat_fallback(message, chat_id, model_type, model_key, user_email)
             else:
-                return jsonify({"error": f"Agent processing failed: {str(e)}"}), 500
+                return jsonify({"error": "Internal server error"}), 500
     else:
         # Agents disabled, use original implementation
         return _public_chat_fallback(message, chat_id, model_type, model_key, user_email)
@@ -2021,9 +2021,10 @@ def v1_chat_completions():  # pragma: no cover
                     completion_tokens = resp.usage.completion_tokens
 
     except Exception as exc:
+        print(f"Error in chat completions: {exc}")
         return jsonify({
             "error": {
-                "message": str(exc),
+                "message": "Internal server error",
                 "type": "server_error",
                 "code": "internal_error",
             }
@@ -2178,7 +2179,7 @@ def v1_question_answer():  # pragma: no cover
             )
             answer = resp.choices[0].message.content
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
     message_id = add_message_to_db(answer, chat_id, 0)
     try:

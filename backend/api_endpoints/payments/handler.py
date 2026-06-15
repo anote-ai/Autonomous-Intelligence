@@ -67,7 +67,7 @@ def CreateCheckoutSessionHandler(request, userEmail):
             return jsonify({'url': checkout_session.url}), 200
         except Exception as e:
             print('Error creating checkout session:', e)
-            return "Server error", 500
+            return "Internal server error", 500
 
 def CreatePortalSessionHandler(request, userEmail):
     print("CreatePortalSessionHandler1")
