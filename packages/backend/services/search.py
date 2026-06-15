@@ -5,16 +5,21 @@ import json
 from pathlib import Path
 
 
-def _index_path(cwd: str) -> Path:
-    return Path(cwd) / ".anote" / "index" / "chunks.json"
+def search_root() -> Path:
+    """Return the server-controlled project root used for search indexes."""
+    return Path.cwd().resolve()
 
 
-def has_index(cwd: str) -> bool:
-    return _index_path(cwd).exists()
+def _index_path() -> Path:
+    return search_root() / ".anote" / "index" / "chunks.json"
 
 
-def search_index(query: str, cwd: str, top_k: int = 10) -> list[dict]:
-    index_file = _index_path(cwd)
+def has_index() -> bool:
+    return _index_path().exists()
+
+
+def search_index(query: str, top_k: int = 10) -> list[dict]:
+    index_file = _index_path()
     if not index_file.exists():
         return []
     try:

@@ -7,12 +7,14 @@ def test_search_missing_query(client):
     assert resp.status_code == 400
 
 
-def test_search_no_index(client, tmp_path):
+def test_search_no_index(client, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     resp = client.get(f"/api/search?q=test&cwd={tmp_path}")
     assert resp.status_code == 404
 
 
-def test_search_with_index(client, tmp_path):
+def test_search_with_index(client, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     idx_dir = tmp_path / ".anote" / "index"
     idx_dir.mkdir(parents=True)
     chunks = [
@@ -86,10 +88,18 @@ def test_llm_provider_detection():
     assert get_provider_for_model("llama3") == "ollama"
 
 
-def test_search_service_no_index(tmp_path):
+def test_search_rejects_mismatched_cwd(client, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    resp = client.get("/api/search?q=test&cwd=/tmp/other-project")
+    assert resp.status_code == 400
+
+
+def test_search_service_no_index(tmp_path, monkeypatch):
     from services.search import has_index, search_index
-    assert has_index(str(tmp_path)) is False
-    assert search_index("query", str(tmp_path)) == []
+
+    monkeypatch.chdir(tmp_path)
+    assert has_index() is False
+    assert search_index("query") == []
 
 
 def test_rag_chunk_text():
