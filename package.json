@@ -13,7 +13,12 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   },
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "tmp": "^0.2.7",
+    "vite": "^8.0.16"
+  },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19.0"
   }
 }
