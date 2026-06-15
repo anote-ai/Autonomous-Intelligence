@@ -23,7 +23,7 @@ def upload_private(task_type, model_type, file_paths):
     conn, cursor = get_db_connection()
 
 
-    task_type_mapping = {"documents": 0, "edgar": 1}
+    task_type_mapping = {"documents": 0}
     task_type_number = task_type_mapping.get(task_type, task_type)
 
     model_type_mapping = {"llama": 0, "mistral": 1}
@@ -165,4 +165,3 @@ def get_text_from_url(web_url):
     text = result["content"].strip()
     text = text.replace("\n", "").replace("\t", "")
     return text
-

@@ -49,10 +49,10 @@ class PrivateChatbot:
         }
 
     def upload(self, task_type, model_type, file_paths=None):
-        """Upload documents for data retrieval and Q&A. This method supports various tasks, such as uploading documents or querying the government's EDGAR database.
+        """Upload documents for data retrieval and Q&A.
 
         Args:
-            task_type (str): Specifies the type of task to perform. This can be document-based interaction (e.g., "documents") or financial data analysis ("edgar").
+            task_type (str): Specifies the type of task to perform. Currently supports document-based interaction ("documents").
             model_type (str): Determines the AI model to use for processing the request. Different model types available are "gpt" for GPT-4 and "claude" for Claude.
             file_paths (list[str], optional): A list of file paths to documents for document-based tasks. Required if task_type is 'documents'. Example: ['path/to/file1.pdf', 'path/to/file2.pdf'].
 
