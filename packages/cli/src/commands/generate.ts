@@ -33,7 +33,11 @@ export function generateCommand(): Command {
         prompt += `\nShow the generated code in full. Do not write any files unless explicitly asked.`;
       }
 
-      prompt += `\n\nRequirements:\n- Write production-quality code with proper error handling\n- Follow best practices for the language/framework\n- Add brief comments for non-obvious logic\n- Include a usage example if appropriate`;
+      prompt += `\n\nRequirements:
+- Write production-quality code with proper error handling
+- Follow best practices for the language/framework
+- Add brief comments for non-obvious logic
+- Include a usage example if appropriate`;
 
       await runAgentStream({
         prompt,

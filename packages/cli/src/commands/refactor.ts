@@ -22,7 +22,8 @@ Steps:
 2. Check for tests that should still pass after refactoring
 3. Plan the refactoring approach:
    ${instruction || "- Improve readability and maintainability\n   - Remove duplication\n   - Improve naming\n   - Simplify complex logic\n   - Apply SOLID principles where appropriate"}
-${opts.dryRun ? `4. Show the proposed changes with clear explanations — do NOT write to files` : `4. Apply the refactoring changes to the file\n5. Verify the changes are correct and run tests if available`}
+${opts.dryRun ? `4. Show the proposed changes with clear explanations — do NOT write to files` : `4. Apply the refactoring changes to the file
+5. Verify the changes are correct and run tests if available`}
 
 Preserve all existing functionality. Explain each significant change made.`;
 

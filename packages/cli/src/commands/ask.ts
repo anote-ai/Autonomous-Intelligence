@@ -79,7 +79,7 @@ export function askCommand(): Command {
         prompt = `File: ${opts.file}\n\`\`\`\n${content}\n\`\`\`\n\n${prompt}`;
       }
 
-      // ── Compare mode ──────────────────────────────────────────────────────
+      // ── Compare mode ─────────────────────────────────────────────────────
       if (opts.compare) {
         const models: string[] = (opts.models as string)
           .split(",")
@@ -92,7 +92,7 @@ export function askCommand(): Command {
         }
 
         console.log(
-          chalk.bold.cyan("\n── Compare mode ────────────────────────────────────────────\n") +
+          chalk.bold.cyan("\n── Compare mode ───────────────────────────────────────────────────\n") +
           chalk.gray(`  Models: ${models.join("  •  ")}\n`) +
           chalk.gray(`  Prompt: ${prompt.slice(0, 80)}${prompt.length > 80 ? "…" : ""}\n`)
         );
@@ -122,7 +122,7 @@ export function askCommand(): Command {
         return;
       }
 
-      // ── Normal mode ──────────────────────────────────────────────────────
+      // ── Normal mode ─────────────────────────────────────────────────────────
       const label = question || (stdinContent.slice(0, 60) + (stdinContent.length > 60 ? "…" : ""));
       const spinner = createSpinner(`Thinking about: ${label}`).start();
 

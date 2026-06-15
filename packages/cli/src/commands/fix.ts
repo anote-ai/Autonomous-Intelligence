@@ -27,6 +27,7 @@ export function fixCommand(): Command {
       const isDryRun = Boolean(opts.dryRun);
       const maxIterations = isLoop ? Math.max(1, parseInt(opts.maxIterations as string, 10) || 10) : 1;
 
+      // --loop requires --cmd or auto-detection
       let loopCmd: string | null = null;
       if (isLoop) {
         loopCmd = (opts.cmd as string | undefined) ?? detectTestCommand(cwd);
@@ -39,6 +40,7 @@ export function fixCommand(): Command {
         }
       }
 
+      // Build initial prompt
       let prompt: string;
       if (opts.error) {
         prompt = `Fix the following error:\n\`\`\`\n${opts.error as string}\n\`\`\`${file ? `\n\nFocus on file: ${file}` : ""}${desc ? `\nAdditional context: ${desc}` : ""}`;

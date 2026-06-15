@@ -32,7 +32,7 @@ Look for: N+1 queries, missing indexes, sequential awaits, blocking I/O, memory 
 
 For each issue: Severity (high/medium/low), File:Line, Pattern, Before/After snippet.
 ${doFix ? "Apply confident refactors. Add // perf: <reason> comment." : "Do NOT modify files. Report only."}
-Summarise: "Found N bottlenecks (X high, Y medium, Z low)."``;
+Summarise: "Found N bottlenecks (X high, Y medium, Z low)."  `;
 
       await runAgentStream({
         prompt, cwd, model: opts.model,
