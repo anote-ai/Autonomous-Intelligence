@@ -665,13 +665,7 @@ def deduct_credits_from_user(user_email, credits_to_deduct=1):
         if cursor.rowcount == 0:
             return False
             
-        # Get new balance for logging
-        cursor.execute('SELECT credits FROM users WHERE email = %s', [user_email])
-        result = cursor.fetchone()
-        new_credits = result["credits"] if result else 0
-        
         conn.commit()
-        print(f"Deducted {credits_to_deduct} credits from user {user_email}. New balance: {new_credits}")
         return True
     finally:
         conn.close()

@@ -30,7 +30,6 @@ def extractUserEmailFromRequest(request):
             #print("extractUserEmailFromRequest3")
             user_email = decoded_jwt["sub"]
             #print("extractUserEmailFromRequest4")
-            print(user_email)
             return user_email
         except InvalidTokenError:
             try:
@@ -200,7 +199,6 @@ def deduct_credits_from_api_key_user(api_key, credits_to_deduct=1):
     conn.commit()
     conn.close()
     
-    print(f"Deducted {credits_to_deduct} credits from user {user['email']}. New balance: {new_credits}")
     return True
 
 def user_id_for_email(email):

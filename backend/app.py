@@ -955,28 +955,19 @@ def _parse_message_request(req):
 
 @app.route('/process-message-pdf', methods=['POST'])
 def process_message_pdf():  # pragma: no cover
-    print("=== DEBUG: process_message_pdf called ===")
 
     message_text, chat_id, model_type, model_key, is_guest, media_attachments = _parse_message_request(request)
-
-    print(f"DEBUG: is_guest={is_guest}, model_type={model_type}, attachments={len(media_attachments)}")
-    print(f"DEBUG: message_text={message_text!r}")
 
     # Handle user authentication based on guest status
     user_email = None
     if not is_guest:
-        print("DEBUG: Not guest mode, extracting user email")
         try:
             user_email = extractUserEmailFromRequest(request)
-            print(f"DEBUG: Extracted user_email = {user_email}")
         except InvalidTokenError:
-            print("DEBUG: Invalid token error")
             return jsonify({"error": "Invalid JWT"}), 401
         except Exception as e:
-            print(f"DEBUG: Error extracting user email: {e}")
+            print(f"Authentication error in process_message_pdf: {type(e).__name__}")
             return jsonify({"error": "Authentication error"}), 401
-    else:
-        print("DEBUG: Guest mode, skipping user email extraction")
 
     # Check if agents are enabled
     if AgentConfig.is_agent_enabled():

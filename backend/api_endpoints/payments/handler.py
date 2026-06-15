@@ -16,17 +16,14 @@ _FRONTEND_URL = os.getenv("FRONTEND_URL", "https://privatechatbot.ai").rstrip("/
 
 
 def CreateCheckoutSessionHandler(request, userEmail):
-    print(f"CreateCheckoutSessionHandler called with userEmail: {userEmail}")
     user_id = user_id_for_email(userEmail)
-    print(f"User ID retrieved: {user_id}")
     
     # Check if user exists
     if user_id is None:
-        print(f"User not found for email: {userEmail}")
+        print("Checkout session requested for unknown user")
         return jsonify({'error': 'User not found'}), 404
     
     new_price_id = productHashMap[request.json["product_hash"]]
-    print(f"Price ID: {new_price_id}")
 
     # Check if user has an existing active subscription
     existing_subscription_id = stripe_subscription_for_user(userEmail)  # Adjust this function to return the subscription ID, not the session ID
