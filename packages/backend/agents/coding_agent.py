@@ -12,6 +12,7 @@ def run_coding_agent(prompt: str, cwd: str = ".") -> str:
         from langchain.tools import tool
         from langchain_anthropic import ChatAnthropic
         from langchain_core.prompts import ChatPromptTemplate
+        from pydantic import SecretStr
 
         @tool
         def read_file(path: str) -> str:
@@ -29,7 +30,8 @@ def run_coding_agent(prompt: str, cwd: str = ".") -> str:
                 return f"Directory not found: {directory}"
             return "\n".join(str(f.relative_to(full_path)) for f in full_path.iterdir())[:2000]
 
-        llm = ChatAnthropic(model="claude-sonnet-4-6", api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        llm = ChatAnthropic(model_name="claude-sonnet-4-6", api_key=SecretStr(api_key))  # type: ignore[call-arg]
         tools = [read_file, list_files]
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", "You are an expert coding assistant."),
