@@ -1,13 +1,13 @@
 # Web framework
 flask==3.0.3
-flask-cors==4.0.1
+flask-cors==4.0.2
 flask-jwt-extended==4.6.0
 gunicorn==22.0.0
 
 # AI / LLM
 anthropic==0.40.0
 openai==1.50.0
-langchain==0.3.1
+langchain==0.3.30
 langchain-anthropic==0.3.0
 langchain-openai==0.2.1
 langgraph==0.2.28
