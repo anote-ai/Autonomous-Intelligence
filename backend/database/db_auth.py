@@ -1,4 +1,6 @@
 import os
+import time
+from collections import defaultdict, deque
 from flask import request
 from jwt import InvalidTokenError
 from flask_jwt_extended import decode_token
@@ -7,8 +9,10 @@ from flask_mail import Message
 from constants.global_constants import productHashMap
 from constants.global_constants import priceToPaymentPlan
 from database.db_pool import get_db_connection
+from database.api_keys import find_api_key_record
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_RATE_LIMIT_WINDOWS: dict[int, deque[float]] = defaultdict(deque)
 
 def extractUserEmailFromRequest(request):
     # Get the JWT refresh token from the Authorization header
@@ -52,19 +56,30 @@ def user_email_for_session_token(session_token):
 
 
 def user_email_for_api_key(api_key):
-    conn, cursor = get_db_connection()
-    cursor.execute('SELECT p.email FROM users p JOIN apiKeys c ON c.user_id=p.id WHERE c.api_key=%s', [api_key])
-    user = cursor.fetchone()
-    conn.close()
-    return user["email"]
+    record = find_api_key_record(api_key)
+    if not record:
+        conn, cursor = get_db_connection()
+        try:
+            cursor.execute(
+                'SELECT p.email FROM users p JOIN apiKeys c ON c.user_id=p.id WHERE c.api_key=%s',
+                [api_key],
+            )
+            user = cursor.fetchone()
+            return user["email"] if user else None
+        finally:
+            conn.close()
+    return record["email"]
 
 def touch_api_key_last_used(api_key: str) -> None:
     """Stamp last_used = NOW() for the given API key (best-effort, never raises)."""
+    record = find_api_key_record(api_key)
+    if not record:
+        return
     try:
         conn, cursor = get_db_connection()
         cursor.execute(
-            "UPDATE apiKeys SET last_used = CURRENT_TIMESTAMP WHERE api_key = %s",
-            [api_key],
+            "UPDATE apiKeys SET last_used = CURRENT_TIMESTAMP WHERE id = %s",
+            [record["id"]],
         )
         conn.commit()
     except Exception as exc:
@@ -86,15 +101,29 @@ def is_session_token_valid(session_token):
         return False
 
 def is_api_key_valid(api_key):
-    conn, cursor = get_db_connection()
-    cursor.execute('SELECT COUNT(*) FROM users p JOIN apiKeys c ON c.user_id=p.id WHERE c.api_key=%s', [api_key])
-    user = cursor.fetchone()
-    conn.close()
-    print(user["COUNT(*)"])
-    if user and user["COUNT(*)"] > 0:
+    if find_api_key_record(api_key) is not None:
         return True
-    else:
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute('SELECT COUNT(*) FROM users p JOIN apiKeys c ON c.user_id=p.id WHERE c.api_key=%s', [api_key])
+        user = cursor.fetchone()
+        return bool(user and user["COUNT(*)"] > 0)
+    finally:
+        conn.close()
+
+def api_key_rate_limit_exceeded(api_key):
+    record = find_api_key_record(api_key)
+    if not record:
         return False
+    limit = int(record.get("rate_limit_per_minute") or 60)
+    now = time.time()
+    window = _RATE_LIMIT_WINDOWS[int(record["id"])]
+    while window and window[0] <= now - 60:
+        window.popleft()
+    if len(window) >= limit:
+        return True
+    window.append(now)
+    return False
 
 def user_has_credits(user_email, min_credits=1):
     """
@@ -127,16 +156,19 @@ def api_key_user_has_credits(api_key, min_credits=1):
     Returns:
         bool: True if user has sufficient credits, False otherwise
     """
-    conn, cursor = get_db_connection()
-    cursor.execute('''
-        SELECT p.credits 
-        FROM users p 
-        JOIN apiKeys c ON c.user_id=p.id 
-        WHERE c.api_key=%s
-    ''', [api_key])
-    user = cursor.fetchone()
-    conn.close()
-    
+    user = find_api_key_record(api_key)
+    if not user:
+        conn, cursor = get_db_connection()
+        try:
+            cursor.execute('''
+                SELECT p.credits
+                FROM users p
+                JOIN apiKeys c ON c.user_id=p.id
+                WHERE c.api_key=%s
+            ''', [api_key])
+            user = cursor.fetchone()
+        finally:
+            conn.close()
     if user and user["credits"] >= min_credits:
         return True
     return False
@@ -152,16 +184,11 @@ def deduct_credits_from_api_key_user(api_key, credits_to_deduct=1):
     Returns:
         bool: True if credits were successfully deducted, False otherwise
     """
+    user = find_api_key_record(api_key)
+    if not user:
+        return False
+
     conn, cursor = get_db_connection()
-    
-    # First check if user has enough credits
-    cursor.execute('''
-        SELECT p.id, p.credits, p.email
-        FROM users p 
-        JOIN apiKeys c ON c.user_id=p.id 
-        WHERE c.api_key=%s
-    ''', [api_key])
-    user = cursor.fetchone()
     
     if not user or user["credits"] < credits_to_deduct:
         conn.close()
@@ -169,7 +196,7 @@ def deduct_credits_from_api_key_user(api_key, credits_to_deduct=1):
     
     # Deduct credits
     new_credits = user["credits"] - credits_to_deduct
-    cursor.execute('UPDATE users SET credits=%s WHERE id=%s', [new_credits, user["id"]])
+    cursor.execute('UPDATE users SET credits=%s WHERE id=%s', [new_credits, user["user_id"]])
     conn.commit()
     conn.close()
     

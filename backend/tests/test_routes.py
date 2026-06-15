@@ -565,7 +565,7 @@ def test_public_endpoints_require_valid_api_key(client: Any, app_module: Any, mo
     monkeypatch.setattr(app_module, "is_api_key_valid", lambda api_key: True)
     monkeypatch.setattr("database.db_auth.api_key_user_has_credits", lambda api_key, min_credits=1: False)
     credit_response = client.post("/public/evaluate", json={"message_id": 1}, headers={"Authorization": "Bearer ok-key"})
-    assert credit_response.status_code == 403
+    assert credit_response.status_code == 402
     assert credit_response.get_json() == {
         "error": "Insufficient credits. Please add credits to your account to use the API."
     }
@@ -783,7 +783,7 @@ def test_generate_api_key_insufficient_credits(
     _authenticate(monkeypatch, app_module)
     monkeypatch.setattr("api_endpoints.generate_api_key.handler.user_has_credits", lambda email, min_credits=1: False)
     response = client.post("/generateAPIKey", json={}, headers=auth_headers)
-    assert response.status_code == 403
+    assert response.status_code == 402
     assert "error" in response.get_json()
 
 

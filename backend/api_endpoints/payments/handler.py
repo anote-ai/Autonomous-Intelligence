@@ -6,7 +6,7 @@ import stripe
 from constants.global_constants import productHashMap
 from constants.global_constants import priceToPaymentPlan
 from constants.global_constants import PaidUserStatus
-from database.db import user_has_free_trial, refresh_credits, user_email_for_id, user_email_for_customer_id, no_subscriptions_with_end_date_null
+from database.db import user_has_free_trial, refresh_credits, user_email_for_id, user_email_for_customer_id, no_subscriptions_with_end_date_null, add_purchased_credits
 from database.db_auth import user_id_for_email
 from datetime import datetime
 
@@ -117,6 +117,12 @@ def StripeWebhookHandler(request, event):
 
     # Handle the checkout.session.completed event
     if eventType == 'checkout.session.completed':
+        if subscription.get('metadata', {}).get('kind') == 'credit_pack':
+            user_id = int(subscription['metadata']['user_id'])
+            credits = int(subscription['metadata']['credits'])
+            add_purchased_credits(user_id, credits)
+            return '', 200
+
         print("path112")
         customer_id = subscription['customer']
         subscription_details = stripe.Subscription.retrieve(subscription["subscription"])

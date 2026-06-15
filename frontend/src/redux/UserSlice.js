@@ -129,6 +129,41 @@ export const getAPIKeys = createAsyncThunk("user/getAPIKeys", async (thunk) => {
   return response_str;
 });
 
+export const getAPIUsageDashboard = createAsyncThunk(
+  "user/getAPIUsageDashboard",
+  async (payload = {}, thunk) => {
+    const params = new URLSearchParams();
+    if (payload.start_date) params.set("start_date", payload.start_date);
+    if (payload.end_date) params.set("end_date", payload.end_date);
+    const query = params.toString();
+    const response = await fetcher(`api/usage-dashboard${query ? `?${query}` : ""}`);
+    return await response.json();
+  }
+);
+
+export const getBillingSummary = createAsyncThunk(
+  "user/getBillingSummary",
+  async (thunk) => {
+    const response = await fetcher("api/billing-summary");
+    return await response.json();
+  }
+);
+
+export const createCreditCheckout = createAsyncThunk(
+  "user/createCreditCheckout",
+  async (payload, thunk) => {
+    const response = await fetcher("api/billing/checkout", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    return await response.json();
+  }
+);
+
 export const viewUser = createAsyncThunk("user/viewUser", async (thunk) => {
   const response = await fetcher("viewUser");
   const response_str = await response.json();
@@ -245,6 +280,14 @@ export function useAPIKeys() {
   return useSelector(selectAPIKeys);
 }
 
+export function useAPIUsageDashboard() {
+  return useSelector((state) => state.userReducer.apiUsageDashboard);
+}
+
+export function useBillingSummary() {
+  return useSelector((state) => state.userReducer.billingSummary);
+}
+
 export function useAccessTokenIsSet() {
   return useSelector((state) => {
     return "accessToken" in state.userReducer;
@@ -323,6 +366,18 @@ export const initialState = {
   // ID of current user.  0 is for unset.
   currentUser: 0,
   numCredits: 0,
+  apiUsageDashboard: {
+    summary: {},
+    daily: [],
+    by_endpoint: [],
+    by_key: [],
+  },
+  billingSummary: {
+    balance: 0,
+    lifetime_used: 0,
+    transactions: [],
+    credit_packs: [],
+  },
 };
 
 export const userSlice = createSlice({
@@ -409,6 +464,15 @@ export const userSlice = createSlice({
           state.entities.apiKeys.allIds.splice(index, 1); // 2nd parameter means remove one item only
         }
         delete state.entities.apiKeys.byId[id];
+      })
+      .addCase(getAPIUsageDashboard.fulfilled, (state, action) => {
+        state.apiUsageDashboard = action.payload;
+      })
+      .addCase(getBillingSummary.fulfilled, (state, action) => {
+        state.billingSummary = action.payload;
+        if (action.payload && action.payload.balance !== undefined) {
+          state.numCredits = action.payload.balance;
+        }
       })
       .addCase(logout.fulfilled, (state, action) => {
         // Clear user data and reset credits on logout

@@ -23,6 +23,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -317,11 +318,42 @@ class ApiKey(Base):
     last_used = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     api_key = Column(String(255))
+    key_hash = Column(String(255))
+    key_prefix = Column(String(32))
     key_name = Column(String(255))
+    expires_at = Column(TIMESTAMP)
+    is_active = Column(Integer, nullable=False, default=1)
+    rate_limit_per_minute = Column(Integer, nullable=False, default=60)
+    revoked_at = Column(TIMESTAMP)
 
     user = relationship("User", back_populates="api_keys")
 
     __table_args__ = (Index("idx_api_keys_user_id", "user_id"),)
+
+
+class UserCredits(Base):
+    __tablename__ = "user_credits"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    balance = Column(Integer, nullable=False, default=0)
+    lifetime_purchased = Column(Integer, nullable=False, default=0)
+    lifetime_used = Column(Integer, nullable=False, default=0)
+    low_balance_alert_sent_at = Column(TIMESTAMP)
+
+
+class ApiUsageLog(Base):
+    __tablename__ = "api_usage_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    api_key_id = Column(Integer, ForeignKey("apiKeys.id"))
+    endpoint = Column(String(255), nullable=False)
+    model = Column(String(128))
+    input_tokens = Column(Integer, nullable=False, default=0)
+    output_tokens = Column(Integer, nullable=False, default=0)
+    credits_charged = Column(Numeric(10, 2), nullable=False, default=0)
+    request_duration_ms = Column(Integer, nullable=False, default=0)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
 
 
 # ---------------------------------------------------------------------------

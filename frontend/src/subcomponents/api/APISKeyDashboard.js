@@ -6,6 +6,11 @@ import {
   deleteAPIKey,
   getAPIKeys,
   useNumCredits,
+  getAPIUsageDashboard,
+  getBillingSummary,
+  useAPIUsageDashboard,
+  useBillingSummary,
+  createCreditCheckout,
 } from "../../redux/UserSlice";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -26,6 +31,7 @@ import {
   Modal,
   TextInput,
   Label,
+  Tabs,
 } from "flowbite-react";
 import { useNavigate } from "react-router-dom"
 
@@ -33,10 +39,14 @@ export function APISKeyDashboard() {
   const dispatch = useDispatch();
   const apiKeys = useAPIKeys();
   const numCredits = useNumCredits();
+  const usageDashboard = useAPIUsageDashboard();
+  const billingSummary = useBillingSummary();
   const [copiedKey, setCopiedKey] = useState(null);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState(null); // Track newly created key
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [keyName, setKeyName] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [rateLimit, setRateLimit] = useState(60);
   const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate()
 
@@ -59,11 +69,17 @@ export function APISKeyDashboard() {
 
     setIsCreating(true);
     try {
-      const result = await dispatch(generateAPIKey({ name: keyName.trim() }));
+      const result = await dispatch(generateAPIKey({
+        name: keyName.trim(),
+        expires_at: expiresAt || null,
+        rate_limit_per_minute: Number(rateLimit) || 60,
+      }));
       if (result.payload && !result.payload.error) {
         setNewlyCreatedKey(result.payload.key);
         setShowCreateModal(false);
         setKeyName("");
+        setExpiresAt("");
+        setRateLimit(60);
         // Auto-hide after 30 seconds for security
         setTimeout(() => setNewlyCreatedKey(null), 30000);
       } else if (result.payload && result.payload.error) {
@@ -88,6 +104,15 @@ export function APISKeyDashboard() {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
+  const handleBuyCredits = async (credits) => {
+    const result = await dispatch(createCreditCheckout({ credits }));
+    if (result.payload?.url) {
+      window.location.assign(result.payload.url);
+    } else {
+      alert(result.payload?.error || "Failed to start checkout.");
+    }
+  };
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
@@ -98,20 +123,13 @@ export function APISKeyDashboard() {
     });
   };
 
-  const maskApiKey = (key) => {
-    if (key.length <= 8) return "••••••••";
-    return `${key.substring(0, 4)}${"•".repeat(key.length - 8)}${key.substring(
-      key.length - 4
-    )}`;
-  };
-
-  const isKeyVisible = (apiKey) => {
-    return newlyCreatedKey === apiKey.key;
-  };
-
   useEffect(() => {
     dispatch(getAPIKeys());
+    dispatch(getAPIUsageDashboard());
+    dispatch(getBillingSummary());
   }, [dispatch]);
+
+  const renderSummaryNumber = (value) => Number(value || 0).toLocaleString();
 
   return (
     <div className="min-h-screen bg-gray-900 pt-20">
@@ -230,7 +248,8 @@ export function APISKeyDashboard() {
           </Modal>
         )}
 
-        {/* API Keys Table */}
+        <Tabs aria-label="API platform dashboard" variant="underline">
+          <Tabs.Item active title="API Keys">
         <div>
           {apiKeys.length > 0 ? (
             <div className="overflow-x-auto">
@@ -244,6 +263,9 @@ export function APISKeyDashboard() {
                   </Table.HeadCell>
                   <Table.HeadCell className=" font-semibold">
                     Created
+                  </Table.HeadCell>
+                  <Table.HeadCell className=" font-semibold">
+                    Last Used
                   </Table.HeadCell>
                   <Table.HeadCell className="font-semibold">
                     Status
@@ -264,53 +286,28 @@ export function APISKeyDashboard() {
                       <Table.Cell className="font-mono text-gray-300">
                         <div className="flex items-center gap-2">
                           <code
-                            className={`px-3 py-2 rounded w-full text-sm ${
-                              isKeyVisible(apiKey)
-                                ? "bg-green-900 text-green-300 border border-green-700"
-                                : "bg-gray-700 text-gray-300"
-                            }`}
+                            className="px-3 py-2 rounded w-full text-sm bg-gray-700 text-gray-300"
                           >
-                            {isKeyVisible(apiKey)
-                              ? apiKey.key
-                              : maskApiKey(apiKey.key)}
+                            {apiKey.key_prefix ? `${apiKey.key_prefix}...` : apiKey.key}
                           </code>
                         </div>
                       </Table.Cell>
                       <Table.Cell className="text-gray-300">
                         {formatDate(apiKey.created)}
                       </Table.Cell>
+                      <Table.Cell className="text-gray-300">
+                        {apiKey.last_used ? formatDate(apiKey.last_used) : "Never"}
+                      </Table.Cell>
                       <Table.Cell>
-                        <Badge color="success" size="sm">
-                          Active
+                        <Badge color={apiKey.status === "active" ? "success" : "gray"} size="sm">
+                          {apiKey.status || "active"}
                         </Badge>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {apiKey.rate_limit_per_minute || 60}/min
+                        </div>
                       </Table.Cell>
                       <Table.Cell>
                         <div className="flex items-center gap-2">
-                          {isKeyVisible(apiKey) && (
-                            <Tooltip
-                              content={
-                                copiedKey === apiKey.id
-                                  ? "Copied!"
-                                  : "Copy to clipboard"
-                              }
-                            >
-                              <button
-                                className={`p-2 rounded transition-colors ${
-                                  copiedKey === apiKey.id
-                                    ? "text-green-400 bg-green-900"
-                                    : "text-cyan-400 hover:bg-gray-700"
-                                }`}
-                                onClick={() =>
-                                  handleCopyAPIKey(apiKey.key, apiKey.id)
-                                }
-                              >
-                                <FontAwesomeIcon
-                                  icon={faCopy}
-                                  className="w-4 h-4"
-                                />
-                              </button>
-                            </Tooltip>
-                          )}
                           <Tooltip content="Delete API key">
                             <button
                               className="p-2 rounded text-red-400 hover:bg-gray-700 transition-colors"
@@ -345,6 +342,50 @@ export function APISKeyDashboard() {
             </div>
           )}
         </div>
+          </Tabs.Item>
+          <Tabs.Item title="Usage">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-gray-800 p-4 rounded">
+                <div className="text-gray-400 text-sm">Requests</div>
+                <div className="text-white text-2xl font-semibold">{renderSummaryNumber(usageDashboard?.summary?.total_requests)}</div>
+              </div>
+              <div className="bg-gray-800 p-4 rounded">
+                <div className="text-gray-400 text-sm">Credits Used</div>
+                <div className="text-white text-2xl font-semibold">{renderSummaryNumber(usageDashboard?.summary?.credits_used)}</div>
+              </div>
+              <div className="bg-gray-800 p-4 rounded">
+                <div className="text-gray-400 text-sm">Input Tokens</div>
+                <div className="text-white text-2xl font-semibold">{renderSummaryNumber(usageDashboard?.summary?.prompt_tokens)}</div>
+              </div>
+              <div className="bg-gray-800 p-4 rounded">
+                <div className="text-gray-400 text-sm">Output Tokens</div>
+                <div className="text-white text-2xl font-semibold">{renderSummaryNumber(usageDashboard?.summary?.completion_tokens)}</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <BreakdownTable title="Endpoint Breakdown" rows={usageDashboard?.by_endpoint || []} nameKey="endpoint" />
+              <BreakdownTable title="API Key Breakdown" rows={usageDashboard?.by_key || []} nameKey="key_prefix" />
+            </div>
+          </Tabs.Item>
+          <Tabs.Item title="Billing">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+              <div className="bg-gray-800 p-5 rounded">
+                <div className="text-gray-400 text-sm">Current Balance</div>
+                <div className="text-white text-3xl font-semibold">{renderSummaryNumber(billingSummary?.balance)} credits</div>
+              </div>
+              {(billingSummary?.credit_packs || []).map((pack) => (
+                <div key={pack.label} className="bg-gray-800 p-5 rounded flex items-center justify-between">
+                  <div>
+                    <div className="text-white font-semibold">{pack.label}</div>
+                    <div className="text-gray-400 text-sm">{renderSummaryNumber(pack.credits)} credits</div>
+                  </div>
+                  <Button onClick={() => handleBuyCredits(pack.credits)} className="bg-cyan-600 hover:bg-cyan-700">Buy</Button>
+                </div>
+              ))}
+            </div>
+            <BreakdownTable title="Recent Usage Transactions" rows={billingSummary?.transactions || []} nameKey="description" />
+          </Tabs.Item>
+        </Tabs>
 
         {/* Create API Key Modal */}
         <Modal
@@ -380,14 +421,28 @@ export function APISKeyDashboard() {
                   Choose a descriptive name to help you identify this key later
                 </p>
               </div>
+              <div>
+                <Label htmlFor="expiresAt" className="block text-sm font-medium text-gray-300 mb-2">
+                  Expiry Date
+                </Label>
+                <TextInput id="expiresAt" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="rateLimit" className="block text-sm font-medium text-gray-300 mb-2">
+                  Rate Limit Per Minute
+                </Label>
+                <TextInput id="rateLimit" type="number" min="1" value={rateLimit} onChange={(e) => setRateLimit(e.target.value)} />
+              </div>
             </div>
           </Modal.Body>
           <Modal.Footer className="bg-gray-800 border-gray-700">
             <Button
               color="gray"
-              onClick={() => {
+            onClick={() => {
                 setShowCreateModal(false);
                 setKeyName("");
+                setExpiresAt("");
+                setRateLimit(60);
               }}
               className="bg-gray-600 hover:bg-gray-700"
             >
@@ -403,6 +458,34 @@ export function APISKeyDashboard() {
           </Modal.Footer>
         </Modal>    
       </div>
+    </div>
+  );
+}
+
+function BreakdownTable({ title, rows, nameKey }) {
+  return (
+    <div className="overflow-x-auto bg-gray-800 rounded">
+      <div className="px-4 py-3 text-white font-semibold">{title}</div>
+      <Table className="w-full bg-black">
+        <Table.Head>
+          <Table.HeadCell>Name</Table.HeadCell>
+          <Table.HeadCell>Calls</Table.HeadCell>
+          <Table.HeadCell>Credits</Table.HeadCell>
+        </Table.Head>
+        <Table.Body className="divide-y divide-gray-700">
+          {rows.length === 0 ? (
+            <Table.Row className="bg-gray-800">
+              <Table.Cell className="text-gray-400" colSpan={3}>No usage yet</Table.Cell>
+            </Table.Row>
+          ) : rows.map((row, index) => (
+            <Table.Row key={`${row[nameKey] || row.name || index}`} className="bg-gray-800">
+              <Table.Cell className="text-gray-300">{row.name || row[nameKey] || "Unknown"}</Table.Cell>
+              <Table.Cell className="text-gray-300">{row.total_calls || ""}</Table.Cell>
+              <Table.Cell className="text-gray-300">{row.total_credits || Math.abs(row.credits || 0)}</Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-from .core import PrivateChatbot
+from .core import Anote, PrivateChatbot
 from .openai_compat import AnoteOpenAI
 
-__all__ = ["PrivateChatbot", "AnoteOpenAI"]
+__all__ = ["Anote", "PrivateChatbot", "AnoteOpenAI"]

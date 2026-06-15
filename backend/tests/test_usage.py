@@ -48,11 +48,15 @@ class TestLogApiUsage:
                 completion_tokens=50,
                 credits_used=1,
             )
-        cursor.execute.assert_called_once()
-        sql, params = cursor.execute.call_args[0]
+        assert cursor.execute.call_count == 2
+        sql, params = cursor.execute.call_args_list[0][0]
         assert "INSERT INTO api_usage" in sql
         assert 150 in params  # total_tokens = 100 + 50
-        conn.commit.assert_called_once()
+        log_sql, log_params = cursor.execute.call_args_list[1][0]
+        assert "INSERT INTO api_usage_log" in log_sql
+        assert log_params[4] == 100
+        assert log_params[5] == 50
+        assert conn.commit.call_count == 2
 
     def test_swallows_db_errors(self) -> None:
         """log_api_usage must never propagate exceptions."""

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from database.db_pool import get_db_connection
+from database.api_keys import find_api_key_record
 
 
 def log_api_usage(
@@ -39,6 +40,36 @@ def log_api_usage(
         conn.commit()
     except Exception as exc:  # noqa: BLE001
         print(f"[usage] log_api_usage failed: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    try:
+        conn, cursor = get_db_connection()
+        cursor.execute(
+            """
+            INSERT INTO api_usage_log
+                (user_id, api_key_id, endpoint, model,
+                 input_tokens, output_tokens, credits_charged,
+                 request_duration_ms)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            [
+                user_id,
+                api_key_id,
+                endpoint,
+                model,
+                prompt_tokens,
+                completion_tokens,
+                credits_used,
+                0,
+            ],
+        )
+        conn.commit()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[usage] api_usage_log insert skipped: {exc}")
     finally:
         try:
             conn.close()
@@ -167,6 +198,9 @@ def count_monthly_searches(user_id: int) -> int:
 
 def user_and_key_ids_for_api_key(api_key: str) -> tuple[int | None, int | None]:
     """Return ``(user_id, api_key_id)`` for the given raw API key string."""
+    row = find_api_key_record(api_key)
+    if row:
+        return int(row["user_id"]), int(row["id"])
     conn, cursor = get_db_connection()
     try:
         cursor.execute(
@@ -175,9 +209,80 @@ def user_and_key_ids_for_api_key(api_key: str) -> tuple[int | None, int | None]:
             "WHERE c.api_key = %s",
             [api_key],
         )
-        row = cursor.fetchone()
-        if row:
-            return int(row["user_id"]), int(row["key_id"])
+        legacy_row = cursor.fetchone()
+        if legacy_row:
+            return int(legacy_row["user_id"]), int(legacy_row["key_id"])
         return None, None
+    finally:
+        conn.close()
+
+
+def get_usage_dashboard(
+    user_id: int,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any]:
+    summary = get_usage_summary(user_id, start_date=start_date, end_date=end_date)
+    conn, cursor = get_db_connection()
+    try:
+        params: list[Any] = [user_id]
+        clauses = ["u.user_id = %s"]
+        if start_date:
+            clauses.append("u.created >= %s")
+            params.append(start_date)
+        if end_date:
+            clauses.append("u.created < DATE_ADD(%s, INTERVAL 1 DAY)")
+            params.append(end_date)
+        where = " AND ".join(clauses)
+
+        cursor.execute(
+            f"""
+            SELECT DATE(u.created) AS date, u.endpoint,
+                   COALESCE(SUM(u.credits_used), 0) AS credits_used,
+                   COUNT(*) AS calls
+            FROM api_usage u
+            WHERE {where}
+            GROUP BY DATE(u.created), u.endpoint
+            ORDER BY DATE(u.created)
+            """,
+            params,
+        )
+        daily = [dict(r) for r in (cursor.fetchall() or [])]
+
+        cursor.execute(
+            f"""
+            SELECT u.endpoint, COUNT(*) AS total_calls,
+                   COALESCE(SUM(u.credits_used), 0) AS total_credits
+            FROM api_usage u
+            WHERE {where}
+            GROUP BY u.endpoint
+            ORDER BY total_credits DESC
+            """,
+            params,
+        )
+        by_endpoint = [dict(r) for r in (cursor.fetchall() or [])]
+
+        cursor.execute(
+            f"""
+            SELECT COALESCE(k.key_prefix, LEFT(k.api_key, 14), 'unknown') AS key_prefix,
+                   COALESCE(k.key_name, 'Untitled Key') AS name,
+                   COUNT(*) AS total_calls,
+                   COALESCE(SUM(u.credits_used), 0) AS total_credits
+            FROM api_usage u
+            LEFT JOIN apiKeys k ON k.id = u.api_key_id
+            WHERE {where}
+            GROUP BY k.id, k.key_prefix, k.api_key, k.key_name
+            ORDER BY total_credits DESC
+            """,
+            params,
+        )
+        by_key = [dict(r) for r in (cursor.fetchall() or [])]
+        return {
+            "summary": summary,
+            "daily": daily,
+            "by_endpoint": by_endpoint,
+            "by_key": by_key,
+        }
     finally:
         conn.close()
