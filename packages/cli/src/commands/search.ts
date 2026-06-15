@@ -28,7 +28,7 @@ export function searchCommand(): Command {
       }
       console.log(chalk.bold.cyan(`\n◆ Anote Search`) + chalk.dim(`  "${query}"  ·  ${results.length} result${results.length !== 1 ? "s" : ""}\n`));
       for (const r of results) {
-        console.log(`  ${chalk.cyan(r.file)}${chalk.dim(`:${r.startLine}`)}  ${chalk.dim(`(${r.score.toFixed(2)})``)}`);
+        console.log(`  ${chalk.cyan(r.file)}${chalk.dim(`:${r.startLine}`)}  ${chalk.dim(`(${r.score.toFixed(2)})`)}`);
         console.log(chalk.dim(`    ${r.preview.slice(0, 100)}`));
         console.log();
       }
