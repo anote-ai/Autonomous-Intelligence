@@ -170,7 +170,10 @@ export async function executeTool(
 
       case "Grep": {
         const grepPath = args["path"] ? resolveFilePath(String(args["path"]), cwd) : cwd;
-        const include = args["include"] ? `--include="${String(args["include"])}"` : "";
+        // Sanitize include glob: allow only alphanumeric, dots, hyphens, underscores, asterisks
+        const rawInclude = args["include"] ? String(args["include"]) : "";
+        const safeInclude = rawInclude.replace(/[^a-zA-Z0-9._\-*]/g, "");
+        const include = safeInclude ? `--include=${JSON.stringify(safeInclude)}` : "";
         const cmd = `grep -rn --color=never ${include} -E ${JSON.stringify(String(args["pattern"]))} ${JSON.stringify(grepPath)} 2>/dev/null | head -200`;
         const result = child_process.spawnSync("bash", ["-c", cmd], {
           encoding: "utf8",

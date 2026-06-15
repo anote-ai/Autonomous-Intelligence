@@ -4,10 +4,16 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+UPLOAD_FOLDER = Path(os.environ.get("UPLOAD_FOLDER", "/tmp/anote_uploads")).resolve()
+
 
 def ingest_document(doc_id: str, file_path: Path) -> int:
     """Ingest a document into the vector store. Returns chunk count."""
-    text = _extract_text(file_path)
+    # Prevent path traversal: ensure file_path is within UPLOAD_FOLDER
+    resolved = file_path.resolve()
+    if not str(resolved).startswith(str(UPLOAD_FOLDER)):
+        raise ValueError("Access to file outside upload folder is not allowed")
+    text = _extract_text(resolved)
     chunks = _chunk_text(text)
     if not chunks:
         return 0

@@ -25,7 +25,8 @@ def create_checkout() -> tuple:
         )
         return jsonify({"url": session.url}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        print(f"Stripe error: {exc}")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @payments_bp.post("/portal")
@@ -43,7 +44,8 @@ def create_portal() -> tuple:
         )
         return jsonify({"url": session.url}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        print(f"Stripe error: {exc}")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @payments_bp.post("/webhook")
@@ -57,5 +59,6 @@ def stripe_webhook() -> tuple:
             stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
             stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
         except Exception as exc:
-            return jsonify({"error": str(exc)}), 400
+            print(f"Webhook signature error: {exc}")
+            return jsonify({"error": "Invalid webhook signature"}), 400
     return jsonify({"received": True}), 200

@@ -14,6 +14,6 @@ def require_auth(fn: Callable) -> Callable:
         try:
             verify_jwt_in_request()
         except Exception as exc:
-            return jsonify({"error": "Unauthorized", "detail": str(exc)}), 401
+            return jsonify({"error": "Unauthorized"}), 401
         return fn(*args, **kwargs)
     return wrapper

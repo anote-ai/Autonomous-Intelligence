@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
@@ -17,7 +18,15 @@ def search() -> tuple:
     if not query:
         return jsonify({"error": "q parameter is required"}), 400
 
-    cwd = request.args.get("cwd", os.getcwd())
+    raw_cwd = request.args.get("cwd", os.getcwd())
+    # Sanitize cwd to prevent path traversal: resolve and reject any remaining ".."
+    try:
+        cwd = str(Path(raw_cwd).resolve())
+    except Exception:
+        return jsonify({"error": "Invalid cwd parameter"}), 400
+    if ".." in Path(raw_cwd).parts:
+        return jsonify({"error": "Invalid cwd parameter"}), 400
+
     top = int(request.args.get("top", "10"))
 
     if not has_index(cwd):
@@ -27,4 +36,5 @@ def search() -> tuple:
         results = search_index(query=query, cwd=cwd, top_k=top)
         return jsonify({"results": results, "query": query, "cwd": cwd}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        print(f"Search error: {exc}")
+        return jsonify({"error": "Internal server error"}), 500

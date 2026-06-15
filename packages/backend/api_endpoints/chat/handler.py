@@ -54,7 +54,8 @@ def chat() -> tuple:
         response_text = stream_llm_response(message=message, model=model, history=history)
         return jsonify({"response": response_text, "model": model}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        print(f"Chat error: {exc}")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @chat_bp.get("/sessions")

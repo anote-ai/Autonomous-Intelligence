@@ -40,7 +40,8 @@ def upload() -> tuple:
         chunk_count = ingest_document(doc_id=doc_id, file_path=save_path)
     except Exception as exc:
         save_path.unlink(missing_ok=True)
-        return jsonify({"error": f"Ingestion failed: {exc}"}), 500
+        print(f"Ingestion failed: {exc}")
+        return jsonify({"error": "Internal server error"}), 500
 
     _docs[doc_id] = {
         "id": doc_id,
@@ -86,4 +87,5 @@ def ask_document(doc_id: str) -> tuple:
         answer = query_documents(question=question, doc_ids=[doc_id], model=model)
         return jsonify({"answer": answer, "docId": doc_id}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        print(f"Error answering document question: {exc}")
+        return jsonify({"error": "Internal server error"}), 500

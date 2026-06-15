@@ -75,7 +75,8 @@ export function initCommand(): Command {
               const envContent = fs.readFileSync(envPath, "utf8");
               if (!envContent.includes("ANTHROPIC_API_KEY")) { fs.appendFileSync(envPath, `\nANTHROPIC_API_KEY=${keyInput}\n`); console.log(chalk.green("  ✓ Added ANTHROPIC_API_KEY to .env")); }
             } else {
-              console.log(chalk.cyan(`  Add this to your shell profile:\n  export ANTHROPIC_API_KEY=${keyInput}`));
+              const maskedKey = keyInput.slice(0, 8) + "...";
+              console.log(chalk.cyan(`  Add this to your shell profile:\n  export ANTHROPIC_API_KEY=${maskedKey}`));
             }
           }
         }
