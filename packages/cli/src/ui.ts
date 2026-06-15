@@ -2,7 +2,7 @@ import chalk from "chalk";
 
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
 
-// ── Spinner ──────────────────────────────────────────────────────
+// ── Spinner ────────────────────────────────────────────────────────────────
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 export class Spinner {

@@ -22,14 +22,22 @@ describe("loadConfig()", () => {
 
   it("merges .anote.json values correctly", () => {
     const configData = { model: "claude-opus-4-5", maxTurns: 10 };
-    fs.writeFileSync(path.join(tmpDir, ".anote.json"), JSON.stringify(configData), "utf8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".anote.json"),
+      JSON.stringify(configData),
+      "utf8"
+    );
     const config = loadConfig(tmpDir);
     expect(config.model).toBe("claude-opus-4-5");
     expect(config.maxTurns).toBe(10);
   });
 
   it("ignores invalid JSON gracefully", () => {
-    fs.writeFileSync(path.join(tmpDir, ".anote.json"), "{ this is not valid json !!!", "utf8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".anote.json"),
+      "{ this is not valid json !!!",
+      "utf8"
+    );
     const config = loadConfig(tmpDir);
     expect(config).toEqual({});
   });

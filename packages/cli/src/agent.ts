@@ -69,7 +69,7 @@ export async function runAgentStream(opts: AgentRunOptions): Promise<string> {
   const maxTurns = opts.maxTurns ?? config.maxTurns ?? 30;
   const model = opts.model ?? config.model ?? "";
 
-  console.log(chalk.bold.cyan("\n── Anote ───────────────────────────────────────"));
+  console.log(chalk.bold.cyan("\n── Anote ──────────────────────────────"));
 
   const provider = model ? resolveProvider(model) : "anthropic";
 
@@ -85,7 +85,7 @@ export async function runAgentStream(opts: AgentRunOptions): Promise<string> {
     return result;
   }
 
-  // ── Anthropic path — claude-agent-sdk ─────────────────────────────────────────
+  // ── Anthropic path — claude-agent-sdk ────────────────────────────────────
   const options: Options = {
     cwd,
     allowedTools,
@@ -135,7 +135,7 @@ export async function runAgentStream(opts: AgentRunOptions): Promise<string> {
   return result;
 }
 
-// ── Non-Anthropic provider path ──────────────────────────────────────────────────────
+// ── Non-Anthropic provider path ──────────────────────────────────────────────────
 
 async function runViaAdapter(
   provider: string,

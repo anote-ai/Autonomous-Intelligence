@@ -22,18 +22,22 @@ function splitCamel(s: string): string[] {
 
 export function tokenize(text: string): string[] {
   const tokens: string[] = [];
-  const raw = text.split(/[\s\n\r\t,;:.()\ \[\]{}<>'"=|&^%@!?/\\+\-*~`]+/);
+  const raw = text.split(/[\s\n\r\t,;:.()\ [\]{}<>'"=|&^%@!?/\\+\-*~`]+/);
   for (const chunk of raw) {
     if (!chunk || chunk.length < 2 || chunk.length > 60) continue;
     if (/^\d+$/.test(chunk)) continue;
     if (/[A-Z]/.test(chunk)) {
       const parts = splitCamel(chunk);
-      for (const p of parts) { if (p.length >= 2 && !STOP_WORDS.has(p)) tokens.push(p); }
+      for (const p of parts) {
+        if (p.length >= 2 && !STOP_WORDS.has(p)) tokens.push(p);
+      }
       const lower = chunk.toLowerCase();
       if (!STOP_WORDS.has(lower) && lower.length >= 2) tokens.push(lower);
     } else {
       const parts = chunk.toLowerCase().split("_").filter((p) => p.length >= 2);
-      for (const p of parts) { if (!STOP_WORDS.has(p)) tokens.push(p); }
+      for (const p of parts) {
+        if (!STOP_WORDS.has(p)) tokens.push(p);
+      }
     }
   }
   return tokens;
@@ -41,6 +45,8 @@ export function tokenize(text: string): string[] {
 
 export function termFrequency(text: string): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const t of tokenize(text)) counts.set(t, (counts.get(t) ?? 0) + 1);
+  for (const t of tokenize(text)) {
+    counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
   return counts;
 }

@@ -28,8 +28,10 @@ describe("compactMessages()", () => {
     const messages = makeMessages(25);
     const result = compactMessages(messages, 5);
     expect(result).toHaveLength(5);
+    // Should be the last 5 messages in original order
     const expected = messages.slice(20);
     expect(result).toEqual(expected);
+    // Confirm order: content should be Message 20..24
     expect(result[0].content).toBe("Message 20");
     expect(result[4].content).toBe("Message 24");
   });

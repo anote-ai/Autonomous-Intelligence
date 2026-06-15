@@ -1,3 +1,5 @@
+// Shared provider abstraction types for the CLI agentic loop.
+
 export interface Message {
   role: "user" | "assistant";
   content: string;
@@ -24,8 +26,18 @@ export interface ProviderAdapter {
 
 export type Provider = "anthropic" | "openai" | "gemini";
 
+/** Infer provider from a model string. */
 export function resolveProvider(model: string): Provider {
-  if (model.startsWith("gpt-") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4") || model.startsWith("ollama/") || model.startsWith("local/")) return "openai";
+  if (
+    model.startsWith("gpt-") ||
+    model.startsWith("o1") ||
+    model.startsWith("o3") ||
+    model.startsWith("o4") ||
+    model.startsWith("ollama/") ||
+    model.startsWith("local/")
+  ) {
+    return "openai";
+  }
   if (model.startsWith("gemini")) return "gemini";
   return "anthropic";
 }

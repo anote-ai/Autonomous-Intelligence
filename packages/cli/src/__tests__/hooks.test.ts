@@ -16,7 +16,10 @@ describe("HookRunner", () => {
   });
 
   it("preToolUse hook exit 2 = deny with message", () => {
-    const runner = new HookRunner({ preToolUse: ["echo 'tool denied by policy' && exit 2"] });
+    // The hook prints a reason then exits 2
+    const runner = new HookRunner({
+      preToolUse: ["echo 'tool denied by policy' && exit 2"],
+    });
     const result = runner.runPreToolUse("Bash", JSON.stringify({ command: "rm -rf /" }));
     expect(result.denied).toBe(true);
     expect(result.messages.length).toBeGreaterThan(0);

@@ -7,7 +7,9 @@ const INDEX_DIR_NAME = ".anote/index";
 const CHUNKS_FILE = "chunks.json";
 const META_FILE = "meta.json";
 
-export function getIndexDir(cwd: string): string { return path.join(cwd, INDEX_DIR_NAME); }
+export function getIndexDir(cwd: string): string {
+  return path.join(cwd, INDEX_DIR_NAME);
+}
 
 export function ensureIndexDir(cwd: string): void {
   const dir = getIndexDir(cwd);
@@ -15,7 +17,9 @@ export function ensureIndexDir(cwd: string): void {
   const gitignorePath = path.join(cwd, ".gitignore");
   if (fs.existsSync(gitignorePath)) {
     const content = fs.readFileSync(gitignorePath, "utf8");
-    if (!content.includes(".anote/")) fs.appendFileSync(gitignorePath, "\n# Anote index\n.anote/\n");
+    if (!content.includes(".anote/")) {
+      fs.appendFileSync(gitignorePath, "\n# Anote index\n.anote/\n");
+    }
   }
 }
 
@@ -58,8 +62,9 @@ export function listSourceFiles(cwd: string): string[] {
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const entry of entries) {
       if (entry.name.startsWith(".") && entry.name !== ".anote") continue;
-      if (entry.isDirectory()) { if (!EXCLUDE_DIRS.has(entry.name)) walk(path.join(dir, entry.name)); }
-      else if (entry.isFile()) {
+      if (entry.isDirectory()) {
+        if (!EXCLUDE_DIRS.has(entry.name)) walk(path.join(dir, entry.name));
+      } else if (entry.isFile()) {
         const ext = entry.name.split(".").pop()?.toLowerCase() ?? "";
         if (INCLUDE_EXTS.has(ext) && entry.name.length < 200) files.push(path.join(dir, entry.name));
       }

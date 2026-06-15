@@ -1,3 +1,5 @@
+// Factory: picks the right ProviderAdapter for a given model string.
+
 import { resolveProvider } from "./types.js";
 import { OpenAIAdapter } from "./openai.js";
 import { GeminiAdapter } from "./gemini.js";
@@ -8,6 +10,7 @@ export type { ProviderAdapter, StreamEvent, StreamOptions, Message } from "./typ
 
 export interface ResolveResult {
   adapter: ProviderAdapter;
+  /** Set when the provider is configured but a required API key is missing. */
   error?: string;
 }
 
@@ -16,6 +19,8 @@ export function getAdapter(model: string): ResolveResult {
 
   switch (provider) {
     case "anthropic":
+      // Anthropic is handled by claude-agent-sdk in agent.ts — caller should
+      // not reach this branch, but we return a sentinel error if they do.
       return {
         adapter: { stream: async function* () { yield { type: "error" as const, message: "Use claude-agent-sdk for Anthropic models." }; } },
         error: "Use claude-agent-sdk for Anthropic models.",
@@ -23,16 +28,27 @@ export function getAdapter(model: string): ResolveResult {
 
     case "openai": {
       const needsKey = !model.startsWith("ollama/") && !model.startsWith("local/");
-      if (needsKey && !process.env["OPENAI_API_KEY"]) return { adapter: new OpenAIAdapter(), error: "OPENAI_API_KEY is not set" };
+      if (needsKey && !process.env["OPENAI_API_KEY"]) {
+        return { adapter: new OpenAIAdapter(), error: "OPENAI_API_KEY is not set" };
+      }
       return { adapter: new OpenAIAdapter() };
     }
 
-    case "gemini":
-      if (!process.env["GEMINI_API_KEY"]) return { adapter: new GeminiAdapter(), error: "GEMINI_API_KEY is not set" };
+    case "gemini": {
+      if (!process.env["GEMINI_API_KEY"]) {
+        return { adapter: new GeminiAdapter(), error: "GEMINI_API_KEY is not set" };
+      }
       return { adapter: new GeminiAdapter() };
+    }
   }
 }
 
+/** Which providers currently have credentials configured. */
 export function configuredProviders(): Record<string, boolean> {
-  return { anthropic: !!process.env["ANTHROPIC_API_KEY"], openai: !!process.env["OPENAI_API_KEY"], gemini: !!process.env["GEMINI_API_KEY"], ollama: true };
+  return {
+    anthropic: !!process.env["ANTHROPIC_API_KEY"],
+    openai: !!process.env["OPENAI_API_KEY"],
+    gemini: !!process.env["GEMINI_API_KEY"],
+    ollama: true,
+  };
 }

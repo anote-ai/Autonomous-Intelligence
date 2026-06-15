@@ -59,7 +59,7 @@ Think through problems step by step before acting. Use this workflow:
 - Use bullet points for lists of changes or steps
 - Always be concise and practical. When modifying files, explain your changes.`;
 
-// ── Multi-agent mode definitions ─────────────────────────────────────────────
+// ── Multi-agent mode definitions ────────────────────────────────────────────
 
 /** The set of specialized agent modes available via `anote chat --mode`. */
 export type AgentMode = "default" | "debug" | "architect" | "review" | "test" | "devops";
@@ -226,7 +226,7 @@ const MODE_PROMPTS: Record<AgentMode, string> = {
   devops: DEVOPS_SYSTEM_PROMPT,
 };
 
-// ── Public helpers ────────────────────────────────────────────────────────
+// ── Public helpers ───────────────────────────────────────────────────────────
 
 /**
  * Append project memory (CLAUDE.md / CLAW.md) to the system prompt when found.
