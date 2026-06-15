@@ -170,16 +170,23 @@ export async function executeTool(
 
       case "Grep": {
         const grepPath = args["path"] ? resolveFilePath(String(args["path"]), cwd) : cwd;
-        // Sanitize include glob: allow only alphanumeric, dots, hyphens, underscores, asterisks
+        const pattern = String(args["pattern"]);
+        // Sanitize include glob: allow only safe filename characters
         const rawInclude = args["include"] ? String(args["include"]) : "";
-        const safeInclude = rawInclude.replace(/[^a-zA-Z0-9._\-*]/g, "");
-        const include = safeInclude ? `--include=${JSON.stringify(safeInclude)}` : "";
-        const cmd = `grep -rn --color=never ${include} -E ${JSON.stringify(String(args["pattern"]))} ${JSON.stringify(grepPath)} 2>/dev/null | head -200`;
-        const result = child_process.spawnSync("bash", ["-c", cmd], {
+        const safeInclude = rawInclude.replace(/[^a-zA-Z0-9._\-*/]/g, "");
+
+        // Use spawnSync with an args array — never interpolate user data into a shell string
+        const grepArgs = ["-rn", "--color=never", "-E", pattern];
+        if (safeInclude) grepArgs.push(`--include=${safeInclude}`);
+        grepArgs.push(grepPath);
+
+        const result = child_process.spawnSync("grep", grepArgs, {
           encoding: "utf8",
           maxBuffer: 1024 * 1024,
         });
-        return { content: result.stdout.trim() || "(no matches)" };
+        // grep exits 1 when there are no matches — that is not an error
+        const lines = (result.stdout || "").trim().split("\n").slice(0, 200).join("\n");
+        return { content: lines || "(no matches)" };
       }
 
       default:
