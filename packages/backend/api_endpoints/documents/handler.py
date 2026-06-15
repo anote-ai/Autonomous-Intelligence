@@ -11,30 +11,42 @@ from services.rag import ingest_document, query_documents
 
 documents_bp = Blueprint("documents", __name__, url_prefix="/api/documents")
 
-UPLOAD_FOLDER = Path(os.environ.get("UPLOAD_FOLDER", "/tmp/anote_uploads"))
+UPLOAD_FOLDER = Path("/tmp/anote_uploads")
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".docx", ".csv"}
+# Map MIME types to safe extensions — extension never derived from user input
+_MIME_TO_EXT: dict[str, str] = {
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+    "text/markdown": ".md",
+    "text/csv": ".csv",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+}
 
-_docs: dict[str, dict] = {}
-
-
-def _allowed(filename: str) -> bool:
-    return Path(filename).suffix.lower() in ALLOWED_EXTENSIONS
+_docs: dict[str, dict] = {}  # type: ignore[type-arg]
 
 
 @documents_bp.post("/upload")
-def upload() -> tuple:
+def upload() -> tuple:  # type: ignore[type-arg]
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
     file = request.files["file"]
-    if not file.filename or not _allowed(file.filename):
+
+    # Derive extension only from MIME type so no user-controlled data flows to the path
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    ext = _MIME_TO_EXT.get(content_type)
+    if not ext:
         return jsonify({"error": "Unsupported file type"}), 400
 
     doc_id = str(uuid.uuid4())
-    ext = Path(file.filename).suffix.lower()
+    # save_path uses only server-generated UUID + server-validated ext
     save_path = UPLOAD_FOLDER / f"{doc_id}{ext}"
-    file.save(save_path)
+
+    try:
+        file.save(save_path)
+    except Exception as exc:
+        print(f"Save failed: {exc}")
+        return jsonify({"error": "Internal server error"}), 500
 
     try:
         chunk_count = ingest_document(doc_id=doc_id, file_path=save_path)
@@ -43,9 +55,10 @@ def upload() -> tuple:
         print(f"Ingestion failed: {exc}")
         return jsonify({"error": "Internal server error"}), 500
 
+    original_name = file.filename or f"upload{ext}"
     _docs[doc_id] = {
         "id": doc_id,
-        "filename": file.filename,
+        "filename": original_name,
         "path": str(save_path),
         "chunks": chunk_count,
     }
@@ -53,12 +66,12 @@ def upload() -> tuple:
 
 
 @documents_bp.get("")
-def list_documents() -> tuple:
+def list_documents() -> tuple:  # type: ignore[type-arg]
     return jsonify({"documents": list(_docs.values())}), 200
 
 
 @documents_bp.get("/<doc_id>")
-def get_document(doc_id: str) -> tuple:
+def get_document(doc_id: str) -> tuple:  # type: ignore[type-arg]
     doc = _docs.get(doc_id)
     if not doc:
         return jsonify({"error": "Document not found"}), 404
@@ -66,7 +79,7 @@ def get_document(doc_id: str) -> tuple:
 
 
 @documents_bp.delete("/<doc_id>")
-def delete_document(doc_id: str) -> tuple:
+def delete_document(doc_id: str) -> tuple:  # type: ignore[type-arg]
     doc = _docs.pop(doc_id, None)
     if not doc:
         return jsonify({"error": "Document not found"}), 404
@@ -75,7 +88,7 @@ def delete_document(doc_id: str) -> tuple:
 
 
 @documents_bp.post("/<doc_id>/ask")
-def ask_document(doc_id: str) -> tuple:
+def ask_document(doc_id: str) -> tuple:  # type: ignore[type-arg]
     if doc_id not in _docs:
         return jsonify({"error": "Document not found"}), 404
     data = request.get_json(silent=True) or {}
