@@ -1,0 +1,88 @@
+site_name: Anote AI
+site_url: https://docs.anote.ai
+site_description: Unified AI coding assistant and chatbot platform
+site_author: Anote AI
+
+repo_name: anote-ai/autonomous-intelligence
+repo_url: https://github.com/anote-ai/Autonomous-Intelligence
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Configuration: getting-started/configuration.md
+  - CLI:
+    - Overview: cli/overview.md
+    - Commands: cli/commands.md
+    - Configuration: cli/config.md
+  - VS Code Extension:
+    - Overview: vscode/overview.md
+    - Features: vscode/features.md
+    - Settings: vscode/settings.md
+  - Web App:
+    - Overview: web/overview.md
+    - Features: web/features.md
+  - Desktop App:
+    - Overview: desktop/overview.md
+    - Installation: desktop/installation.md
+    - Local Models: desktop/local-models.md
+  - Mobile App:
+    - Overview: mobile/overview.md
+  - SDK:
+    - TypeScript SDK: sdk/typescript.md
+    - Python SDK: sdk/python.md
+  - Backend API:
+    - Overview: api/overview.md
+    - Authentication: api/auth.md
+    - Chat: api/chat.md
+    - Documents: api/documents.md
+    - Search: api/search.md
+  - Development:
+    - Contributing: development/contributing.md
+    - Architecture: development/architecture.md
+    - Testing: development/testing.md

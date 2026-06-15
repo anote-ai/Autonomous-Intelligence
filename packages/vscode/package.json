@@ -1,0 +1,223 @@
+{
+  "name": "anote-ai-coding",
+  "displayName": "Anote - AI Assisted Coding Agent",
+  "description": "AI coding assistant for VS Code — chat, explain, fix, review, and generate code",
+  "version": "1.1.0",
+  "publisher": "Anote",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "openai",
+    "gemini",
+    "llama",
+    "coding assistant",
+    "code generation",
+    "code review",
+    "chat"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anote-ai/AI-Assisted-Coding-Tool"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "anote",
+          "title": "Anote AI",
+          "icon": "media/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "anote": [
+        {
+          "type": "webview",
+          "id": "anote.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "anote.openChat",
+        "title": "Anote: Open Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "anote.setup",
+        "title": "Anote: Set Up"
+      },
+      {
+        "command": "anote.explainSelection",
+        "title": "Anote: Explain Selected Code"
+      },
+      {
+        "command": "anote.fixSelection",
+        "title": "Anote: Fix Selected Code"
+      },
+      {
+        "command": "anote.reviewFile",
+        "title": "Anote: Review Current File",
+        "icon": {
+          "light": "media/icon.png",
+          "dark": "media/icon.png"
+        }
+      },
+      {
+        "command": "anote.generateTests",
+        "title": "Anote: Generate Tests for File"
+      },
+      {
+        "command": "anote.refactorSelection",
+        "title": "Anote: Refactor Selected Code"
+      },
+      {
+        "command": "anote.askAboutSelection",
+        "title": "Anote: Ask About Selected Code"
+      },
+      {
+        "command": "anote.addToChat",
+        "title": "Anote: Add to Chat Context"
+      },
+      {
+        "command": "anote.codeLensAction",
+        "title": "Anote: CodeLens Action"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "submenu": "anote.submenu",
+          "title": "Anote AI",
+          "group": "anote"
+        }
+      ],
+      "anote.submenu": [
+        { "command": "anote.explainSelection", "group": "1_explain" },
+        { "command": "anote.askAboutSelection", "group": "1_explain" },
+        { "command": "anote.fixSelection", "group": "2_fix" },
+        { "command": "anote.refactorSelection", "group": "2_fix" },
+        { "command": "anote.generateTests", "group": "3_test" },
+        { "command": "anote.addToChat", "group": "4_chat" }
+      ],
+      "editor/title": [
+        {
+          "command": "anote.reviewFile",
+          "when": "editorIsOpen",
+          "group": "navigation"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "anote.submenu",
+        "label": "Anote AI"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "anote.openChat",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a"
+      },
+      {
+        "command": "anote.explainSelection",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "anote.fixSelection",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f",
+        "when": "editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "Anote AI Coding Assistant",
+      "properties": {
+        "anote.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Provider API key for direct mode. Leave blank when using an Anote server.",
+          "markdownDescription": "Provider API key used by the built-in direct runtime. Leave blank when routing through `anote.serverUrl`."
+        },
+        "anote.provider": {
+          "type": "string",
+          "default": "anthropic",
+          "enum": ["anthropic", "openai", "gemini", "llama", "xai", "custom"],
+          "description": "Provider family used by Anote"
+        },
+        "anote.model": {
+          "type": "string",
+          "default": "claude-sonnet-4-6",
+          "description": "Model id to use for the selected provider"
+        },
+        "anote.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional provider base URL override for future runtime adapters"
+        },
+        "anote.autoEdit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically accept file edits without confirmation"
+        },
+        "anote.serverUrl": {
+          "type": "string",
+          "default": "",
+          "description": "URL of an Anote server. Set this to use a hosted or local server instead of the built-in runtime."
+        },
+        "anote.maxTurns": {
+          "type": "number",
+          "default": 30,
+          "description": "Maximum number of agentic turns per conversation"
+        },
+        "anote.persistSessions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Persist chat history across VS Code reloads (stored in extension globalState)"
+        },
+        "anote.showToolUse": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show tool-use indicators in the chat panel while Anote works"
+        },
+        "anote.enableCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Anote inline action buttons (CodeLens) above functions and classes"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "vscode:prepublish": "npm run build",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.89",
+    "@anthropic-ai/sdk": "^0.74.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "@vscode/vsce": "^3.0.0"
+  }
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <path
+    d="M12 95L67 11L101 31L50 114L45 73L12 95Z"
+    fill="#41B3E6"
+    stroke="#41B3E6"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M67 11L117 2L101 31Z"
+    fill="#DFFF2F"
+    stroke="#DFFF2F"
+    stroke-linejoin="round"
+  />
+</svg>

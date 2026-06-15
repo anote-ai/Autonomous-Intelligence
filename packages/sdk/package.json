@@ -1,0 +1,37 @@
+{
+  "name": "@anote-ai/sdk",
+  "version": "1.0.0",
+  "description": "TypeScript/JavaScript SDK for the Anote AI Coding Tool REST API",
+  "keywords": ["anote", "ai", "coding-assistant", "sdk", "anthropic"],
+  "homepage": "https://github.com/anote-ai/AI-Assisted-Coding-Tool",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anote-ai/AI-Assisted-Coding-Tool.git"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist/**", "README.md"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.2",
+    "@types/node": "^22.0.0"
+  }
+}

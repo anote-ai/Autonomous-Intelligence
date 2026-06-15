@@ -282,7 +282,7 @@ def test_reset_everything_error_path(client: Any, app_module: Any, monkeypatch: 
     )
     response = client.post("/api/reset-everything")
     assert response.status_code == 500
-    assert "Failed to delete DB folder: boom" == response.get_data(as_text=True)
+    assert response.get_data(as_text=True) == "Internal server error"
 
 
 def test_download_chat_history_success(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]) -> None:
@@ -310,7 +310,7 @@ def test_download_chat_history_invalid_token_and_error(
     monkeypatch.setattr(app_module, "retrieve_message_from_db", lambda *args: None)
     error_response = client.post("/download-chat-history", json={"chat_type": 0, "chat_id": 9}, headers=auth_headers)
     assert error_response.status_code == 500
-    assert error_response.get_json()["error"] == "messages must not be None"
+    assert error_response.get_json()["error"] == "Internal server error"
 
 
 @pytest.mark.parametrize(

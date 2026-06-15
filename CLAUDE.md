@@ -1,129 +1,149 @@
 # Anote AI — Claude Code Guide
 
 ## Project Overview
-Full-stack private document Q&A / chatbot SaaS platform. Users upload documents, ask questions via chat, and get AI-powered answers using RAG (Retrieval Augmented Generation). Supports OpenAI and Anthropic Claude as LLM providers.
 
-## Architecture
-- **Frontend:** React 18 + Redux Toolkit + Tailwind CSS — served at `localhost:3000`
-- **Backend:** Python Flask + LangChain/LangGraph agents — served at `localhost:5000`
-- **Database:** MySQL 8.0 (schema at [backend/database/schema.sql](backend/database/schema.sql))
-- **Cache:** Redis
-- **Document parsing:** Apache Tika
-- **Payments:** Stripe
-- **Auth:** JWT + Google OAuth
+**Anote Autonomous Intelligence** is a unified AI assistant monorepo combining:
+- A coding CLI tool
+- A VS Code extension
+- A web chatbot
+- A mobile app (Expo)
+- A private desktop app (Electron)
+- A Python SDK
+- A shared Python Flask backend
+- MkDocs documentation
 
-## Running the Stack
+## Repository Structure
 
-### Docker (recommended)
-```bash
-cp backend/.env.example backend/.env  # fill in secrets
-docker compose up --build
+```
+Autonomous-Intelligence/
+├── packages/
+│   ├── backend/        # Python Flask API (shared by all frontends)
+│   ├── cli/            # TypeScript CLI tool (anote command)
+│   ├── sdk/            # TypeScript SDK (@anote-ai/sdk)
+│   ├── vscode/         # VS Code extension
+│   ├── web/            # React web chatbot (Vite + Tailwind)
+│   ├── mobile/         # Expo React Native app
+│   ├── desktop/        # Electron private desktop app
+│   └── docs/           # MkDocs Material documentation
+├── package.json        # npm workspaces root
+├── tsconfig.base.json  # Shared TypeScript config
+├── Makefile            # Dev convenience commands
+├── docker-compose.yml  # Full stack (MySQL, Redis, Tika, backend, web)
+└── .github/workflows/ci.yml  # 4-job CI pipeline
 ```
 
-| Service  | URL                    |
-|----------|------------------------|
-| Frontend | http://localhost:3000  |
-| Backend  | http://localhost:5000  |
-| MySQL    | localhost:3307         |
-| Redis    | localhost:6380         |
-| Tika     | http://localhost:9999  |
+## Architecture
 
-### Native dev
+- **Backend**: Flask 2 + JWT + Anthropic/OpenAI + ChromaDB + LangChain — `localhost:5000`
+- **Web**: React 18 + Vite + Tailwind CSS (ChatGPT-style light/dark mode) — `localhost:3000`
+- **Mobile**: Expo 51 + React Native with Expo Router
+- **Desktop**: Electron 28 wrapping a React frontend + bundled Python backend (PyInstaller)
+- **CLI**: TypeScript Commander CLI with 23 commands, TF-IDF search, multi-provider
+- **VS Code**: Extension with chat sidebar, diff review, streaming responses
+- **SDK**: TypeScript client for the backend API
+- **Docs**: MkDocs Material at `packages/docs/`
+
+## UI Design
+
+All frontends (web, mobile, desktop) follow a ChatGPT-style design:
+- **Light mode**: white (`#FFFFFF`) / light gray (`#F7F7F8`) backgrounds, black text
+- **Dark mode**: black (`#212121`) / dark gray (`#2F2F2F`) backgrounds, white text
+- **Rocket logo**: white body + light gray accent in dark mode; black body + dark gray accent in light mode
+- Toggle button in header/toolbar
+
+## Development
+
+### Docker (recommended for full stack)
 ```bash
-# Frontend
-cd frontend && npm install && npm start
+cp packages/backend/.env.example packages/backend/.env
+docker compose up
+```
 
-# Backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-export FLASK_APP=app.py FLASK_ENV=development FLASK_DEBUG=1
-flask run --host=0.0.0.0 --port=5000
+Services: web → `localhost:3000`, backend → `localhost:5000`, MySQL → `3306`, Redis → `6379`
+
+### Individual packages
+```bash
+make dev-backend   # Flask on :5000
+make dev-web       # React/Vite on :3000
+make dev           # Both in parallel
+npm start --workspace=packages/cli  # CLI dev
+code packages/vscode                # VS Code extension (F5 to launch)
 ```
 
 ### Makefile shortcuts
 ```bash
-make dev-up        # start Docker containers
-make dev-down      # stop Docker containers
-make dev-logs      # tail Docker logs
-make frontend-start
-make frontend-build
-make frontend-test
+make dev           # backend + web
+make dev-backend   # Flask only
+make dev-web       # Vite only
+make backend-test  # pytest
+make build         # build all packages
+make docs-serve    # mkdocs serve
+make desktop-dev   # Electron dev mode
+make desktop-build # Package desktop app
 ```
 
-## Testing
+## Testing & Quality
 
-### Backend (pytest — 92% coverage required by CI)
+### Backend (Python)
 ```bash
-cd backend
-pytest              # run all tests
-pytest -v           # verbose
-pytest --cov        # with coverage report
+cd packages/backend
+pytest tests/ -v --cov=. --cov-fail-under=80
 ```
+- 80% coverage gate enforced in CI
+- Tests use Flask test client (no MySQL required)
+- Linting: `ruff check .`
+- Type checking: `mypy . --ignore-missing-imports`
 
-### Frontend (Vitest)
+### TypeScript
 ```bash
-cd frontend
-npm test            # watch mode
-npm run test:ci     # CI mode (no watch)
-npm run test:coverage
+npm test            # all workspaces
+npm test --workspace=packages/cli
 ```
-
-## Linting & Type Checking
-```bash
-cd backend
-ruff check .        # linting
-mypy .              # type checking
-```
-
-CI runs both on every push. Fix all Ruff and MyPy errors before opening a PR.
-
-## Key Environment Variables
-
-### Backend (`backend/.env`)
-| Variable | Purpose |
-|---|---|
-| `OPENAI_API_KEY` | OpenAI LLM / embeddings |
-| `ANTHROPIC_API_KEY` | Anthropic Claude LLM |
-| `STRIPE_SECRET_KEY` | Stripe payments |
-| `SEC_API_KEY` | SEC/finance data |
-| `DB_NAME`, `DB_HOST`, `DB_USER`, `DB_PASSWORD` | MySQL connection |
-| `REDIS_URL` | Redis connection |
-| `PERSIST_DIRECTORY` | Vector store path |
-| `MODEL_TYPE`, `MODEL_PATH` | Local LLM config |
-| `EMBEDDINGS_MODEL_NAME` | Embedding model |
-
-### Frontend (`frontend/.env.local`)
-| Variable | Purpose |
-|---|---|
-| `REACT_APP_BACK_END_HOST` | Backend URL (default: proxied to `localhost:5000`) |
-
-## Important Directories
-
-### Backend
-| Path | Purpose |
-|---|---|
-| [backend/app.py](backend/app.py) | Flask app entry point |
-| [backend/api_endpoints/](backend/api_endpoints/) | Route handlers by feature |
-| [backend/database/db.py](backend/database/db.py) | Database operations |
-| [backend/agents/](backend/agents/) | LangChain/LangGraph agent system |
-| [backend/services/](backend/services/) | Business logic (RAG, finance GPT) |
-| [backend/mcp/](backend/mcp/) | MCP server definitions |
-| [backend/sdk/](backend/sdk/) | Public Python SDK (`anoteai` pip package) |
-| [backend/tests/](backend/tests/) | pytest test suite |
-
-### Frontend
-| Path | Purpose |
-|---|---|
-| [frontend/src/App.js](frontend/src/App.js) | React entry point |
-| [frontend/src/app/routes.js](frontend/src/app/routes.js) | Route definitions |
-| [frontend/src/components/](frontend/src/components/) | Shared UI components |
-| [frontend/src/redux/](frontend/src/redux/) | Redux slices (User, Chat) |
-| [frontend/src/http/RequestConfig.js](frontend/src/http/RequestConfig.js) | Axios configuration |
-| [frontend/src/financeGPT/](frontend/src/financeGPT/) | Finance-specific chatbot feature |
 
 ## CI/CD
-GitHub Actions ([.github/workflows/main.yml](.github/workflows/main.yml)) runs on every push:
-1. Frontend build + unit tests
-2. Backend: Ruff lint → MyPy type check → pytest (≥92% coverage)
-3. CodeQL security analysis (Python + JavaScript)
+
+Single workflow: `.github/workflows/ci.yml`  
+Triggers on every push and PR to main.  
+4 parallel jobs:
+1. **Backend** — ruff → mypy → pytest (80% gate)
+2. **TypeScript** — build + test all TS packages
+3. **VS Code** — build extension
+4. **Docs** — mkdocs build --strict
+
+## Backend API Endpoints
+
+| Blueprint | Prefix | Description |
+|-----------|--------|-------------|
+| auth | `/auth` | register, login, refresh, me |
+| chat | `/api/chat` | stream, sessions CRUD |
+| documents | `/api/documents` | upload, list, get, delete, ask |
+| search | `/api/search` | TF-IDF codebase search |
+| user | `/api/user` | profile, API keys |
+| payments | `/api/payments` | Stripe checkout/portal/webhook |
+| workspaces | `/api/workspaces` | hosted-mode workspace management |
+
+## Environment Variables
+
+Copy `packages/backend/.env.example` → `packages/backend/.env`:
+
+| Variable | Purpose |
+|---|---|
+| `JWT_SECRET_KEY` | JWT signing |
+| `ANTHROPIC_API_KEY` | Claude LLM |
+| `OPENAI_API_KEY` | GPT / embeddings |
+| `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | MySQL |
+| `STRIPE_SECRET_KEY` | Payments (optional) |
+| `APP_ENV` | `local` / `test` / `production` |
+
+## Key Docs
+
+- `packages/docs/` — Full MkDocs Material documentation site
+- `packages/backend/README.md` — Backend-specific guide
+- `CODEBASE_SETUP.md` — Full installation walkthrough
+
+## Source Repositories (preserved, not deleted)
+
+This monorepo consolidates:
+- `anote-ai/AI-Assisted-Coding-Tool` → `packages/cli/`, `packages/sdk/`, `packages/vscode/`
+- `anote-ai/Autonomous-Intelligence` (original) → `packages/backend/`, `packages/web/`
+- `anote-ai/PrivateGPT` → `packages/desktop/`

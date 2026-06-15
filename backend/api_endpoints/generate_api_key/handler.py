@@ -20,4 +20,4 @@ def GenerateAPIKeyHandler(request, user_email):
         return jsonify(result)
     except Exception as e:
         print(f"Error generating API key: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500

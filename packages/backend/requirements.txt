@@ -1,0 +1,41 @@
+# Web framework
+flask==3.0.3
+flask-cors==4.0.1
+flask-jwt-extended==4.6.0
+gunicorn==22.0.0
+
+# AI / LLM
+anthropic==0.40.0
+openai==1.50.0
+langchain==0.3.1
+langchain-anthropic==0.3.0
+langchain-openai==0.2.1
+langgraph==0.2.28
+
+# Vector store / embeddings
+chromadb==0.5.3
+
+# Document processing
+PyPDF2==3.0.1
+
+# Auth
+bcrypt==4.2.0
+
+# Payments
+stripe==10.12.0
+
+# Utilities
+python-dotenv==1.0.1
+pydantic==2.9.2
+requests==2.32.3
+numpy==1.26.4
+scikit-learn==1.5.2
+
+# Dev / test
+pytest==8.3.3
+pytest-cov==5.0.0
+pytest-mock==3.14.0
+
+# Lint / type check
+ruff==0.7.1
+mypy==1.12.1
