@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import functools
-from typing import Callable
+from collections.abc import Callable
 
 from flask import jsonify
 from flask_jwt_extended import verify_jwt_in_request

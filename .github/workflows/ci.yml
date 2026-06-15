@@ -54,19 +54,38 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install CLI dependencies
+        working-directory: packages/cli
+        run: npm install
 
-      - name: Build all packages
-        run: npm run build --workspaces
+      - name: Install SDK dependencies
+        working-directory: packages/sdk
+        run: npm install
+
+      - name: Install web dependencies
+        working-directory: packages/web
+        run: npm install
+
+      - name: Build CLI
+        working-directory: packages/cli
+        run: npm run build
+
+      - name: Build SDK
+        working-directory: packages/sdk
+        run: npm run build
+
+      - name: Build web
+        working-directory: packages/web
+        run: npm run build
 
       - name: Run CLI tests
-        run: npm test --workspace=packages/cli --if-present
+        working-directory: packages/cli
+        run: npm test --if-present
 
       - name: Run SDK tests
-        run: npm test --workspace=packages/sdk --if-present
+        working-directory: packages/sdk
+        run: npm test --if-present
 
   # ── VS Code extension ─────────────────────────────────────────────────────────
   vscode:
@@ -80,16 +99,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        working-directory: packages/vscode
+        run: npm install
 
       - name: Install vsce
         run: npm install -g @vscode/vsce
 
       - name: Build VS Code extension
-        run: npm run build --workspace=packages/vscode
+        working-directory: packages/vscode
+        run: npm run build
 
   # ── Docs ──────────────────────────────────────────────────────────────────────
   docs:
@@ -122,7 +142,7 @@ jobs:
     steps:
       - name: Check all jobs
         run: |
-          if [["${{ needs.backend.result }}" == "success" && \
+          if [[ "${{ needs.backend.result }}" == "success" && \
                 "${{ needs.typescript.result }}" == "success" && \
                 "${{ needs.vscode.result }}" == "success" && \
                 "${{ needs.docs.result }}" == "success" ]]; then

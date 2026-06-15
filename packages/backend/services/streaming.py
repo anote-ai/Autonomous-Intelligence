@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Generator
+from collections.abc import Generator
 
 
 def _sse(event: str, data: dict) -> str:

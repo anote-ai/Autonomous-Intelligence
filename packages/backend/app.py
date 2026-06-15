@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
@@ -9,9 +10,9 @@ from flask_jwt_extended import JWTManager
 from api_endpoints.auth.handler import auth_bp
 from api_endpoints.chat.handler import chat_bp
 from api_endpoints.documents.handler import documents_bp
+from api_endpoints.payments.handler import payments_bp
 from api_endpoints.search.handler import search_bp
 from api_endpoints.user.handler import user_bp
-from api_endpoints.payments.handler import payments_bp
 from api_endpoints.workspaces.handler import workspaces_bp
 
 

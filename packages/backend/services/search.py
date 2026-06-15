@@ -24,9 +24,9 @@ def search_index(query: str, cwd: str, top_k: int = 10) -> list[dict]:
     if not chunks:
         return []
     try:
+        import numpy as np
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.metrics.pairwise import cosine_similarity
-        import numpy as np
         corpus = [c.get("content", "") for c in chunks]
         vectorizer = TfidfVectorizer(max_features=3000, stop_words="english")
         tfidf_matrix = vectorizer.fit_transform(corpus)

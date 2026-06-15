@@ -1,12 +1,13 @@
 """Shared pytest fixtures."""
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 # Ensure packages/backend is on the path when running from CI
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import create_app
+from app import create_app  # noqa: E402
 
 
 @pytest.fixture
