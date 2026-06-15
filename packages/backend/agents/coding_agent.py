@@ -8,10 +8,10 @@ from pathlib import Path
 def run_coding_agent(prompt: str, cwd: str = ".") -> str:
     """Run a coding agent on the given prompt."""
     try:
-        from langchain_anthropic import ChatAnthropic
         from langchain.agents import AgentExecutor, create_tool_calling_agent
-        from langchain_core.prompts import ChatPromptTemplate
         from langchain.tools import tool
+        from langchain_anthropic import ChatAnthropic
+        from langchain_core.prompts import ChatPromptTemplate
 
         @tool
         def read_file(path: str) -> str:

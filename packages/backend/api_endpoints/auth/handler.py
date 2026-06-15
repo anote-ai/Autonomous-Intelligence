@@ -30,7 +30,7 @@ def register() -> tuple:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
 
     try:
-        from database.db import get_connection, create_user, get_user_by_email
+        from database.db import create_user, get_connection, get_user_by_email
         cnx = get_connection()
         if get_user_by_email(cnx, email):
             cnx.close()

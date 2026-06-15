@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import secrets
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 user_bp = Blueprint("user", __name__, url_prefix="/api/user")

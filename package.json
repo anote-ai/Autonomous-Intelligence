@@ -6,8 +6,6 @@
     "packages/cli",
     "packages/vscode",
     "packages/web",
-    "packages/mobile",
-    "packages/desktop",
     "packages/sdk"
   ],
   "scripts": {

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from typing import Generator
+from collections.abc import Generator
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
