@@ -45,3 +45,4 @@ Thumbs.db
 *.key
 .env.local
 .env.production
+.claude/worktrees/
