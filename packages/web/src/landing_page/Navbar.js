@@ -6,6 +6,7 @@ import { useTheme } from "../App";
 const NAV_LINKS = [
   { href: "#capabilities", label: "Capabilities" },
   { href: "#versions", label: "Product versions" },
+  { href: "#pricing", label: "Pricing" },
   { href: "#how-it-works", label: "How it works" },
   { href: "#faq", label: "FAQ" },
 ];

@@ -4,6 +4,7 @@ import Navbar from "./Navbar";
 import Hero from "./Hero";
 import Capabilities from "./Capabilities";
 import ProductVersions from "./ProductVersions";
+import Pricing from "./Pricing";
 import HowItWorks from "./HowItWorks";
 import FAQSection from "./FAQSection";
 import GetStarted from "./GetStarted";
@@ -84,6 +85,7 @@ function LandingPage() {
         <Hero />
         <Capabilities />
         <ProductVersions />
+        <Pricing />
         <HowItWorks />
         <FAQSection />
         <GetStarted />

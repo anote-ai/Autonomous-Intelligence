@@ -155,6 +155,57 @@ export const PRODUCT_VERSIONS = [
   },
 ];
 
+export const PRICING_PLANS = [
+  {
+    id: "web",
+    name: "Web App",
+    price: "$20",
+    period: "/month",
+    description: "Unlimited chats in the browser with every model Panacea supports.",
+    features: [
+      "Unlimited conversations with Claude and GPT-4o models",
+      "Document upload and cited Q&A",
+      "Session history synced across devices",
+      "Light and dark mode",
+    ],
+    cta: "Start with the web app",
+    href: "/register",
+    highlighted: true,
+  },
+  {
+    id: "api",
+    name: "API / SDK",
+    price: "Pay per credit",
+    period: "",
+    description: "Bring Panacea into your own product. Buy credits and spend them on chat, document, and search calls as you use them.",
+    features: [
+      "Credits cover chat, document Q&A, and search calls",
+      "No monthly minimum — pay only for what you use",
+      "Works with the CLI, VS Code extension, and SDK",
+      "Top up or auto-recharge from your account dashboard",
+    ],
+    cta: "Get API credits",
+    href: "/register",
+    highlighted: false,
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise / On-Prem",
+    price: "Custom",
+    period: "",
+    description: "Run Panacea Desktop fully on your own infrastructure with volume credit pricing and dedicated support.",
+    features: [
+      "Electron desktop app with a bundled local backend",
+      "Volume credit pricing for API usage",
+      "Dedicated onboarding and support",
+      "Custom data retention and security review",
+    ],
+    cta: "Talk to us",
+    href: "/register",
+    highlighted: false,
+  },
+];
+
 export const HOW_IT_WORKS_STEPS = [
   {
     step: "Upload",
@@ -204,5 +255,10 @@ export const FAQS = [
     question: "Is my data shared across the CLI, web, mobile, and desktop apps?",
     answer:
       "Every Panacea surface talks to the same backend API, so your account, documents, and chat sessions stay in sync no matter which version you use, unless you choose the fully offline desktop mode.",
+  },
+  {
+    question: "How does pricing work?",
+    answer:
+      "The web app is a flat $20/month for unlimited chat. The CLI, VS Code extension, and SDK are billed per credit, so you only pay for the chat, document, and search calls you actually make. Enterprise and on-premise deployments use custom volume pricing.",
   },
 ];
