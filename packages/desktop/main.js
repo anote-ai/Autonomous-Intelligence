@@ -3,6 +3,12 @@ const path = require("path");
 const { spawn } = require("child_process");
 const http = require("http");
 
+if (app.isPackaged) {
+  // Checks GitHub Releases (configured via the `github` publisher in
+  // forge.config.js) for a newer version and applies it on next restart.
+  require("update-electron-app")();
+}
+
 let mainWindow = null;
 let backendProcess = null;
 const BACKEND_PORT = 5099;

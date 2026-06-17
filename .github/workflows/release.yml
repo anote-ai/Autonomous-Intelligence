@@ -1,0 +1,71 @@
+name: Release
+
+# Triggered by pushing a tag like v1.2.3. Publishes the CLI to npm, the
+# VS Code extension to the Marketplace, and the desktop app to GitHub Releases.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish-cli:
+    name: Publish CLI to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          registry-url: "https://registry.npmjs.org"
+      - working-directory: packages/cli
+        run: npm install
+      - working-directory: packages/cli
+        run: npm run build
+      - working-directory: packages/cli
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-vscode:
+    name: Publish VS Code extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+      - working-directory: packages/vscode
+        run: npm install
+      - run: npm install -g @vscode/vsce
+      - working-directory: packages/vscode
+        run: vsce publish -p ${{ secrets.VSCE_PAT }}
+
+  publish-desktop:
+    name: Build and publish desktop app
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build bundled Python backend (PyInstaller)
+        working-directory: packages/desktop
+        run: |
+          pip install -r ../backend/requirements.txt pyinstaller
+          pyinstaller app.spec
+          mkdir -p backend-dist
+          cp -r dist/* backend-dist/
+      - working-directory: packages/desktop/frontend
+        run: npm install && npm run build
+      - working-directory: packages/desktop
+        run: npm install
+      - working-directory: packages/desktop
+        run: npx electron-forge publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
