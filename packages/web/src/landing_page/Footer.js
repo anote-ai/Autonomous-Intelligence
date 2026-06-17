@@ -36,6 +36,11 @@ const FOOTER_COLUMNS = [
     links: [
       { href: "/contact", label: "Contact" },
       { href: "/privacy", label: "Privacy Policy" },
+      { href: "mailto:nvidra@anote.ai", label: "nvidra@anote.ai" },
+      {
+        href: "https://join.slack.com/t/anote-ai/shared_invite/zt-2vdh1p5xt-KWvtBZEprhrCzU6wrRPwNA",
+        label: "Slack community",
+      },
     ],
   },
 ];
