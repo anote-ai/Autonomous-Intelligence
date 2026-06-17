@@ -206,6 +206,27 @@ export const PRICING_PLANS = [
   },
 ];
 
+export const TESTIMONIALS = [
+  {
+    quote:
+      "We moved our whole documentation Q&A workflow onto Panacea in an afternoon. The citations make it easy to trust the answers.",
+    name: "Engineering Lead",
+    role: "Mid-size SaaS company",
+  },
+  {
+    quote:
+      "Having the CLI, VS Code extension, and web app share one account made adoption easy — nobody had to relearn a new tool per surface.",
+    name: "Staff Engineer",
+    role: "Fintech infrastructure team",
+  },
+  {
+    quote:
+      "The desktop app let us run everything on-prem for a regulated client without changing how the team actually works day to day.",
+    name: "Solutions Architect",
+    role: "Enterprise services consultancy",
+  },
+];
+
 export const HOW_IT_WORKS_STEPS = [
   {
     step: "Upload",

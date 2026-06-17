@@ -31,13 +31,20 @@ const FOOTER_COLUMNS = [
       { href: "/login", label: "Sign in" },
     ],
   },
+  {
+    heading: "Company",
+    links: [
+      { href: "/contact", label: "Contact" },
+      { href: "/privacy", label: "Privacy Policy" },
+    ],
+  },
 ];
 
 function Footer() {
   return (
     <footer className="border-t border-gray-200 dark:border-gray-700 py-12">
       <div className="mx-auto max-w-7xl px-6">
-        <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-4">
+        <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-5">
           <div>
             <div className="flex items-center gap-2">
               <RocketLogo className="w-6 h-6" />

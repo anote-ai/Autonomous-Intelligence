@@ -4,6 +4,8 @@ import ChatPage from "./pages/ChatPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import LandingPage from "./landing_page/LandingPage.js";
+import ContactPage from "./landing_page/ContactPage.js";
+import PrivacyPolicyPage from "./landing_page/PrivacyPolicyPage.js";
 
 // Theme
 export const ThemeContext = createContext<{
@@ -55,6 +57,8 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LandingPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/app" element={<RequireAuth><ChatPage /></RequireAuth>} />
