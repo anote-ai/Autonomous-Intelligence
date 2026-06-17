@@ -44,11 +44,28 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 CREATE TABLE IF NOT EXISTS api_keys (
-    id          INT AUTO_INCREMENT PRIMARY KEY,
-    user_id     INT NOT NULL,
-    key_hash    VARCHAR(255) NOT NULL,
-    key_prefix  VARCHAR(20) NOT NULL,
-    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id                     INT AUTO_INCREMENT PRIMARY KEY,
+    user_id                INT NOT NULL,
+    name                   VARCHAR(255) DEFAULT '',
+    key_hash               VARCHAR(255) NOT NULL,
+    key_prefix             VARCHAR(20) NOT NULL,
+    is_active              BOOLEAN NOT NULL DEFAULT TRUE,
+    rate_limit_per_minute  INT NOT NULL DEFAULT 60,
+    last_used_at           DATETIME,
+    expires_at             DATETIME,
+    created_at             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS api_usage_log (
+    id           INT AUTO_INCREMENT PRIMARY KEY,
+    api_key_id   INT NOT NULL,
+    user_id      INT NOT NULL,
+    endpoint     VARCHAR(255) NOT NULL,
+    status_code  INT NOT NULL,
+    credits_used INT NOT NULL DEFAULT 0,
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

@@ -47,7 +47,7 @@ def test_api_keys_list(client, auth_headers):
 def test_api_keys_create(client, auth_headers):
     resp = client.post("/api/user/api-keys", headers=auth_headers)
     assert resp.status_code == 201
-    assert resp.get_json()["key"].startswith("ak-")
+    assert resp.get_json()["key"].startswith("sk-ai-")
 
 
 def test_api_keys_delete_not_found(client, auth_headers):
