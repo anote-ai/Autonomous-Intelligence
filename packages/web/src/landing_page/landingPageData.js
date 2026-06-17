@@ -246,6 +246,99 @@ export const HOW_IT_WORKS_STEPS = [
   },
 ];
 
+export const BLOG_POSTS = [
+  {
+    slug: "introducing-panacea",
+    title: "Introducing Panacea: one Autonomous Intelligence platform, six surfaces",
+    date: "2026-05-01",
+    excerpt:
+      "Why we built Panacea as a single backend with a CLI, VS Code extension, web app, mobile app, desktop app, and SDK instead of six separate products.",
+    body:
+      "Most AI assistants force you to pick one surface and live with it. Panacea shares one account, one chat history, and one document store across the CLI, VS Code extension, web app, mobile app, desktop app, and SDK, so you can start a conversation on your phone and finish it in your editor. This post covers the architecture decisions behind that — a single Flask backend, JWT auth shared across clients, and a retrieval layer that cites its sources no matter which surface you're using.",
+  },
+  {
+    slug: "grounded-answers-with-citations",
+    title: "How Panacea avoids hallucinating answers",
+    date: "2026-04-12",
+    excerpt:
+      "A look at the retrieval pipeline that lets Panacea cite the exact passage behind every document answer.",
+    body:
+      "When you ask Panacea a question about an uploaded document, it doesn't just hand the whole file to the model and hope for the best. It retrieves the most relevant passages first, ranks them, and asks the model to answer using only that context — then shows you the source so you can verify it yourself. This is the same approach that powers Panacea's repo-aware coding mode in the CLI and VS Code extension.",
+  },
+  {
+    slug: "running-panacea-on-prem",
+    title: "Running Panacea fully on-premise with the desktop app",
+    date: "2026-03-20",
+    excerpt:
+      "For regulated teams that can't send documents to the cloud, Panacea Desktop bundles the entire backend locally.",
+    body:
+      "Panacea Desktop wraps the same Flask backend used by the hosted product into an Electron app with a bundled, local Python runtime. Documents, chat history, and search indexes never leave the machine. This post walks through what changes (and what doesn't) when you switch from the hosted web app to the on-prem desktop build.",
+  },
+];
+
+export const CASE_STUDIES = [
+  {
+    company: "Mid-size SaaS company",
+    industry: "Developer tools",
+    headline: "Cut documentation support tickets by replacing search with cited Q&A",
+    summary:
+      "The support team adopted Panacea Web to let customers ask questions about product docs directly, with every answer citing the source page.",
+    results: [
+      "Reduced documentation-related support tickets",
+      "Faster onboarding for new customers",
+      "No engineering work required to maintain the doc index",
+    ],
+  },
+  {
+    company: "Fintech infrastructure team",
+    industry: "Financial services",
+    headline: "Standardized on one AI assistant across the CLI, VS Code, and web",
+    summary:
+      "Engineers used the CLI and VS Code extension for repo-aware coding help, while product managers used the web app for document research — all on one shared account.",
+    results: [
+      "One onboarding flow instead of three separate tools",
+      "Shared chat history between engineering and product",
+      "Faster repo-aware code review with diff-based edits",
+    ],
+  },
+  {
+    company: "Enterprise services consultancy",
+    industry: "Regulated enterprise",
+    headline: "Deployed Panacea Desktop on-prem for a client with strict data residency rules",
+    summary:
+      "The consultancy needed an AI assistant that could answer questions about sensitive client documents without sending any data to the cloud.",
+    results: [
+      "Documents and chat history stayed entirely on local infrastructure",
+      "Same feature set as the hosted product, with no workflow changes",
+      "Passed the client's internal security review",
+    ],
+  },
+];
+
+export const CAREERS = [
+  {
+    title: "Founding Engineer, Applied AI",
+    location: "Remote",
+    type: "Full-time",
+    description:
+      "Build the retrieval and agent infrastructure that powers Panacea across the CLI, VS Code extension, web, mobile, desktop, and SDK.",
+  },
+  {
+    title: "Product Designer",
+    location: "Remote",
+    type: "Full-time",
+    description:
+      "Shape the ChatGPT-style experience across every Panacea surface, from the web app to the Electron desktop client.",
+  },
+  {
+    title: "Developer Relations Engineer",
+    location: "Remote",
+    type: "Contract",
+    description:
+      "Write docs, sample apps, and guides for the Panacea SDK and API, and help developers ship with Panacea credits.",
+  },
+];
+
 export const FAQS = [
   {
     question: "What is Panacea?",

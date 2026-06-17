@@ -27,6 +27,8 @@ const FOOTER_COLUMNS = [
     heading: "Resources",
     links: [
       { href: "#faq", label: "FAQ" },
+      { href: "/blog", label: "Blog" },
+      { href: "/case-studies", label: "Case studies" },
       { href: "/register", label: "Create an account" },
       { href: "/login", label: "Sign in" },
     ],
@@ -34,6 +36,7 @@ const FOOTER_COLUMNS = [
   {
     heading: "Company",
     links: [
+      { href: "/careers", label: "Careers" },
       { href: "/contact", label: "Contact" },
       { href: "/privacy", label: "Privacy Policy" },
       { href: "mailto:nvidra@anote.ai", label: "nvidra@anote.ai" },
