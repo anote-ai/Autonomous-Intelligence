@@ -75,7 +75,7 @@ export default function ChatPage() {
     ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
   };
 
-  const newChat = () => nav("/");
+  const newChat = () => nav("/app");
 
   const logout = () => {
     setToken(null);
@@ -141,7 +141,7 @@ export default function ChatPage() {
                 });
               }
               if (parsed.type === "session_id" && !sessionId) {
-                nav(`/chat/${parsed.session_id}`, { replace: true });
+                nav(`/app/chat/${parsed.session_id}`, { replace: true });
                 loadSessions();
               }
             } catch {}
@@ -178,7 +178,7 @@ export default function ChatPage() {
     e.preventDefault();
     try {
       await axios.delete(`/api/chat/sessions/${id}`, { headers });
-      if (sessionId === id) nav("/");
+      if (sessionId === id) nav("/app");
       loadSessions();
     } catch {}
   };
@@ -207,7 +207,7 @@ export default function ChatPage() {
           {sessions.map((s) => (
             <div
               key={s.id}
-              onClick={() => nav(`/chat/${s.id}`)}
+              onClick={() => nav(`/app/chat/${s.id}`)}
               className={`group flex items-center justify-between px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors ${
                 s.id === sessionId
                   ? "bg-gray-200 dark:bg-[#2F2F2F]"
