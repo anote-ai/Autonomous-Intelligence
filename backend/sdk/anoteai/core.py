@@ -234,3 +234,30 @@ class PrivateChatbot:
             return response.json()
         else:
             return evaluate_private(message_id)
+
+
+class Anote(PrivateChatbot):
+    """Public SDK client authenticated with an Anote API key."""
+
+    def __init__(self, api_key=None, base_url=None, is_private=False, model_id=None):
+        resolved_api_key = api_key or os.environ.get("ANOTE_API_KEY")
+        if not resolved_api_key:
+            raise ValueError("api_key must be supplied or ANOTE_API_KEY must be set.")
+        super().__init__(resolved_api_key, is_private=is_private, model_id=model_id)
+        if base_url:
+            self.API_BASE_URL = base_url.rstrip("/")
+
+    def answer(self, document_id=None, question=None, chat_id=None, **kwargs):
+        target_chat_id = chat_id or document_id
+        return self.chat(target_chat_id, question, kwargs.get("finetuned_model_key"))
+
+    def classify(self, **kwargs):
+        return self.predict(
+            model_name=kwargs.get("model_name", "classification"),
+            model_id=kwargs.get("model_id"),
+            question_text=kwargs.get("question") or kwargs.get("document_id") or "",
+            context_text=kwargs.get("context_text"),
+            question_csv=kwargs.get("question_csv"),
+            document_files=kwargs.get("document_files"),
+            model_type=kwargs.get("model_type", ModelType.FTGPT),
+        )

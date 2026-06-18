@@ -12,7 +12,9 @@ DROP TABLE IF EXISTS chat_share_documents;
 DROP TABLE IF EXISTS chat_share_messages;
 DROP TABLE IF EXISTS chat_shares;
 DROP TABLE IF EXISTS chats;
+DROP TABLE IF EXISTS api_usage_log;
 DROP TABLE IF EXISTS apiKeys;
+DROP TABLE IF EXISTS user_credits;
 DROP TABLE IF EXISTS user_company_chatbots;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS freeTrialAllowlist;
@@ -206,10 +208,25 @@ CREATE TABLE prompt_answers (
 CREATE TABLE apiKeys (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_used TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_used TIMESTAMP NULL,
     user_id INTEGER NOT NULL,
-    api_key VARCHAR(255),
+    api_key VARCHAR(255), -- legacy plaintext key column; new keys store NULL here
+    key_hash VARCHAR(255),
+    key_prefix VARCHAR(32),
     key_name VARCHAR(255),
+    expires_at TIMESTAMP NULL,
+    is_active TINYINT NOT NULL DEFAULT 1,
+    rate_limit_per_minute INTEGER NOT NULL DEFAULT 60,
+    revoked_at TIMESTAMP NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE user_credits (
+    user_id INTEGER PRIMARY KEY,
+    balance INTEGER NOT NULL DEFAULT 0,
+    lifetime_purchased INTEGER NOT NULL DEFAULT 0,
+    lifetime_used INTEGER NOT NULL DEFAULT 0,
+    low_balance_alert_sent_at TIMESTAMP NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -246,6 +263,21 @@ CREATE TABLE IF NOT EXISTS api_usage (
     FOREIGN KEY (api_key_id) REFERENCES apiKeys(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS api_usage_log (
+    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    user_id INTEGER,
+    api_key_id INTEGER,
+    endpoint VARCHAR(255) NOT NULL,
+    model VARCHAR(128),
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    credits_charged DECIMAL(10, 2) NOT NULL DEFAULT 0,
+    request_duration_ms INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (api_key_id) REFERENCES apiKeys(id) ON DELETE SET NULL
+);
+
 
 
 CREATE UNIQUE INDEX idx_users_email ON users(email);
@@ -254,6 +286,8 @@ CREATE INDEX idx_chats_user_id ON chats(user_id);
 CREATE INDEX idx_messages_chat_id ON messages(chat_id);
 CREATE INDEX idx_messages_sent_from_user ON messages(sent_from_user);
 CREATE INDEX idx_api_keys_user_id ON apiKeys(user_id);
+CREATE INDEX idx_api_keys_prefix ON apiKeys(key_prefix);
+CREATE INDEX idx_api_usage_log_user_created ON api_usage_log(user_id, created_at);
 CREATE INDEX idx_documents_chat_id ON documents(chat_id);
 CREATE INDEX idx_chunks_document_id ON chunks(document_id);
 CREATE INDEX idx_prompt_answers_prompt_id ON prompt_answers(prompt_id);

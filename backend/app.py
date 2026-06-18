@@ -73,6 +73,7 @@ from database.db import (
 from database.db_pool import get_db_connection
 from database.db_auth import (
     api_key_access_invalid,
+    api_key_rate_limit_exceeded,
     extractUserEmailFromRequest,
     is_api_key_valid,
     user_id_for_email,
@@ -256,10 +257,12 @@ def valid_api_key_required(fn):
         if len(splits) > 1:
           api_key = auth_header.split(' ')[1]
           if is_api_key_valid(api_key):
+            if api_key_rate_limit_exceeded(api_key):
+              return jsonify({"error": "Rate limit exceeded"}), 429
             # Check if the user has credits before allowing API usage
             from database.db_auth import api_key_user_has_credits, touch_api_key_last_used
             if not api_key_user_has_credits(api_key, min_credits=1):
-              return jsonify({"error": "Insufficient credits. Please add credits to your account to use the API."}), 403
+              return jsonify({"error": "Insufficient credits. Please add credits to your account to use the API."}), 402
             # Record usage timestamp for this key (best-effort)
             touch_api_key_last_used(api_key)
             return fn(*args, **kwargs)
@@ -952,28 +955,19 @@ def _parse_message_request(req):
 
 @app.route('/process-message-pdf', methods=['POST'])
 def process_message_pdf():  # pragma: no cover
-    print("=== DEBUG: process_message_pdf called ===")
 
     message_text, chat_id, model_type, model_key, is_guest, media_attachments = _parse_message_request(request)
-
-    print(f"DEBUG: is_guest={is_guest}, model_type={model_type}, attachments={len(media_attachments)}")
-    print(f"DEBUG: message_text={message_text!r}")
 
     # Handle user authentication based on guest status
     user_email = None
     if not is_guest:
-        print("DEBUG: Not guest mode, extracting user email")
         try:
             user_email = extractUserEmailFromRequest(request)
-            print(f"DEBUG: Extracted user_email = {user_email}")
         except InvalidTokenError:
-            print("DEBUG: Invalid token error")
             return jsonify({"error": "Invalid JWT"}), 401
         except Exception as e:
-            print(f"DEBUG: Error extracting user email: {e}")
+            print(f"Authentication error in process_message_pdf: {type(e).__name__}")
             return jsonify({"error": "Authentication error"}), 401
-    else:
-        print("DEBUG: Guest mode, skipping user email extraction")
 
     # Check if agents are enabled
     if AgentConfig.is_agent_enabled():
@@ -1201,6 +1195,7 @@ def add_model_key():
 ## API Keys
 
 @app.route("/generateAPIKey", methods=["POST"])
+@app.route("/api/keys", methods=["POST"])
 @jwt_or_session_token_required
 def generateAPIKey():
     """
@@ -1227,12 +1222,19 @@ def generateAPIKey():
 
 
 @app.route("/deleteAPIKey", methods=["POST"])
+@app.route("/api/keys/<int:api_key_id>", methods=["DELETE"])
 @jwt_or_session_token_required
-def deleteAPIKey():
-  verifyAuthForIDs(ProtectedDatabaseTable.API_KEYS, request.json["api_key_id"])
-  return DeleteAPIKeyHandler(request)
+def deleteAPIKey(api_key_id=None):
+  if api_key_id is None:
+    api_key_id = request.json["api_key_id"]
+  verifyAuthForIDs(ProtectedDatabaseTable.API_KEYS, api_key_id)
+  try:
+    return DeleteAPIKeyHandler(request, api_key_id)
+  except TypeError:
+    return DeleteAPIKeyHandler(request)
 
 @app.route('/getAPIKeys', methods = ['GET'])
+@app.route('/api/keys', methods = ['GET'])
 @jwt_or_session_token_required
 def getAPIKeys():
     """
@@ -1258,6 +1260,107 @@ def getAPIKeys():
     except InvalidTokenError:
         return jsonify({"error": "Invalid JWT"}), 401
     return GetAPIKeysHandler(request, user_email)
+
+
+@app.route('/api/usage-dashboard', methods=['GET'])
+@jwt_or_session_token_required
+def apiUsageDashboard():
+    try:
+      user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+
+    from database.usage import get_usage_dashboard
+    user_id = user_id_for_email(user_email)
+    if user_id is None:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify(get_usage_dashboard(
+        user_id,
+        start_date=request.args.get("start_date"),
+        end_date=request.args.get("end_date"),
+    ))
+
+
+@app.route('/api/billing-summary', methods=['GET'])
+@jwt_or_session_token_required
+def apiBillingSummary():
+    try:
+      user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute("SELECT id, credits FROM users WHERE email = %s", [user_email])
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        cursor.execute(
+            """
+            SELECT created AS date, 'usage' AS type, -credits_used AS credits, endpoint AS description
+            FROM api_usage
+            WHERE user_id = %s
+            ORDER BY created DESC
+            LIMIT 100
+            """,
+            [user["id"]],
+        )
+        transactions = [dict(row) for row in (cursor.fetchall() or [])]
+        return jsonify({
+            "balance": user.get("credits", 0),
+            "lifetime_used": sum(abs(row.get("credits") or 0) for row in transactions),
+            "transactions": transactions,
+            "credit_packs": [
+                {"label": "$10", "credits": 1000, "amount_cents": 1000},
+                {"label": "$50", "credits": 6000, "amount_cents": 5000},
+                {"label": "$200", "credits": 30000, "amount_cents": 20000},
+            ],
+        })
+    finally:
+        conn.close()
+
+
+@app.route('/api/billing/checkout', methods=['POST'])
+@jwt_or_session_token_required
+def apiCreditCheckout():
+    try:
+      user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+
+    credit_packs = {
+        1000: 1000,
+        6000: 5000,
+        30000: 20000,
+    }
+    credits = int((request.get_json() or {}).get("credits", 0))
+    amount_cents = credit_packs.get(credits)
+    if not amount_cents:
+        return jsonify({"error": "Invalid credit pack"}), 400
+    user_id = user_id_for_email(user_email)
+    if user_id is None:
+        return jsonify({"error": "User not found"}), 404
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            mode="payment",
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "unit_amount": amount_cents,
+                        "product_data": {"name": f"{credits:,} Anote credits"},
+                    },
+                    "quantity": 1,
+                }
+            ],
+            success_url=f"{os.getenv('FRONTEND_URL', 'https://privatechatbot.ai').rstrip('/')}/api",
+            cancel_url=f"{os.getenv('FRONTEND_URL', 'https://privatechatbot.ai').rstrip('/')}/api",
+            metadata={"user_id": user_id, "credits": credits, "kind": "credit_pack"},
+        )
+        return jsonify({"url": checkout_session.url}), 200
+    except Exception as exc:
+        print(f"Error creating credit checkout session: {exc}")
+        return jsonify({"error": "Internal server error"}), 500
 
 
 #For the SDK
@@ -1300,7 +1403,7 @@ def upload():  # pragma: no cover
               type: integer
             id:
               type: integer
-      403:
+      402:
         description: Insufficient credits
     """
     print("Form data:", request.form)
@@ -1319,7 +1422,7 @@ def upload():  # pragma: no cover
     # Deduct credits before processing
     from database.db_auth import deduct_credits_from_api_key_user
     if not deduct_credits_from_api_key_user(api_key, credits_needed):
-        return jsonify({"error": f"Insufficient credits. You need {credits_needed} credits for this operation."}), 403
+        return jsonify({"error": f"Insufficient credits. You need {credits_needed} credits for this operation."}), 402
 
     #chat_type = int(request.form.getlist('task_type')[0])  # Convert to int
     #model_type = int(request.form.getlist('model_type')[0])
@@ -1428,7 +1531,7 @@ def public_ingest_pdf():  # pragma: no cover
               type: integer
             sources:
               type: array
-      403:
+      402:
         description: Insufficient credits
     """
     user_email = USER_EMAIL_API
@@ -1464,7 +1567,7 @@ def public_ingest_pdf():  # pragma: no cover
 
     # Deduct 1 credit for each chat message
     if not deduct_credits_from_api_key_user(api_key, 1):
-        return jsonify({"error": "Insufficient credits. You need 1 credit per chat message."}), 403
+        return jsonify({"error": "Insufficient credits. You need 1 credit per chat message."}), 402
 
     message = request.json['message']
     chat_id = request.json['chat_id']

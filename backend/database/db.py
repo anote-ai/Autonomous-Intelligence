@@ -1,6 +1,5 @@
 import json
 import os
-import secrets
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -666,90 +665,54 @@ def deduct_credits_from_user(user_email, credits_to_deduct=1):
         if cursor.rowcount == 0:
             return False
             
-        # Get new balance for logging
-        cursor.execute('SELECT credits FROM users WHERE email = %s', [user_email])
-        result = cursor.fetchone()
-        new_credits = result["credits"] if result else 0
-        
         conn.commit()
-        print(f"Deducted {credits_to_deduct} credits from user {user_email}. New balance: {new_credits}")
+        return True
+    finally:
+        conn.close()
+
+def add_purchased_credits(user_id, credits_to_add):
+    if credits_to_add <= 0:
+        return False
+
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute(
+            """
+            UPDATE users
+            SET credits = credits + %s, credits_updated = CURRENT_TIMESTAMP
+            WHERE id = %s
+            """,
+            [credits_to_add, user_id],
+        )
+        cursor.execute(
+            """
+            INSERT INTO user_credits (user_id, balance, lifetime_purchased)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                balance = balance + VALUES(balance),
+                lifetime_purchased = lifetime_purchased + VALUES(lifetime_purchased)
+            """,
+            [user_id, credits_to_add, credits_to_add],
+        )
+        conn.commit()
         return True
     finally:
         conn.close()
 
 def generate_api_key(email, key_name=None):
-    print(f"generate_api_key called with email: {email}, key_name: {key_name}")
-    conn, cursor = get_db_connection()
-    api_key = secrets.token_hex(16)
-    
-    print(f"Executing query: SELECT id from users WHERE email = '{email}'")
-    cursor.execute('SELECT id from users WHERE email = %s', [email])
-    userId = cursor.fetchone()
-    print(f"Query result: {userId}")
-    
-    if userId is None:
-        conn.close()
-        raise ValueError(f"User with email {email} not found")
-    
-    userIdStr = userId["id"]
-    time = datetime.now()
-    
-    # Use provided name or default to None
-    if key_name is None:
-        key_name = "Untitled Key"
-    
-    print(f"Inserting API key with user_id: {userIdStr}, key_name: {key_name}")
-    # Insert the generated API key into the apiKeys table
-    cursor.execute('INSERT INTO apiKeys (user_id, api_key, created, key_name) VALUES (%s, %s, %s, %s)', (userIdStr, api_key, time, key_name))
-    cursor.execute('SELECT LAST_INSERT_ID()')
-    keyId = cursor.fetchone()["LAST_INSERT_ID()"]
-    conn.commit()
-    conn.close()
-    
-    result = {
-        "id": keyId,
-        "key": api_key,
-        "created": time,
-        "last_used": None,
-        "name": key_name
-    }
-    print(f"Returning result: {result}")
-    return result
+    from database.api_keys import create_api_key
+
+    return create_api_key(email, name=key_name)
 
 def delete_api_key(api_key_id):
-    conn, cursor = get_db_connection()
+    from database.api_keys import revoke_api_key
 
-    # Delete the API key from the apiKeys table based on the provided API key ID
-    cursor.execute('DELETE FROM apiKeys WHERE id = %s', (api_key_id,))
-
-    conn.commit()
-    conn.close()
+    revoke_api_key(api_key_id)
 
 def get_api_keys(email):
-    conn, cursor = get_db_connection()
+    from database.api_keys import list_api_keys
 
-    # Get the user ID based on the provided email
-    cursor.execute('SELECT id FROM users WHERE email = %s', (email,))
-    userId = cursor.fetchone()
-    userIdStr = userId["id"]
-
-    # Get the API keys associated with the user ID from the apiKeys table
-    cursor.execute('SELECT id, api_key, created, last_used, key_name FROM apiKeys WHERE user_id = %s', (userIdStr,))
-    keysDb = cursor.fetchall()
-    keys = []
-    for keyDb in keysDb:
-        keys.append({
-            "id": keyDb["id"],
-            "key": keyDb["api_key"],
-            "created": keyDb["created"],
-            "last_used": keyDb["last_used"],
-            "name": keyDb["key_name"] or "Untitled Key"
-        })
-    conn.close()
-
-    return {
-        "keys": keys
-    }
+    return list_api_keys(email)
 
 
 def add_chat(user_email, chat_type, model_type):
