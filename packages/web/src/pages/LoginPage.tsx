@@ -20,7 +20,7 @@ export default function LoginPage() {
     try {
       const res = await axios.post("/auth/login", { email, password });
       setToken(res.data.access_token);
-      nav("/");
+      nav("/app");
     } catch (err: any) {
       setError(err.response?.data?.error || "Login failed");
     } finally {

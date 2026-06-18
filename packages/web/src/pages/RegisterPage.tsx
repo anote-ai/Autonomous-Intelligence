@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import axios from "axios";
 import { useAuth, useTheme } from "../App";
 import RocketLogo from "../components/RocketLogo";
@@ -8,7 +8,8 @@ export default function RegisterPage() {
   const { setToken } = useAuth();
   const { dark, toggle } = useTheme();
   const nav = useNavigate();
-  const [email, setEmail] = useState("");
+  const [searchParams] = useSearchParams();
+  const [email, setEmail] = useState(() => searchParams.get("email") || "");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -21,7 +22,7 @@ export default function RegisterPage() {
     try {
       const res = await axios.post("/auth/register", { email, password, name });
       setToken(res.data.access_token);
-      nav("/");
+      nav("/app");
     } catch (err: any) {
       setError(err.response?.data?.error || "Registration failed");
     } finally {
