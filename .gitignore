@@ -1,3 +1,11 @@
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+terraform/.terraform.lock.hcl
+terraform/crash.log
+
 # Node
 node_modules/
 dist/
@@ -45,3 +53,4 @@ Thumbs.db
 *.key
 .env.local
 .env.production
+.claude/worktrees/

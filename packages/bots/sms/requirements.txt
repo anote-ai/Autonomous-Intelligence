@@ -1,0 +1,4 @@
+anthropic>=0.40.0
+twilio>=9.0.0
+flask>=2.3.0
+python-dotenv>=1.0.0

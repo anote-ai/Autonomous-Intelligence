@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1 },
   headerBtn: { padding: 8 },
   headerTitle: { fontSize: 15, fontWeight: "600", flex: 1, textAlign: "center" },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 10 },
+  overlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 10 },
   sidebar: { position: "absolute", left: 0, top: 0, bottom: 0, width: 260, zIndex: 20, paddingTop: 56 },
   sidebarHeader: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingBottom: 12 },
   sidebarTitle: { fontSize: 16, fontWeight: "600" },
