@@ -21,12 +21,12 @@ export interface Message {
 
 export async function login(email: string, password: string) {
   const res = await api.post("/auth/login", { email, password });
-  return res.data.access_token as string;
+  return res.data.token as string;
 }
 
 export async function register(email: string, password: string, name: string) {
   const res = await api.post("/auth/register", { email, password, name });
-  return res.data.access_token as string;
+  return res.data.token as string;
 }
 
 export async function getSessions(): Promise<Session[]> {

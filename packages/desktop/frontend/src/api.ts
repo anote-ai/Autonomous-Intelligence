@@ -23,13 +23,13 @@ async function client() {
 export async function login(email: string, password: string) {
   const c = await client();
   const res = await c.post("/auth/login", { email, password });
-  return res.data.access_token as string;
+  return res.data.token as string;
 }
 
 export async function register(email: string, password: string, name: string) {
   const c = await client();
   const res = await c.post("/auth/register", { email, password, name });
-  return res.data.access_token as string;
+  return res.data.token as string;
 }
 
 export async function getSessions() {
