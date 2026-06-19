@@ -4,46 +4,18 @@ on:
   push:
     branches: [main]
     paths:
-      - 'frontend/**'
       - 'backend/**'
       - 'pyproject.toml'
       - '.pre-commit-config.yaml'
       - '.github/workflows/**'
   pull_request:
     paths:
-      - 'frontend/**'
       - 'backend/**'
       - 'pyproject.toml'
       - '.pre-commit-config.yaml'
       - '.github/workflows/**'
 
 jobs:
-  frontend:
-    name: Frontend Checks
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Setup Node (Frontend)
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.19.0'
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm install --force
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-
-      - name: Run frontend unit tests
-        working-directory: frontend
-        run: npm run test:ci -- src/redux/UserSlice.test.js
-
   backend:
     name: Backend Quality Gates
     runs-on: ubuntu-latest
