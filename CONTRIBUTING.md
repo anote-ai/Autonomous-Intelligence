@@ -1,9 +1,9 @@
-# Contributing to Autonomous Intelligence
+# Contributing to Panacea
 
 First off, thank you for taking the time to contribute! The following is a set of guidelines for contributing to the open source ecosystem and supporting libraries hosted here. This is meant to help the review process go smoothly, save the reviewer(s) time in catching common issues, and avoid submitting PRs that will be rejected.
 
 ### How to Contribute?
-If you want to contribute, start working through the Autonomous Intelligence codebase and documentation.
+If you want to contribute, start working through the Panacea codebase and documentation.
 
 ### Pull-Request Checklist
 The following is a list of tasks to be completed before submitting a pull request for final review.
@@ -42,7 +42,7 @@ The following is a list of tasks to be completed before submitting a pull reques
 - If applicable, add a testing section to the PR description that recommends steps a reviewer can take to verify the changes, e.g. a snippet of code they can run locally.
 
 #### License
-Autonomous Intelligence open source projects are licensed under the Apache 2.0 license.
+Panacea open source projects are licensed under the Apache 2.0 license.
 
 #### Conventions
 For pull requests, our convention is to squash and merge. For PR titles, we use conventional commit messages. The format should look like
@@ -81,7 +81,7 @@ Below are some terms that can be helpful when submitting a pull request:
 **docs** – updates to documentation such as a the README or other markdown files
 
 #### Enforcement
-Please report unacceptable behavior to nvidra@Autonomous Intelligence.ai. All complaints will be reviewed and investigated and will result in a response that is deemed necessary and appropriate to the circumstances. The project team is obligated to maintain confidentiality with regard to the reporter of an incident. Further details of specific enforcement policies may be posted separately. Project maintainers who do not follow or enforce the Code of Conduct in good faith may face temporary or permanent repercussions as determined by other members of the project's leadership.
+Please report unacceptable behavior to nvidra@anote.ai. All complaints will be reviewed and investigated and will result in a response that is deemed necessary and appropriate to the circumstances. The project team is obligated to maintain confidentiality with regard to the reporter of an incident. Further details of specific enforcement policies may be posted separately. Project maintainers who do not follow or enforce the Code of Conduct in good faith may face temporary or permanent repercussions as determined by other members of the project's leadership.
 
 Warm Regards,
-The Autonomous Intelligence Team
+The Panacea Team

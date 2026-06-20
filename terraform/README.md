@@ -1,4 +1,4 @@
-# Terraform — AWS deployment for Autonomous-Intelligence
+# Terraform — AWS deployment for Panacea
 
 Provisions: ECR repo, ECS Fargate cluster/service for the backend behind an ALB,
 RDS MySQL, and an S3 + CloudFront distribution for the web frontend.

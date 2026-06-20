@@ -1,15 +1,16 @@
-# Autonomous Intelligence (Panacea) — Codebase Setup
+# Panacea — Codebase Setup
 
-## What is Autonomous Intelligence?
+## What is Panacea?
 
-Autonomous Intelligence, also known as **Panacea**, is a multi-agent orchestration framework hosted at [chat.anote.ai](https://chat.anote.ai). It coordinates multiple AI agents to autonomously complete complex, multi-step tasks.
+Panacea (formerly known as Autonomous Intelligence) is a multi-agent orchestration framework hosted at [chat.anote.ai](https://chat.anote.ai). It coordinates multiple AI agents to autonomously complete complex, multi-step tasks.
 
 ## Architecture
 
 | Layer | Technology | Location |
 |-------|-----------|----------|
 | Frontend | React (Create React App) | `frontend/` |
-| Backend | Python 3.11, FastAPI | `backend/` |
+| Backend | Python 3.11, Flask | `backend/` |
+| Database | MySQL | — |
 | Container orchestration | Docker Compose | `docker-compose.yml` |
 
 ## Prerequisites
@@ -22,20 +23,20 @@ Autonomous Intelligence, also known as **Panacea**, is a multi-agent orchestrati
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/anote-ai/Autonomous-Intelligence.git
-cd Autonomous-Intelligence
+git clone https://github.com/anote-ai/panacea.git
+cd panacea
 
 # 2. Create your local env file and fill in values
-cp .env.example .env
+cp backend/.env.example backend/.env
 
 # 3. Start all services
-docker-compose up --build
+docker compose up --build
 
 # 4. Open the app
 open http://localhost:3000
 ```
 
-The backend API will be available at `http://localhost:8000`.
+The backend API will be available at `http://localhost:5000`.
 
 ## Manual Setup (without Docker)
 
@@ -44,7 +45,7 @@ The backend API will be available at `http://localhost:8000`.
 ```bash
 cd backend
 pip install -e ".[dev]"
-uvicorn app:app --reload --port 8000
+python app.py
 ```
 
 Dependencies are declared in `pyproject.toml` at the repo root. The `[dev]` extra includes linters and test tools.
@@ -65,8 +66,9 @@ Copy `.env.example` to `.env` and set the following:
 |----------|-------------|
 | `OPENAI_API_KEY` | OpenAI API key for agent LLM calls |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude-based agents |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `SECRET_KEY` | Random secret used for JWT signing |
+| `DB_NAME`, `DB_HOST`, `DB_USER`, `DB_PASSWORD` | MySQL connection settings |
+| `FLASK_SECRET_KEY`, `JWT_SECRET_KEY` | Random secrets used for session/JWT signing |
+| `STRIPE_SECRET_KEY`, `STRIPE_PUBLIC_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe billing integration |
 | `REACT_APP_BACK_END_HOST` | Backend URL consumed by the React app |
 
 ## Dependency Management

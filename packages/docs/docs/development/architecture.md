@@ -3,7 +3,7 @@
 ## Monorepo Structure
 
 ```
-Autonomous-Intelligence/
+panacea/
 ├── packages/
 │   ├── backend/    # Python Flask — unified API + agent streaming + RAG
 │   ├── cli/        # TypeScript — anote terminal CLI

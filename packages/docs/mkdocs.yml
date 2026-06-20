@@ -3,8 +3,8 @@ site_url: https://docs.anote.ai
 site_description: Unified AI coding assistant and chatbot platform
 site_author: Anote AI
 
-repo_name: anote-ai/autonomous-intelligence
-repo_url: https://github.com/anote-ai/Autonomous-Intelligence
+repo_name: anote-ai/panacea
+repo_url: https://github.com/anote-ai/panacea
 
 theme:
   name: material

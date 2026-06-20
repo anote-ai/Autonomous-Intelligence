@@ -1,6 +1,6 @@
-# Autonomous Intelligence
+# Panacea
 
-Autonomous Intelligence is an open-source research project by [Anote](https://anote.ai/) that enables collaborative multi-agent AI systems. The framework provides the infrastructure to create, deploy, and coordinate specialized AI agents that can operate both independently and together in dynamic environments. Agents communicate through defined pathways while an orchestrator manages task distribution, ensuring efficient execution and seamless collaboration. This architecture allows the system to adapt to changing conditions, automatically selecting the best agents, tools, and workflows to tackle complex problems. To learn more, see the video demo below:
+Panacea (formerly Autonomous Intelligence) is an open-source research project by [Anote](https://anote.ai/) that enables collaborative multi-agent AI systems. The framework provides the infrastructure to create, deploy, and coordinate specialized AI agents that can operate both independently and together in dynamic environments. Agents communicate through defined pathways while an orchestrator manages task distribution, ensuring efficient execution and seamless collaboration. This architecture allows the system to adapt to changing conditions, automatically selecting the best agents, tools, and workflows to tackle complex problems. To learn more, see the video demo below:
 
 [![Watch the video](https://img.youtube.com/vi/Nf-pc4xyTBI/0.jpg)](https://www.youtube.com/watch?v=Nf-pc4xyTBI)
 
@@ -37,9 +37,20 @@ Within the [Agent Registry](https://anote.ai/community/agents), we have added ma
 5. **Automation**: Emails are automatically sent to the generated list of leads. The system tracks progress, showing the number of emails sent and responses received daily.
 6. **Feedback Loop**: User feedback is incorporated to improve the lead generation process, refine email drafts, or adjust selection criteria for future tasks.
 
-![alt text](https://github.com/nv78/Autonomous-Intelligence/blob/main/materials/assets/ExampleNew.png?raw=true)
+![alt text](https://github.com/anote-ai/panacea/blob/main/materials/assets/ExampleNew.png?raw=true)
 
 For a full example of this working end to end for this use case, please see [Anote's Upreach Product](https://anote.ai/upreach).
+
+### Architecture
+
+Panacea is built as a Flask backend paired with a React frontend:
+
+| Layer | Technology | Location |
+|-------|-----------|----------|
+| Frontend | React (Create React App) | `frontend/` |
+| Backend | Python 3.11, Flask | `backend/` |
+| Database | MySQL | — |
+| Container orchestration | Docker Compose | `docker-compose.yml` |
 
 ### Set Up
 
@@ -50,10 +61,10 @@ cp backend/.env.example backend/.env
 docker compose up --build
 ```
 
-That starts the frontend, backend, MySQL, Redis, and Tika together.
+That starts the frontend (`localhost:3000`), backend (`localhost:5000`), and MySQL together.
 
 If Docker is installed but not running, start Docker Desktop first or `docker compose up` will fail before the app boots.
 
-For native local development and testing instructions, see [`CODEBASE_SETUP.md`](/Users/natanvidra/Workspace/Autonomous-Intelligence/CODEBASE_SETUP.md).
+For native local development and testing instructions, see [`CODEBASE_SETUP.md`](./CODEBASE_SETUP.md).
 
 For any questions or issues, please [join our slack community](https://join.slack.com/t/anote-ai/shared_invite/zt-2vdh1p5xt-KWvtBZEprhrCzU6wrRPwNA) or [contact us](mailto:nvidra@anote.ai).
