@@ -10,6 +10,7 @@ from flask_jwt_extended import JWTManager
 from api_endpoints.auth.handler import auth_bp
 from api_endpoints.chat.handler import chat_bp
 from api_endpoints.documents.handler import documents_bp
+from api_endpoints.opportunities.handler import opportunities_bp
 from api_endpoints.payments.handler import payments_bp
 from api_endpoints.search.handler import search_bp
 from api_endpoints.user.handler import user_bp
@@ -45,6 +46,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(documents_bp)
+    app.register_blueprint(opportunities_bp)
     app.register_blueprint(search_bp)
     app.register_blueprint(user_bp)
     app.register_blueprint(payments_bp)
