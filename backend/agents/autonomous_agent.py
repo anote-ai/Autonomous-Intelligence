@@ -16,6 +16,17 @@ to create a new tool at runtime. The tool is validated (AST-based safety check),
 compiled, and added to the session registry. On the next iteration it appears as a
 first-class tool that the LLM can call with a proper schema.
 
+Runtime sandbox (agents/sandbox.py)
+------------------------------------
+AST validation alone only catches statically-detectable misuse; it cannot stop a
+generated tool from looping forever or calling out to an arbitrary host. Every
+dynamic tool invocation therefore runs through `agents.sandbox.run_with_limits`,
+which enforces a wall-clock execution timeout and per-session call/concurrency
+quotas, and network access from dynamic tools goes through
+`agents.sandbox.RestrictedRequests`, which enforces a host allowlist policy
+(dev vs production enforcement modes via `SANDBOX_ENFORCEMENT_MODE`). Violations
+raise `SandboxViolation` and are recorded for audit via `record_violation`.
+
 Built-in tools: retrieve_documents, retrieve_documents_multi, list_documents,
                get_chat_history, run_python, search_web, fetch_url, create_note,
                think, send_email, create_calendar_invite, extract_structured_data,
@@ -50,6 +61,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Generator, Optional
 
 from agents.config import AgentConfig
+from agents.sandbox import RestrictedRequests, SandboxViolation, run_with_limits
 from api_endpoints.financeGPT.chatbot_endpoints import (
     add_message_to_db,
     add_sources_to_db,
@@ -1064,11 +1076,13 @@ def _execute_tool(
         elif name == "call_webhook":
             return _tool_call_webhook(inputs), docs, charts
         elif name == "register_tool":
-            return _tool_register_tool(inputs, session_registry), docs, charts
+            return _tool_register_tool(inputs, session_registry, str(chat_id)), docs, charts
         elif name in session_registry["executors"]:
-            return _tool_run_dynamic(name, inputs, session_registry), docs, charts
+            return _tool_run_dynamic(name, inputs, session_registry, str(chat_id)), docs, charts
         else:
             return f"Unknown tool: '{name}'. If you need this capability, use register_tool to create it.", docs, charts
+    except SandboxViolation as exc:
+        return f"Tool blocked by sandbox ({name}): [{exc.reason}] {exc}", docs, charts
     except Exception as exc:
         return f"Tool error ({name}): {exc}\n{traceback.format_exc()[:400]}", docs, charts
 
@@ -1356,7 +1370,7 @@ def _validate_tool_code(code: str) -> Optional[str]:
     return None  # passed
 
 
-def _tool_register_tool(inputs: dict, session_registry: dict) -> str:
+def _tool_register_tool(inputs: dict, session_registry: dict, session_id: str = "") -> str:
     """Validate, compile, and register a new dynamic tool for this session."""
     name = inputs.get("name", "").strip()
     description = inputs.get("description", "").strip()
@@ -1386,10 +1400,10 @@ def _tool_register_tool(inputs: dict, session_registry: dict) -> str:
     import itertools
     import urllib.parse
 
-    try:
-        import requests as _requests
-    except ImportError:
-        _requests = None  # type: ignore[assignment]
+    # Network access for dynamic tools is routed through RestrictedRequests, which
+    # enforces the sandbox's egress allowlist/policy on every call (see
+    # agents/sandbox.py). This replaces direct exposure of the `requests` module.
+    _requests = RestrictedRequests(session_id)
     try:
         import numpy as _np
     except ImportError:
@@ -1460,14 +1474,27 @@ def _tool_register_tool(inputs: dict, session_registry: dict) -> str:
     )
 
 
-def _tool_run_dynamic(name: str, inputs: dict, session_registry: dict) -> str:
-    """Execute a dynamically registered tool."""
+def _tool_run_dynamic(
+    name: str, inputs: dict, session_registry: dict, session_id: str = ""
+) -> str:
+    """Execute a dynamically registered tool under sandbox runtime limits.
+
+    Enforces a hard execution timeout and per-session call/concurrency quotas
+    (see agents/sandbox.py). A tool that loops indefinitely is abandoned at the
+    timeout boundary and reported as a sandbox violation rather than hanging the
+    request; a session that has exhausted its quota is rejected before the tool
+    code ever runs.
+    """
     executor = session_registry["executors"].get(name)
     if not executor:
         return f"Dynamic tool '{name}' not found in session registry."
     try:
-        result = executor(inputs)
+        result = run_with_limits(
+            lambda: executor(inputs), tool_name=name, session_id=session_id
+        )
         return str(result) if result is not None else "(no output)"
+    except SandboxViolation as exc:
+        return f"Dynamic tool '{name}' blocked by sandbox: [{exc.reason}] {exc}"
     except Exception as exc:
         return f"Dynamic tool '{name}' error: {exc}\n{traceback.format_exc()[:300]}"
 
