@@ -6,6 +6,8 @@ DROP TABLE IF EXISTS prompts;
 DROP TABLE IF EXISTS chunks;
 DROP TABLE IF EXISTS documents;
 DROP TABLE IF EXISTS qa_feedback;
+DROP TABLE IF EXISTS agent_run_events;
+DROP TABLE IF EXISTS agent_runs;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS chat_share_chunks;
 DROP TABLE IF EXISTS chat_share_documents;
@@ -153,6 +155,37 @@ CREATE TABLE qa_feedback (
     FOREIGN KEY (chat_id) REFERENCES chats(id)
 );
 
+-- Operator console (issue #140): persisted autonomous "runs" so a human
+-- operator can monitor and control agent execution without DB access, plus
+-- an audit trail of intervention events (pause/resume/cancel/retry/message).
+CREATE TABLE agent_runs (
+    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id INTEGER NOT NULL,
+    chat_id INTEGER DEFAULT(NULL),
+    project_name VARCHAR(255) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'queued',
+    current_step TEXT,
+    blocker TEXT,
+    cost_usd DECIMAL(10, 4) NOT NULL DEFAULT 0,
+    started_at TIMESTAMP DEFAULT(NULL),
+    finished_at TIMESTAMP DEFAULT(NULL),
+    summary TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (chat_id) REFERENCES chats(id)
+);
+
+CREATE TABLE agent_run_events (
+    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    run_id INTEGER NOT NULL,
+    event_type VARCHAR(32) NOT NULL,
+    actor VARCHAR(255),
+    message TEXT,
+    FOREIGN KEY (run_id) REFERENCES agent_runs(id)
+);
+
 -- Stores media files attached to user messages (images, audio clips, video clips)
 CREATE TABLE message_attachments (
     id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -263,3 +296,6 @@ CREATE INDEX idx_api_usage_user_id  ON api_usage(user_id);
 CREATE INDEX idx_api_usage_key_id   ON api_usage(api_key_id);
 CREATE INDEX idx_api_usage_created  ON api_usage(created);
 CREATE INDEX idx_qa_feedback_chat_id ON qa_feedback(chat_id);
+CREATE INDEX idx_agent_runs_user_id ON agent_runs(user_id);
+CREATE INDEX idx_agent_runs_status ON agent_runs(status);
+CREATE INDEX idx_agent_run_events_run_id ON agent_run_events(run_id);

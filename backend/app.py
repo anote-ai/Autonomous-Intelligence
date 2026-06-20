@@ -21,6 +21,13 @@ from api_endpoints.chat.handler import (
     UpdateChatNameHandler,
 )
 from api_endpoints.delete_api_key.handler import DeleteAPIKeyHandler
+from api_endpoints.agent_runs.handler import (
+    CreateRunHandler,
+    GetRunEventsHandler,
+    GetRunHandler,
+    InterventionHandler,
+    ListRunsHandler,
+)
 from api_endpoints.documents.handler import (
     ChangeChatModeHandler,
     DeleteDocHandler,
@@ -885,6 +892,61 @@ def reset_chat():
     # If the JWT is invalid, return an error
         return jsonify({"error": "Invalid JWT"}), 401
     return ResetChatHandler(request, user_email)
+
+
+# ---------------------------------------------------------------------------
+# Operator console — runs + interventions (issue #140, slice 1)
+# ---------------------------------------------------------------------------
+# Persisted backbone for the operator console epic: lets a human operator
+# list/queue runs, inspect a single run's live status, review its audit
+# trail, and issue pause/resume/cancel/retry/message-the-agent controls
+# without direct database access. The dashboard UI that consumes these
+# endpoints is tracked separately as a follow-up.
+
+@app.route('/api/agent-runs', methods=['POST'])
+def create_agent_run():
+    try:
+        user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+    return CreateRunHandler(request, user_email)
+
+
+@app.route('/api/agent-runs', methods=['GET'])
+def list_agent_runs():
+    try:
+        user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+    return ListRunsHandler(request, user_email)
+
+
+@app.route('/api/agent-runs/<int:run_id>', methods=['GET'])
+def get_agent_run(run_id):
+    try:
+        user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+    return GetRunHandler(request, user_email, run_id)
+
+
+@app.route('/api/agent-runs/<int:run_id>/events', methods=['GET'])
+def get_agent_run_events(run_id):
+    try:
+        user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+    return GetRunEventsHandler(request, user_email, run_id)
+
+
+@app.route('/api/agent-runs/<int:run_id>/intervene', methods=['POST'])
+def intervene_on_agent_run(run_id):
+    try:
+        user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+    return InterventionHandler(request, user_email, run_id)
+
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, o):
