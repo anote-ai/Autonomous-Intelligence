@@ -15,6 +15,13 @@ from api_endpoints.financeGPT.chatbot_endpoints import (
 )
 from .config import AgentConfig
 from .routing import route_boolean
+from .registry import (
+    AgentCompatibilityError,
+    AgentDescriptor,
+    AgentNotFoundError,
+    AgentRegistry,
+    resolve_agent_for_run,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +43,8 @@ class AgentState(TypedDict):
     next_agent: str
     completed_agents: List[str]
     stream_callback: Any
+    registry_agent_id: Optional[str]
+    registry_agent_version_used: Optional[str]
 
 
 class MultiAgentCallbackHandler(BaseCallbackHandler):
@@ -135,6 +144,114 @@ class BaseSpecializedAgent:
     def process(self, state: AgentState) -> Dict[str, Any]:
         """Override this method in specialized agents"""
         raise NotImplementedError("Each agent must implement the process method")
+
+
+class RegistryAgentNode(BaseSpecializedAgent):
+    """Workflow node that runs a registry agent, resolved by (agent_id, version).
+
+    This is the runtime-integration piece described in issue #136: a
+    workflow/crew can reference a registry agent by stable ID/version,
+    resolution + compatibility validation happens before the run executes,
+    and the exact resolved version is recorded for later inspection
+    (state['registry_agent_version_used']).
+    """
+
+    def __init__(
+        self,
+        registry: AgentRegistry,
+        agent_id: str,
+        version: Optional[str] = None,
+        model_type: int = 0,
+        model_key: Optional[str] = None,
+        available_tools: Optional[List[str]] = None,
+        available_providers: Optional[List[str]] = None,
+        granted_permissions: Optional[List[str]] = None,
+    ):
+        self.registry = registry
+        self.agent_id = agent_id
+        self.requested_version = version
+        self.available_tools = available_tools
+        self.available_providers = available_providers
+        self.granted_permissions = granted_permissions
+        # Resolution + compatibility validation happens at construction time
+        # so failures surface before the workflow starts running, per the
+        # issue's acceptance criterion.
+        resolved = resolve_agent_for_run(
+            registry,
+            agent_id,
+            version,
+            available_tools=available_tools,
+            available_providers=available_providers,
+            granted_permissions=granted_permissions,
+        )
+        self.descriptor: AgentDescriptor = resolved.descriptor
+        self.compatibility = resolved.compatibility
+        super().__init__(self.descriptor.name, model_type, model_key)
+
+    def process(self, state: AgentState) -> Dict[str, Any]:
+        """Run the resolved registry agent against the current task and
+        record which exact version executed."""
+        callback_handler = MultiAgentCallbackHandler(state["stream_callback"], self.name)
+
+        query = state["query"]
+        warnings = [issue.message for issue in self.compatibility.issues]
+
+        try:
+            prompt = (
+                f"You are the registry agent '{self.descriptor.name}' "
+                f"(id={self.descriptor.agent_id}, version={self.descriptor.version}).\n"
+                f"Description: {self.descriptor.description}\n\n"
+                f"Task: {query}\n\n"
+                "Respond with your best output for this task."
+            )
+            response = self.llm.invoke(
+                [
+                    SystemMessage(content=f"You are the specialized agent '{self.descriptor.name}'."),
+                    HumanMessage(content=prompt),
+                ],
+                config={"callbacks": [callback_handler]},
+            )
+            output = response.content
+
+            reasoning_step = {
+                "id": f"step-{int(time.time() * 1000)}",
+                "type": "registry_agent_completion",
+                "agent_name": self.name,
+                "agent_id": self.descriptor.agent_id,
+                "agent_version": self.descriptor.version,
+                "message": f"Registry agent '{self.descriptor.agent_id}'@{self.descriptor.version} completed",
+                "warnings": warnings,
+                "timestamp": int(time.time() * 1000),
+            }
+
+            return {
+                "final_answer": output,
+                "confidence_score": 0.8,
+                "reasoning_steps": state["reasoning_steps"] + [reasoning_step],
+                "completed_agents": state["completed_agents"] + [self.name],
+                "registry_agent_id": self.descriptor.agent_id,
+                "registry_agent_version_used": self.descriptor.version,
+                "next_agent": "OrchestratorAgent",
+            }
+        except Exception as e:
+            error_step = {
+                "id": f"step-{int(time.time() * 1000)}",
+                "type": "registry_agent_error",
+                "agent_name": self.name,
+                "agent_id": self.descriptor.agent_id,
+                "agent_version": self.descriptor.version,
+                "message": f"Registry agent '{self.descriptor.agent_id}' encountered an error",
+                "error": str(e),
+                "timestamp": int(time.time() * 1000),
+            }
+            return {
+                "confidence_score": 0.1,
+                "reasoning_steps": state["reasoning_steps"] + [error_step],
+                "completed_agents": state["completed_agents"] + [self.name],
+                "registry_agent_id": self.descriptor.agent_id,
+                "registry_agent_version_used": self.descriptor.version,
+                "next_agent": "OrchestratorAgent",
+            }
 
 
 class DocumentRetrievalAgent(BaseSpecializedAgent):
@@ -707,34 +824,76 @@ class OrchestratorAgent(BaseSpecializedAgent):
 class MultiAgentDocumentSystem:
     """Main multi-agent system using LangGraph"""
     
-    def __init__(self, model_type: int = 0, model_key: Optional[str] = None):
+    def __init__(
+        self,
+        model_type: int = 0,
+        model_key: Optional[str] = None,
+        registry: Optional[AgentRegistry] = None,
+        registry_agent_id: Optional[str] = None,
+        registry_agent_version: Optional[str] = None,
+        registry_available_tools: Optional[List[str]] = None,
+        registry_available_providers: Optional[List[str]] = None,
+        registry_granted_permissions: Optional[List[str]] = None,
+    ):
         self.model_type = model_type
         self.model_key = model_key
-        
+
         #initialize agents
         self.agents = {"DocumentListAgent": DocumentListAgent(model_type, model_key), "ChatHistoryAgent": ChatHistoryAgent(model_type, model_key),
             "DocumentRetrievalAgent": DocumentRetrievalAgent(model_type, model_key),
             "GeneralKnowledgeAgent": GeneralKnowledgeAgent(model_type, model_key),
             "OrchestratorAgent": OrchestratorAgent(model_type, model_key)
         }
-        
+
+        # Optional registry agent participation: when an agent_id is supplied,
+        # resolve + validate it against the registry up front (raises
+        # AgentNotFoundError / AgentCompatibilityError before the workflow
+        # ever runs) and splice it into the graph as an entry node ahead of
+        # DocumentListAgent. This is the "workflow references a registry
+        # agent and executes it at runtime" path from issue #136.
+        self.registry_agent_node: Optional[RegistryAgentNode] = None
+        if registry is not None and registry_agent_id is not None:
+            self.registry_agent_node = RegistryAgentNode(
+                registry,
+                registry_agent_id,
+                registry_agent_version,
+                model_type,
+                model_key,
+                available_tools=registry_available_tools,
+                available_providers=registry_available_providers,
+                granted_permissions=registry_granted_permissions,
+            )
+            self.agents["RegistryAgent"] = self.registry_agent_node
+
         # Build the workflow graph
         self.workflow = self._build_workflow()
-    
+
     def _build_workflow(self) -> StateGraph:
         """Build the LangGraph workflow"""
         workflow = StateGraph(AgentState)
-        
+
         # Add agent nodes
         workflow.add_node("DocumentListAgent", self._run_document_list_agent)
         workflow.add_node("ChatHistoryAgent", self._run_chat_history_agent)
         workflow.add_node("DocumentRetrievalAgent", self._run_document_retrieval_agent)
         workflow.add_node("GeneralKnowledgeAgent", self._run_general_knowledge_agent)
         workflow.add_node("OrchestratorAgent", self._run_orchestrator_agent)
-        
-        # Define workflow edges - start with document list to check for document-specific queries
-        workflow.set_entry_point("DocumentListAgent")
-        
+
+        if self.registry_agent_node is not None:
+            workflow.add_node("RegistryAgent", self._run_registry_agent)
+            workflow.set_entry_point("RegistryAgent")
+            workflow.add_conditional_edges(
+                "RegistryAgent",
+                self._route_next_agent,
+                {
+                    "OrchestratorAgent": "OrchestratorAgent",
+                    "END": END,
+                },
+            )
+        else:
+            # Define workflow edges - start with document list to check for document-specific queries
+            workflow.set_entry_point("DocumentListAgent")
+
         # Add conditional edges based on next_agent field
         workflow.add_conditional_edges(
             "DocumentListAgent",
@@ -811,6 +970,10 @@ class MultiAgentDocumentSystem:
     def _run_orchestrator_agent(self, state: AgentState) -> AgentState:
         result = self.agents["OrchestratorAgent"].process(state)
         return {**state, **result}
+
+    def _run_registry_agent(self, state: AgentState) -> AgentState:
+        result = self.agents["RegistryAgent"].process(state)
+        return {**state, **result}
     
     def process_query_stream(self, query: str, chat_id: int, user_email: str) -> Generator[Dict[str, Any], None, None]:
         """
@@ -845,9 +1008,11 @@ class MultiAgentDocumentSystem:
                 final_answer="",
                 confidence_score=0.5,
                 reasoning_steps=[],
-                next_agent="DocumentListAgent",
+                next_agent="RegistryAgent" if self.registry_agent_node is not None else "DocumentListAgent",
                 completed_agents=[],
-                stream_callback=stream_callback
+                stream_callback=stream_callback,
+                registry_agent_id=None,
+                registry_agent_version_used=None,
             )
             
             # Process through the workflow
@@ -887,7 +1052,9 @@ class MultiAgentDocumentSystem:
                 document_sources = final_state.get("document_sources", [])
                 confidence_score = final_state.get("confidence_score", 0.5)
                 reasoning_steps = final_state.get("reasoning_steps", [])
-                
+                registry_agent_id = final_state.get("registry_agent_id")
+                registry_agent_version_used = final_state.get("registry_agent_version_used")
+
                 # Yield completion event
                 yield {
                     "type": "complete",
@@ -895,6 +1062,8 @@ class MultiAgentDocumentSystem:
                     "sources": document_sources,
                     "confidence": confidence_score,
                     "total_agents_used": len(final_state.get("completed_agents", [])),
+                    "registry_agent_id": registry_agent_id,
+                    "registry_agent_version_used": registry_agent_version_used,
                     "timestamp": self._get_timestamp()
                 }
                 
