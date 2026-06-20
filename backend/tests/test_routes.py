@@ -314,6 +314,79 @@ def test_download_chat_history_invalid_token_and_error(
 
 
 @pytest.mark.parametrize(
+    ("export_format", "expected_mimetype"),
+    [
+        ("csv", "text/csv"),
+        ("markdown", "text/markdown"),
+        ("json", "application/json"),
+        ("text", "text/plain"),
+    ],
+)
+def test_export_chat_history_formats(
+    client: Any,
+    app_module: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
+    export_format: str,
+    expected_mimetype: str,
+) -> None:
+    _authenticate(monkeypatch, app_module)
+    messages = [
+        {"sent_from_user": 1, "message_text": "Hi", "relevant_chunks": None},
+        {"sent_from_user": 0, "message_text": "Hello", "relevant_chunks": "Document: Sample: Paragraph"},
+    ]
+    monkeypatch.setattr(app_module, "retrieve_message_from_db", lambda *args: messages)
+    response = client.post(
+        "/export-chat-history",
+        json={"chat_type": 0, "chat_id": 9, "format": export_format},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.mimetype == expected_mimetype
+
+
+def test_export_chat_history_defaults_to_csv(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
+) -> None:
+    _authenticate(monkeypatch, app_module)
+    monkeypatch.setattr(app_module, "retrieve_message_from_db", lambda *args: [])
+    response = client.post("/export-chat-history", json={"chat_type": 0, "chat_id": 9}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.mimetype == "text/csv"
+
+
+def test_export_chat_history_unsupported_format(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
+) -> None:
+    _authenticate(monkeypatch, app_module)
+    monkeypatch.setattr(app_module, "retrieve_message_from_db", lambda *args: [])
+    response = client.post(
+        "/export-chat-history",
+        json={"chat_type": 0, "chat_id": 9, "format": "pdf"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    body = response.get_json()
+    assert "pdf" in body["error"]
+    assert set(body["supported_formats"]) == {"csv", "markdown", "json", "text"}
+
+
+def test_export_chat_history_invalid_token_and_error(
+    client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]
+) -> None:
+    _invalidate_token(monkeypatch, app_module)
+    invalid_response = client.post("/export-chat-history", json={"chat_type": 0, "chat_id": 9}, headers=auth_headers)
+    assert invalid_response.status_code == 401
+    assert invalid_response.get_json() == {"error": "Invalid JWT"}
+
+    _authenticate(monkeypatch, app_module)
+    monkeypatch.setattr(app_module, "retrieve_message_from_db", lambda *args: None)
+    error_response = client.post("/export-chat-history", json={"chat_type": 0, "chat_id": 9}, headers=auth_headers)
+    assert error_response.status_code == 500
+    assert error_response.get_json()["error"] == "Internal server error"
+
+
+@pytest.mark.parametrize(
     ("endpoint", "handler_name", "payload", "expected_json", "expected_text"),
     [
         ("/create-new-chat", "CreateNewChatHandler", {"chat_type": 0, "model_type": 0}, {"chat_id": 1}, None),
