@@ -44,9 +44,12 @@ from api_endpoints.payments.handler import (
 from api_endpoints.refresh_credits.handler import RefreshCreditsHandler
 from api_endpoints.user.handler import ViewUserHandler
 from app_helpers import (
+    SUPPORTED_EXPORT_FORMATS,
+    UnsupportedExportFormatError,
     build_callback_redirect_url,
     build_oauth_state,
     chat_history_csv_response,
+    chat_history_export_response,
     pair_chat_messages,
     reset_local_chat_artifacts,
 )
@@ -695,6 +698,62 @@ def download_chat_history():
 
         paired_messages = pair_chat_messages(messages)
         return chat_history_csv_response(paired_messages)
+    except Exception as e:
+        print("error is,", str(e))
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route('/export-chat-history', methods=['POST'])
+def export_chat_history():
+    """Export a chat session's history to a downloadable file.
+    ---
+    tags:
+      - Export
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          required: [chat_type, chat_id]
+          properties:
+            chat_type:
+              type: integer
+            chat_id:
+              type: integer
+            format:
+              type: string
+              description: One of csv, markdown, json, text. Defaults to csv.
+    responses:
+      200:
+        description: File download in the requested format.
+      400:
+        description: Unsupported export format.
+      401:
+        description: Invalid or missing JWT.
+      500:
+        description: Internal server error.
+    """
+    try:
+        user_email = extractUserEmailFromRequest(request)
+    except InvalidTokenError:
+        return jsonify({"error": "Invalid JWT"}), 401
+
+    body = request.get_json(silent=True) or {}
+    export_format = body.get('format', 'csv')
+
+    try:
+        chat_type = body.get('chat_type')
+        chat_id = body.get('chat_id')
+
+        messages = retrieve_message_from_db(user_email, chat_id, chat_type)
+
+        paired_messages = pair_chat_messages(messages)
+        return chat_history_export_response(paired_messages, export_format)
+    except UnsupportedExportFormatError as exc:
+        return jsonify({
+            "error": str(exc),
+            "supported_formats": list(SUPPORTED_EXPORT_FORMATS),
+        }), 400
     except Exception as e:
         print("error is,", str(e))
         return jsonify({"error": "Internal server error"}), 500
