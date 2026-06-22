@@ -2,16 +2,12 @@
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
-from services.rag import ingest_document, query_documents
+from services.rag import UPLOAD_FOLDER, ingest_document, query_documents
 
 documents_bp = Blueprint("documents", __name__, url_prefix="/api/documents")
-
-UPLOAD_FOLDER = Path("/tmp/anote_uploads")
-UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
 # Map MIME types to safe extensions — extension never derived from user input
 _MIME_TO_EXT: dict[str, str] = {
