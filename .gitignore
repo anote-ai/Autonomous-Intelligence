@@ -48,6 +48,9 @@ Thumbs.db
 # Docker
 .docker/
 
+# ChromaDB local vector store
+chroma_db/
+
 # Secrets
 *.pem
 *.key
