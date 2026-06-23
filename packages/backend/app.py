@@ -11,6 +11,7 @@ from api_endpoints.admin.handler import admin_bp
 from api_endpoints.auth.handler import auth_bp
 from api_endpoints.chat.handler import chat_bp
 from api_endpoints.documents.handler import documents_bp
+from api_endpoints.governance.handler import governance_bp
 from api_endpoints.payments.handler import payments_bp
 from api_endpoints.scim.handler import scim_bp
 from api_endpoints.search.handler import search_bp
@@ -55,6 +56,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(sso_bp)
     app.register_blueprint(scim_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(governance_bp)
     app.config.update(
         APP_BASE_URL=os.environ.get("APP_BASE_URL", "http://localhost:5000"),
     )

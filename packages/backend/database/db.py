@@ -224,3 +224,285 @@ def list_audit_events(cnx: Any, org_id: int, limit: int = 100) -> list[dict[str,
     rows: list[dict[str, Any]] = cursor.fetchall()
     cursor.close()
     return rows
+
+
+# ── Data governance ────────────────────────────────────────────────────────────
+
+def list_data_policies(cnx: Any, org_id: int) -> list[dict[str, Any]]:
+    cursor = cnx.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM data_policies WHERE org_id = %s ORDER BY data_type", (org_id,))
+    rows: list[dict[str, Any]] = cursor.fetchall()
+    cursor.close()
+    return rows
+
+
+def get_data_policy(cnx: Any, org_id: int, data_type: str) -> dict[str, Any] | None:
+    cursor = cnx.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT * FROM data_policies WHERE org_id = %s AND data_type = %s LIMIT 1",
+        (org_id, data_type),
+    )
+    row: dict[str, Any] | None = cursor.fetchone()
+    cursor.close()
+    return row
+
+
+def upsert_data_policy(
+    cnx: Any,
+    org_id: int,
+    data_type: str,
+    retention_days: int,
+    auto_delete: bool,
+    classification: str,
+    actor_id: int | None = None,
+) -> None:
+    cursor = cnx.cursor()
+    cursor.execute(
+        """
+        INSERT INTO data_policies
+            (org_id, data_type, retention_days, auto_delete, classification, created_by, updated_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            retention_days = VALUES(retention_days),
+            auto_delete    = VALUES(auto_delete),
+            classification = VALUES(classification),
+            updated_by     = VALUES(updated_by),
+            updated_at     = NOW()
+        """,
+        (org_id, data_type, retention_days, 1 if auto_delete else 0, classification, actor_id, actor_id),
+    )
+    cursor.close()
+
+
+def delete_data_policy(cnx: Any, org_id: int, data_type: str) -> None:
+    cursor = cnx.cursor()
+    cursor.execute(
+        "DELETE FROM data_policies WHERE org_id = %s AND data_type = %s",
+        (org_id, data_type),
+    )
+    cursor.close()
+
+
+# ── Legal holds ────────────────────────────────────────────────────────────────
+
+def list_legal_holds(cnx: Any, org_id: int, include_released: bool = False) -> list[dict[str, Any]]:
+    cursor = cnx.cursor(dictionary=True)
+    if include_released:
+        cursor.execute(
+            "SELECT * FROM legal_holds WHERE org_id = %s ORDER BY created_at DESC",
+            (org_id,),
+        )
+    else:
+        cursor.execute(
+            "SELECT * FROM legal_holds WHERE org_id = %s AND released_at IS NULL ORDER BY created_at DESC",
+            (org_id,),
+        )
+    rows: list[dict[str, Any]] = cursor.fetchall()
+    cursor.close()
+    return rows
+
+
+def get_legal_hold(cnx: Any, hold_id: int) -> dict[str, Any] | None:
+    cursor = cnx.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM legal_holds WHERE id = %s LIMIT 1", (hold_id,))
+    row: dict[str, Any] | None = cursor.fetchone()
+    cursor.close()
+    return row
+
+
+def create_legal_hold(
+    cnx: Any,
+    org_id: int,
+    resource_type: str,
+    resource_id: str,
+    reason: str,
+    placed_by: int | None,
+    expires_at: str | None = None,
+) -> int:
+    cursor = cnx.cursor()
+    cursor.execute(
+        """
+        INSERT INTO legal_holds (org_id, resource_type, resource_id, reason, placed_by, expires_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """,
+        (org_id, resource_type, resource_id, reason, placed_by, expires_at),
+    )
+    hold_id: int = cursor.lastrowid
+    cursor.close()
+    return hold_id
+
+
+def release_legal_hold(cnx: Any, hold_id: int, released_by: int) -> None:
+    cursor = cnx.cursor()
+    cursor.execute(
+        "UPDATE legal_holds SET released_by = %s, released_at = NOW() WHERE id = %s",
+        (released_by, hold_id),
+    )
+    cursor.close()
+
+
+def has_active_legal_hold(cnx: Any, org_id: int, resource_type: str, resource_id: str) -> bool:
+    cursor = cnx.cursor()
+    cursor.execute(
+        """
+        SELECT COUNT(*) FROM legal_holds
+        WHERE org_id = %s AND resource_type = %s AND resource_id = %s AND released_at IS NULL
+        """,
+        (org_id, resource_type, resource_id),
+    )
+    row = cursor.fetchone()
+    cursor.close()
+    return bool(row and row[0] > 0)
+
+
+# ── Export requests ────────────────────────────────────────────────────────────
+
+def list_export_requests(cnx: Any, org_id: int) -> list[dict[str, Any]]:
+    cursor = cnx.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT * FROM export_requests WHERE org_id = %s ORDER BY created_at DESC",
+        (org_id,),
+    )
+    rows: list[dict[str, Any]] = cursor.fetchall()
+    cursor.close()
+    return rows
+
+
+def get_export_request(cnx: Any, req_id: int) -> dict[str, Any] | None:
+    cursor = cnx.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM export_requests WHERE id = %s LIMIT 1", (req_id,))
+    row: dict[str, Any] | None = cursor.fetchone()
+    cursor.close()
+    return row
+
+
+def create_export_request(
+    cnx: Any,
+    org_id: int,
+    requested_by: int,
+    data_types: list[str],
+    scope: dict[str, Any] | None = None,
+) -> int:
+    import json as _json
+    cursor = cnx.cursor()
+    cursor.execute(
+        """
+        INSERT INTO export_requests (org_id, requested_by, data_types, scope)
+        VALUES (%s, %s, %s, %s)
+        """,
+        (org_id, requested_by, _json.dumps(data_types), _json.dumps(scope) if scope else None),
+    )
+    req_id: int = cursor.lastrowid
+    cursor.close()
+    return req_id
+
+
+def update_export_status(
+    cnx: Any,
+    req_id: int,
+    status: str,
+    download_url: str | None = None,
+    fulfilled_by: int | None = None,
+) -> None:
+    cursor = cnx.cursor()
+    cursor.execute(
+        """
+        UPDATE export_requests
+        SET status = %s, download_url = %s, fulfilled_by = %s,
+            fulfilled_at = IF(%s = 'fulfilled', NOW(), fulfilled_at),
+            updated_at = NOW()
+        WHERE id = %s
+        """,
+        (status, download_url, fulfilled_by, status, req_id),
+    )
+    cursor.close()
+
+
+# ── Resource classifications ───────────────────────────────────────────────────
+
+def list_resource_classifications(cnx: Any, org_id: int) -> list[dict[str, Any]]:
+    cursor = cnx.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT * FROM resource_classifications WHERE org_id = %s ORDER BY resource_type, resource_id",
+        (org_id,),
+    )
+    rows: list[dict[str, Any]] = cursor.fetchall()
+    cursor.close()
+    return rows
+
+
+def get_resource_classification(
+    cnx: Any, org_id: int, resource_type: str, resource_id: str
+) -> dict[str, Any] | None:
+    cursor = cnx.cursor(dictionary=True)
+    cursor.execute(
+        """
+        SELECT * FROM resource_classifications
+        WHERE org_id = %s AND resource_type = %s AND resource_id = %s LIMIT 1
+        """,
+        (org_id, resource_type, resource_id),
+    )
+    row: dict[str, Any] | None = cursor.fetchone()
+    cursor.close()
+    return row
+
+
+def upsert_resource_classification(
+    cnx: Any,
+    org_id: int,
+    resource_type: str,
+    resource_id: str,
+    classification: str,
+    tagged_by: int | None = None,
+) -> int:
+    cursor = cnx.cursor()
+    cursor.execute(
+        """
+        INSERT INTO resource_classifications (org_id, resource_type, resource_id, classification, tagged_by)
+        VALUES (%s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE classification = VALUES(classification), tagged_by = VALUES(tagged_by)
+        """,
+        (org_id, resource_type, resource_id, classification, tagged_by),
+    )
+    row_id: int = cursor.lastrowid or 0
+    cursor.close()
+    return row_id
+
+
+def delete_resource_classification(cnx: Any, cls_id: int, org_id: int) -> None:
+    cursor = cnx.cursor()
+    cursor.execute(
+        "DELETE FROM resource_classifications WHERE id = %s AND org_id = %s",
+        (cls_id, org_id),
+    )
+    cursor.close()
+
+
+# ── Governance audit log ───────────────────────────────────────────────────────
+
+def log_governance_event(
+    cnx: Any,
+    org_id: int,
+    action: str,
+    actor_id: int | None = None,
+    resource: str | None = None,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    import json as _json
+    cursor = cnx.cursor()
+    cursor.execute(
+        "INSERT INTO governance_audit_log (org_id, actor_id, action, resource, detail) VALUES (%s, %s, %s, %s, %s)",
+        (org_id, actor_id, action, resource, _json.dumps(detail) if detail else None),
+    )
+    cursor.close()
+
+
+def list_governance_audit(cnx: Any, org_id: int, limit: int = 100) -> list[dict[str, Any]]:
+    cursor = cnx.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT * FROM governance_audit_log WHERE org_id = %s ORDER BY created_at DESC LIMIT %s",
+        (org_id, limit),
+    )
+    rows: list[dict[str, Any]] = cursor.fetchall()
+    cursor.close()
+    return rows
