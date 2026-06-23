@@ -7,11 +7,14 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 
+from api_endpoints.admin.handler import admin_bp
 from api_endpoints.auth.handler import auth_bp
 from api_endpoints.chat.handler import chat_bp
 from api_endpoints.documents.handler import documents_bp
 from api_endpoints.payments.handler import payments_bp
+from api_endpoints.scim.handler import scim_bp
 from api_endpoints.search.handler import search_bp
+from api_endpoints.sso.handler import sso_bp
 from api_endpoints.user.handler import user_bp
 from api_endpoints.workspaces.handler import workspaces_bp
 
@@ -49,6 +52,12 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(user_bp)
     app.register_blueprint(payments_bp)
     app.register_blueprint(workspaces_bp)
+    app.register_blueprint(sso_bp)
+    app.register_blueprint(scim_bp)
+    app.register_blueprint(admin_bp)
+    app.config.update(
+        APP_BASE_URL=os.environ.get("APP_BASE_URL", "http://localhost:5000"),
+    )
 
     @app.get("/health")
     def health() -> tuple:
