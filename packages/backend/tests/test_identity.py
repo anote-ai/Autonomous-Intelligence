@@ -674,3 +674,172 @@ class TestDbHelpers:
         cnx = self._make_cnx(fetchall=rows)
         result = list_members(cnx, org_id=1)
         assert result == rows
+
+    def test_get_user_by_email_returns_row(self) -> None:
+        from database.db import get_user_by_email
+        row = {"id": 1, "email": "alice@test.com"}
+        cnx = self._make_cnx(fetchone=row)
+        result = get_user_by_email(cnx, "alice@test.com")
+        assert result == row
+
+    def test_get_user_by_email_returns_none(self) -> None:
+        from database.db import get_user_by_email
+        cnx = self._make_cnx(fetchone=None)
+        result = get_user_by_email(cnx, "nobody@test.com")
+        assert result is None
+
+    def test_create_user_returns_id(self) -> None:
+        from database.db import create_user
+        cnx = self._make_cnx()
+        user_id = create_user(cnx, "bob@test.com", "hashed", "Bob")
+        assert user_id == 99
+
+    def test_get_user_by_id_returns_row(self) -> None:
+        from database.db import get_user_by_id
+        row = {"id": 5, "email": "carol@test.com"}
+        cnx = self._make_cnx(fetchone=row)
+        result = get_user_by_id(cnx, 5)
+        assert result == row
+
+    def test_get_user_by_id_returns_none(self) -> None:
+        from database.db import get_user_by_id
+        cnx = self._make_cnx(fetchone=None)
+        assert get_user_by_id(cnx, 999) is None
+
+    def test_upsert_sso_user_returns_user_id(self) -> None:
+        from database.db import upsert_sso_user
+        cursor = MagicMock()
+        cursor.fetchone.return_value = (42,)
+        cursor.lastrowid = 42
+        cnx = MagicMock()
+        cnx.cursor.return_value = cursor
+        result = upsert_sso_user(cnx, "dave@test.com", "Dave", "okta", "sub-123")
+        assert result == 42
+
+    def test_upsert_sso_user_returns_zero_on_missing_row(self) -> None:
+        from database.db import upsert_sso_user
+        cursor = MagicMock()
+        cursor.fetchone.return_value = None
+        cnx = MagicMock()
+        cnx.cursor.return_value = cursor
+        result = upsert_sso_user(cnx, "eve@test.com", "Eve", "okta", "sub-456")
+        assert result == 0
+
+    def test_get_member_by_scim_id_returns_row(self) -> None:
+        from database.db import get_member_by_scim_id
+        row = {"id": 1, "org_id": 1, "user_id": 5, "scim_external_id": "ext-abc"}
+        cnx = self._make_cnx(fetchone=row)
+        result = get_member_by_scim_id(cnx, org_id=1, scim_external_id="ext-abc")
+        assert result == row
+
+    def test_get_member_returns_none_when_missing(self) -> None:
+        from database.db import get_member
+        cnx = self._make_cnx(fetchone=None)
+        assert get_member(cnx, org_id=1, user_id=999) is None
+
+    def test_delete_org_calls_execute(self) -> None:
+        from database.db import delete_org
+        cnx = self._make_cnx()
+        delete_org(cnx, org_id=5)
+        assert cnx.cursor().execute.called
+
+
+# ── Additional coverage: rbac error paths ─────────────────────────────────────
+
+class TestRbacErrorPaths:
+    def test_scim_token_missing_bearer(self, client: Any) -> None:
+        """require_scim_token returns 401 when Authorization header is absent."""
+        resp = client.get("/scim/v2/1/Users", headers={"Content-Type": "application/json"})
+        assert resp.status_code == 401
+
+    def test_scim_token_not_configured(self, client: Any) -> None:
+        """require_scim_token returns 403 when org has no scim_token_hash."""
+        org_no_scim = _org({"scim_token_hash": None})
+        with patch("database.db.get_connection"), \
+             patch("database.db.get_org_by_id", return_value=org_no_scim):
+            resp = client.get("/scim/v2/1/Users",
+                              headers={"Authorization": "Bearer some-token"})
+        assert resp.status_code == 403
+
+    def test_scim_token_invalid(self, client: Any) -> None:
+        """require_scim_token returns 401 when token doesn't match hash."""
+        org_with_hash = _org({"scim_token_hash": "$2b$12$fakehash"})
+        with patch("database.db.get_connection"), \
+             patch("database.db.get_org_by_id", return_value=org_with_hash), \
+             patch("bcrypt.checkpw", return_value=False):
+            resp = client.get("/scim/v2/1/Users",
+                              headers={"Authorization": "Bearer wrong-token"})
+        assert resp.status_code == 401
+
+    def test_scim_token_db_error_returns_503(self, client: Any) -> None:
+        """require_scim_token returns 503 when DB raises."""
+        with patch("database.db.get_connection", side_effect=Exception("db down")):
+            resp = client.get("/scim/v2/1/Users",
+                              headers={"Authorization": "Bearer any-token"})
+        assert resp.status_code == 503
+
+    def test_require_org_role_db_error_still_403(self, client: Any, auth: dict[str, str]) -> None:
+        """require_org_role falls back to 403 when DB is unavailable."""
+        with patch("database.db.get_connection", side_effect=Exception("db down")):
+            resp = client.get("/api/admin/organizations/1/members",
+                              headers={**auth, "X-Org-Id": "1"})
+        assert resp.status_code == 403
+
+
+# ── Additional coverage: identity service ─────────────────────────────────────
+
+class TestIdentityServiceExtra:
+    def test_fetch_oidc_config_returns_json(self) -> None:
+        from services.identity import _fetch_oidc_config
+        fake = MagicMock()
+        fake.json.return_value = {"authorization_endpoint": "https://idp.example.com/auth"}
+        with patch("services.identity.http.get", return_value=fake):
+            result = _fetch_oidc_config("https://idp.example.com/.well-known/openid-configuration")
+        assert result["authorization_endpoint"] == "https://idp.example.com/auth"
+
+    def test_provision_sso_user_returns_user_id(self) -> None:
+        from services.identity import provision_sso_user
+        claims = {"sub": "sub-123", "email": "alice@acme.com", "name": "Alice"}
+        with patch("database.db.upsert_sso_user", return_value=7), \
+             patch("database.db.upsert_member"), \
+             patch("database.db.log_identity_event"):
+            cnx = MagicMock()
+            result = provision_sso_user(cnx, org_id=1, claims=claims, sso_provider="okta")
+        assert result == 7
+
+    def test_provision_sso_user_raises_on_missing_email(self) -> None:
+        from services.identity import provision_sso_user
+        claims: dict[str, Any] = {"sub": "sub-123"}
+        with pytest.raises(ValueError, match="missing email"):
+            provision_sso_user(MagicMock(), org_id=1, claims=claims, sso_provider="okta")
+
+
+# ── Additional coverage: SCIM error paths ─────────────────────────────────────
+
+class TestScimExtraErrors:
+    def test_create_user_400_missing_email(self, client: Any) -> None:
+        with patch("bcrypt.checkpw", return_value=True), \
+             patch("database.db.get_connection"), \
+             patch("database.db.get_org_by_id", return_value=_scim_org()):
+            resp = client.post("/scim/v2/1/Users",
+                               headers=_scim_headers(),
+                               json={"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"]})
+        assert resp.status_code == 400
+
+    def test_list_users_503_on_db_error(self, client: Any) -> None:
+        with patch("bcrypt.checkpw", return_value=True), \
+             patch("database.db.get_connection"), \
+             patch("database.db.get_org_by_id", return_value=_scim_org()), \
+             patch("database.db.list_members", side_effect=Exception("db error")):
+            resp = client.get("/scim/v2/1/Users", headers=_scim_headers())
+        assert resp.status_code == 503
+
+    def test_replace_user_404_not_found(self, client: Any) -> None:
+        with patch("bcrypt.checkpw", return_value=True), \
+             patch("database.db.get_connection"), \
+             patch("database.db.get_org_by_id", return_value=_scim_org()), \
+             patch("database.db.get_member_by_scim_id", return_value=None):
+            resp = client.put("/scim/v2/1/Users/no-such-id",
+                              headers=_scim_headers(),
+                              json={"active": True})
+        assert resp.status_code == 404
