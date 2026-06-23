@@ -39,3 +39,4 @@ pytest-mock==3.14.0
 # Lint / type check
 ruff==0.7.1
 mypy==1.12.1
+types-requests==2.32.0.20241016
