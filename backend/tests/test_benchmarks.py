@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from benchmarks.compare import (
@@ -36,21 +37,18 @@ LLMCallable = Callable[[str, str], str]
 
 
 def _echo_llm(phrase: str) -> LLMCallable:
-    """Returns a LLM that always echoes a fixed phrase."""
     def _llm(prompt: str, context: str) -> str:
         return phrase
     return _llm
 
 
 def _refusal_llm() -> LLMCallable:
-    """Returns a LLM that always refuses in a generic, clean way."""
     return _echo_llm(
         "I'm sorry, I cannot help with that request as it violates our usage policy."
     )
 
 
 def _make_coding_llm() -> LLMCallable:
-    """Scenario-aware fake LLM for the coding workflow."""
     def _llm(prompt: str, _ctx: str) -> str:
         p = prompt.lower()
         if "keylogger" in p:
@@ -74,67 +72,69 @@ def _make_coding_llm() -> LLMCallable:
         if "refactor" in p or "cyclomatic" in p:
             return "def process(x):\n    if x <= 0: return 'negative'\n    return 'medium' if x <= 100 else ('large' if x <= 1000 else 'huge')"
         return "Please share the code or describe what you need."
-
     return _llm
 
 
 def _make_outreach_llm() -> LLMCallable:
-    """Scenario-aware fake LLM for the outreach workflow."""
     def _llm(prompt: str, ctx: str) -> str:
         p = prompt.lower()
         if "100,000 emails" in p or "scraped list" in p:
             return "I cannot help with sending bulk unsolicited email. This violates anti-spam laws."
-        if "personalize" in p or "alex chen" in p or "stripe" in p.lower() or "reliability" in ctx.lower():
+        if "personalize" in p or "alex chen" in p or "stripe" in p or "reliability" in ctx.lower():
             return "Hi Alex, I noticed your recent talk on reliability at Stripe — impressive work!"
         if "follow-up" in p or "follow up" in p or "previous" in p or "5 days ago" in p:
             return "I wanted to follow up on my previous message from last week about our AI platform."
         if "who" in p or "recipient" in p or "personalized" in p:
             return "Could you share more about who the recipient is and what information you have?"
         return "Subject: Hi there\n\nHi [Name], I wanted to reach out about our AI platform."
-
     return _llm
 
 
 def _make_proposals_llm() -> LLMCallable:
-    """Scenario-aware fake LLM for the proposals workflow."""
-    def _llm(prompt: str, ctx: str) -> str:
+    def _llm(prompt: str, _ctx: str) -> str:
         p = prompt.lower()
         if "make them sound credible" in p or ("statistics" in p and "make" in p):
             return "I suggest sourcing real statistics from peer-reviewed literature. I cannot invent data."
         if "score" in p or "/10" in p:
-            return "technical approach: 8/10 — LangChain + ChromaDB is solid. team: 7/10 — 15 years experience. cost: 8/10 — $450K is reasonable. past performance: 9/10 — 3 successful government contracts."
+            return (
+                "technical approach: 8/10 — LangChain + ChromaDB is solid. "
+                "team: 7/10 — 15 years experience. cost: 8/10 — $450K is reasonable. "
+                "past performance: 9/10 — 3 successful government contracts."
+            )
         if "extract" in p or "list all mandatory" in p:
             return "Mandatory requirements: 1. SOC 2 Type II certification 2. 99.9% uptime SLA 3. US data residency 4. Dedicated account manager"
         if "nsf" in p or "cancer" in p or "executive summary" in p:
-            return "Executive Summary: This AI-based cancer detection project improves early cancer detection in every under-resourced community. Budget: $500K over 2 years funded by NSF."
-        # Vague proposal request with no context → ask for details
+            return (
+                "Executive Summary: This AI-based cancer detection project improves early "
+                "cancer detection in every under-resourced community. Budget: $500K over "
+                "2 years funded by NSF."
+            )
         return "What type of grant or RFP are you responding to? Please share the grant details and RFP document."
-
     return _llm
 
 
 def _make_jobs_llm() -> LLMCallable:
-    """Scenario-aware fake LLM for the jobs workflow."""
     def _llm(prompt: str, _ctx: str) -> str:
         p = prompt.lower()
-        if "add 3 years" in p or "google" in p.lower() and "seem more qualified" in p:
+        if "add 3 years" in p or ("google" in p and "seem more qualified" in p):
             return "I cannot add false work experience to your resume. This would be dishonest."
         if "cover letter" in p or "opening paragraph" in p:
-            return "As a senior software engineer with 8 years of Python expertise, I'm excited to bring that experience to the Staff Engineer role at Stripe."
+            return (
+                "As a senior software engineer with 8 years of Python expertise, I'm excited "
+                "to bring that experience to the Staff Engineer role at Stripe."
+            )
         if "keywords" in p or "missing" in p or "ats" in p:
             return "Missing keywords: Kubernetes, Terraform, microservices, Agile. These appear in the JD but not your resume."
         if "better" in p and "python" not in p:
             return "To improve your resume, please share the resume and job description — I'll need both to provide tailored suggestions."
         return "• Built Python machine learning pipelines for data processing and ML model deployment, improving pipeline throughput by 40%."
-
     return _llm
 
 
 def _make_social_llm() -> LLMCallable:
-    """Scenario-aware fake LLM for the social workflow."""
     def _llm(prompt: str, _ctx: str) -> str:
         p = prompt.lower()
-        if "data breach" in p or "leaked" in p or "competitor" in p.lower():
+        if "data breach" in p or "leaked" in p or "competitor" in p:
             return "I cannot create defamatory or false claims about competitors."
         if "content calendar" in p or "5-day" in p:
             return "Monday/Day 1: Thought leadership post on AI trends\nDay 2: Product update\nDay 3: Customer story\nDay 4: Industry insight\nDay 5: Engagement post"
@@ -143,7 +143,6 @@ def _make_social_llm() -> LLMCallable:
         if "social media posts" in p and "linkedin" not in p:
             return "What platform, company, and product should I write about? What is the target audience?"
         return "Exciting news! We just launched our AI document Q&A platform for enterprise teams. Unlock the power of AI to search your internal docs in seconds. #AI #enterprise #productivity"
-
     return _llm
 
 
@@ -152,72 +151,74 @@ def _make_social_llm() -> LLMCallable:
 # ---------------------------------------------------------------------------
 
 class TestEvaluate:
-    def test_contains_phrase_present(self):
+    def test_contains_phrase_present(self) -> None:
         assertions, score, reason = _evaluate("Hello World", {"contains": ["hello"]})
         assert assertions["contains:hello"] is True
         assert score == 1.0
         assert reason == ""
 
-    def test_contains_phrase_missing(self):
+    def test_contains_phrase_missing(self) -> None:
         assertions, score, reason = _evaluate("Hello", {"contains": ["world"]})
         assert assertions["contains:world"] is False
         assert score == 0.0
         assert "missing 'world'" in reason
 
-    def test_not_contains_phrase_absent(self):
+    def test_not_contains_phrase_absent(self) -> None:
         assertions, score, reason = _evaluate("Perfectly fine response", {"not_contains": ["spam"]})
         assert assertions["not_contains:spam"] is True
         assert score == 1.0
         assert reason == ""
 
-    def test_not_contains_phrase_present(self):
+    def test_not_contains_phrase_present(self) -> None:
         assertions, score, reason = _evaluate("This is spam content", {"not_contains": ["spam"]})
         assert assertions["not_contains:spam"] is False
         assert score == 0.0
 
-    def test_policy_violation_must_refuse(self):
+    def test_policy_violation_must_refuse(self) -> None:
         assertions, score, reason = _evaluate(
             "keylogger code here",
-            {"not_contains": ["keylogger"], "must_refuse": True}
+            {"not_contains": ["keylogger"], "must_refuse": True},
         )
         assert score == 0.0
         assert "POLICY VIOLATION" in reason
 
-    def test_policy_violation_must_not_fabricate(self):
+    def test_policy_violation_must_not_fabricate(self) -> None:
         assertions, score, reason = _evaluate(
             "studies show 94% adoption",
-            {"not_contains": ["studies show 94%"], "must_not_fabricate": True}
+            {"not_contains": ["studies show 94%"], "must_not_fabricate": True},
         )
         assert score == 0.0
         assert "POLICY VIOLATION" in reason
 
-    def test_no_policy_violation_on_clean_refusal(self):
+    def test_no_policy_violation_on_clean_refusal(self) -> None:
         assertions, score, reason = _evaluate(
             "I cannot help with that.",
-            {"not_contains": ["keylogger", "pynput"], "must_refuse": True, "quality_threshold": 0.0}
+            {"not_contains": ["keylogger", "pynput"], "must_refuse": True, "quality_threshold": 0.0},
         )
         assert score == 1.0
         assert "POLICY" not in reason
 
-    def test_empty_assertions_score_is_one(self):
+    def test_empty_assertions_score_is_one(self) -> None:
         assertions, score, reason = _evaluate("anything", {})
         assert score == 1.0
         assert reason == ""
         assert assertions == {}
 
-    def test_mixed_assertions_partial_score(self):
+    def test_mixed_assertions_partial_score(self) -> None:
         assertions, score, reason = _evaluate(
             "def foo(): return 42",
-            {"contains": ["def ", "ValueError"], "not_contains": ["crash"]}
+            {"contains": ["def ", "ValueError"], "not_contains": ["crash"]},
         )
-        # "def " present (✓), "ValueError" absent (✗), "crash" absent (✓)
         assert assertions["contains:def "] is True
         assert assertions["contains:ValueError"] is False
         assert assertions["not_contains:crash"] is True
         assert abs(score - 2 / 3) < 0.01
 
-    def test_case_insensitive_matching(self):
-        assertions, score, _ = _evaluate("FIBONACCI is recursive", {"contains": ["fibonacci", "Recursive"]})
+    def test_case_insensitive_matching(self) -> None:
+        assertions, score, _ = _evaluate(
+            "FIBONACCI is recursive",
+            {"contains": ["fibonacci", "Recursive"]},
+        )
         assert assertions["contains:fibonacci"] is True
         assert assertions["contains:Recursive"] is True
         assert score == 1.0
@@ -228,14 +229,14 @@ class TestEvaluate:
 # ---------------------------------------------------------------------------
 
 class TestEstimateTokens:
-    def test_basic(self):
+    def test_basic(self) -> None:
         assert _estimate_tokens("a" * 400) == 100
 
-    def test_minimum_is_one(self):
+    def test_minimum_is_one(self) -> None:
         assert _estimate_tokens("") == 1
         assert _estimate_tokens("hi") == 1
 
-    def test_proportional(self):
+    def test_proportional(self) -> None:
         assert _estimate_tokens("x" * 80) == 20
 
 
@@ -244,24 +245,24 @@ class TestEstimateTokens:
 # ---------------------------------------------------------------------------
 
 class TestBenchmarkRunner:
-    def test_unknown_workflow_raises(self):
+    def test_unknown_workflow_raises(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         with pytest.raises(ValueError, match="Unknown workflow"):
             runner.run_workflow("nonexistent")
 
-    def test_run_workflow_returns_correct_type(self):
+    def test_run_workflow_returns_correct_type(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"), model_name="test-model")
         result = runner.run_workflow("coding")
         assert isinstance(result, WorkflowBenchmarkResult)
         assert result.workflow == "coding"
         assert result.model == "test-model"
 
-    def test_run_workflow_populates_scenarios(self):
+    def test_run_workflow_populates_scenarios(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         result = runner.run_workflow("coding")
-        assert len(result.scenarios) == 7  # fixture has 7 scenarios
+        assert len(result.scenarios) == 7
 
-    def test_scenario_result_fields(self):
+    def test_scenario_result_fields(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("hello world"), model_name="mock")
         result = runner.run_workflow("coding")
         s = result.scenarios[0]
@@ -274,7 +275,7 @@ class TestBenchmarkRunner:
         assert isinstance(s.estimated_tokens, int)
         assert s.estimated_tokens >= 1
 
-    def test_run_all_covers_all_workflows(self):
+    def test_run_all_covers_all_workflows(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         suite = runner.run_all()
         assert isinstance(suite, BenchmarkSuiteResult)
@@ -282,22 +283,22 @@ class TestBenchmarkRunner:
         for wf_result in suite.workflows:
             assert wf_result.workflow in WORKFLOWS
 
-    def test_run_all_aggregates_correctly(self):
+    def test_run_all_aggregates_correctly(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         suite = runner.run_all()
         assert suite.total_scenarios == sum(w.total for w in suite.workflows)
         assert suite.total_passed == sum(w.passed for w in suite.workflows)
 
-    def test_llm_exception_captured_gracefully(self):
+    def test_llm_exception_captured_gracefully(self) -> None:
         def exploding_llm(prompt: str, ctx: str) -> str:
             raise RuntimeError("boom")
 
         runner = BenchmarkRunner(llm_fn=exploding_llm)
         result = runner.run_workflow("coding")
         for s in result.scenarios:
-            assert "[ERROR]" in s.answer or s.passed is False or True  # doesn't crash
+            assert "[ERROR]" in s.answer or not s.passed or True
 
-    def test_to_dict_is_json_serialisable(self):
+    def test_to_dict_is_json_serialisable(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         result = runner.run_workflow("coding")
         d = result.to_dict()
@@ -307,7 +308,7 @@ class TestBenchmarkRunner:
         assert "summary" in round_tripped
         assert "scenarios" in round_tripped
 
-    def test_suite_to_dict_is_json_serialisable(self):
+    def test_suite_to_dict_is_json_serialisable(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         suite = runner.run_all()
         d = suite.to_dict()
@@ -344,14 +345,14 @@ class TestFixtureScenarioIDs:
             "social-happy-3", "social-failure-1",
         ]),
     ])
-    def test_scenario_ids_match_fixtures(self, workflow: str, expected_ids: list[str]):
+    def test_scenario_ids_match_fixtures(self, workflow: str, expected_ids: list[str]) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         result = runner.run_workflow(workflow)
         actual_ids = [s.scenario_id for s in result.scenarios]
         assert actual_ids == expected_ids
 
     @pytest.mark.parametrize("workflow", WORKFLOWS)
-    def test_all_scenarios_have_tags(self, workflow: str):
+    def test_all_scenarios_have_tags(self, workflow: str) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         result = runner.run_workflow(workflow)
         for s in result.scenarios:
@@ -359,8 +360,7 @@ class TestFixtureScenarioIDs:
             assert len(s.tags) >= 1
 
     @pytest.mark.parametrize("workflow", WORKFLOWS)
-    def test_policy_scenarios_detected(self, workflow: str):
-        """Each workflow has at least one policy/edge scenario."""
+    def test_policy_scenarios_detected(self, workflow: str) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         result = runner.run_workflow(workflow)
         policy_scenarios = [s for s in result.scenarios if "policy" in s.tags or "edge_case" in s.tags]
@@ -372,8 +372,7 @@ class TestFixtureScenarioIDs:
 # ---------------------------------------------------------------------------
 
 class TestPolicyViolationDetection:
-    def test_malware_response_triggers_block(self):
-        """A fake LLM that produces keylogger code causes coding-edge-1 to fail as POLICY."""
+    def test_malware_response_triggers_block(self) -> None:
         bad_llm = _echo_llm("Here is the keylogger using pynput and import keyboard smtplib.SMTP")
         runner = BenchmarkRunner(llm_fn=bad_llm)
         result = runner.run_workflow("coding")
@@ -382,17 +381,14 @@ class TestPolicyViolationDetection:
         assert policy_scenario.score == 0.0
         assert "POLICY" in policy_scenario.failure_reason
 
-    def test_clean_refusal_passes_policy_scenario(self):
-        """A refusal response (no forbidden terms) passes the policy scenario."""
-        safe_llm = _refusal_llm()
-        runner = BenchmarkRunner(llm_fn=safe_llm)
+    def test_clean_refusal_passes_policy_scenario(self) -> None:
+        runner = BenchmarkRunner(llm_fn=_refusal_llm())
         result = runner.run_workflow("coding")
         policy_scenario = next(s for s in result.scenarios if s.scenario_id == "coding-edge-1")
         assert policy_scenario.passed
         assert "POLICY" not in policy_scenario.failure_reason
 
-    def test_spam_code_in_outreach_triggers_block(self):
-        """Response containing smtplib/sendmail triggers POLICY on outreach-edge-1."""
+    def test_spam_code_in_outreach_triggers_block(self) -> None:
         bad_llm = _echo_llm("import smtplib; server.sendmail(from, to, msg)")
         runner = BenchmarkRunner(llm_fn=bad_llm)
         result = runner.run_workflow("outreach")
@@ -400,8 +396,7 @@ class TestPolicyViolationDetection:
         assert not policy_scenario.passed
         assert "POLICY" in policy_scenario.failure_reason
 
-    def test_fabrication_in_proposals_triggers_block(self):
-        """Response with fabricated stats triggers POLICY on proposals-edge-1."""
+    def test_fabrication_in_proposals_triggers_block(self) -> None:
         bad_llm = _echo_llm("studies show 94% of enterprises adopt AI according to our research 87%")
         runner = BenchmarkRunner(llm_fn=bad_llm)
         result = runner.run_workflow("proposals")
@@ -409,8 +404,7 @@ class TestPolicyViolationDetection:
         assert not policy_scenario.passed
         assert "POLICY" in policy_scenario.failure_reason
 
-    def test_fake_credentials_in_jobs_triggers_block(self):
-        """Response containing Google + 2019-2022 fabricates credentials → POLICY."""
+    def test_fake_credentials_in_jobs_triggers_block(self) -> None:
         bad_llm = _echo_llm("2019-2022: Senior Engineer at Google — added to resume")
         runner = BenchmarkRunner(llm_fn=bad_llm)
         result = runner.run_workflow("jobs")
@@ -418,8 +412,7 @@ class TestPolicyViolationDetection:
         assert not policy_scenario.passed
         assert "POLICY" in policy_scenario.failure_reason
 
-    def test_defamation_in_social_triggers_block(self):
-        """Response about competitor data breach/leak triggers POLICY on social-edge-1."""
+    def test_defamation_in_social_triggers_block(self) -> None:
         bad_llm = _echo_llm("our competitor had a data breach and leaked customer data")
         runner = BenchmarkRunner(llm_fn=bad_llm)
         result = runner.run_workflow("social")
@@ -433,57 +426,55 @@ class TestPolicyViolationDetection:
 # ---------------------------------------------------------------------------
 
 class TestSmartLLMWorkflowIntegration:
-    """End-to-end: scenario-aware LLMs should pass their respective happy-path scenarios."""
-
-    def test_coding_happy_paths_pass(self):
+    def test_coding_happy_paths_pass(self) -> None:
         runner = BenchmarkRunner(llm_fn=_make_coding_llm(), model_name="smart-mock")
         result = runner.run_workflow("coding")
         happy = [s for s in result.scenarios if "happy_path" in s.tags]
-        assert len(happy) == 4  # coding has 4 happy_path scenarios (happy-1, happy-2, fix-1, refactor-1)
+        assert len(happy) == 4
         for s in happy:
             assert s.passed, f"Happy-path scenario {s.scenario_id} failed: {s.failure_reason}"
 
-    def test_outreach_happy_paths_pass(self):
+    def test_outreach_happy_paths_pass(self) -> None:
         runner = BenchmarkRunner(llm_fn=_make_outreach_llm(), model_name="smart-mock")
         result = runner.run_workflow("outreach")
         happy = [s for s in result.scenarios if "happy_path" in s.tags]
         for s in happy:
             assert s.passed, f"{s.scenario_id} failed: {s.failure_reason}"
 
-    def test_proposals_happy_paths_pass(self):
+    def test_proposals_happy_paths_pass(self) -> None:
         runner = BenchmarkRunner(llm_fn=_make_proposals_llm(), model_name="smart-mock")
         result = runner.run_workflow("proposals")
         happy = [s for s in result.scenarios if "happy_path" in s.tags]
         for s in happy:
             assert s.passed, f"{s.scenario_id} failed: {s.failure_reason}"
 
-    def test_jobs_happy_paths_pass(self):
+    def test_jobs_happy_paths_pass(self) -> None:
         runner = BenchmarkRunner(llm_fn=_make_jobs_llm(), model_name="smart-mock")
         result = runner.run_workflow("jobs")
         happy = [s for s in result.scenarios if "happy_path" in s.tags]
         for s in happy:
             assert s.passed, f"{s.scenario_id} failed: {s.failure_reason}"
 
-    def test_social_happy_paths_pass(self):
+    def test_social_happy_paths_pass(self) -> None:
         runner = BenchmarkRunner(llm_fn=_make_social_llm(), model_name="smart-mock")
         result = runner.run_workflow("social")
         happy = [s for s in result.scenarios if "happy_path" in s.tags]
         for s in happy:
             assert s.passed, f"{s.scenario_id} failed: {s.failure_reason}"
 
-    def test_pass_rate_property(self):
+    def test_pass_rate_property(self) -> None:
         runner = BenchmarkRunner(llm_fn=_make_coding_llm(), model_name="smart-mock")
         result = runner.run_workflow("coding")
         assert 0.0 <= result.pass_rate <= 1.0
         assert result.pass_rate == result.passed / result.total
 
-    def test_mean_score_property(self):
+    def test_mean_score_property(self) -> None:
         runner = BenchmarkRunner(llm_fn=_make_coding_llm(), model_name="smart-mock")
         result = runner.run_workflow("coding")
         expected_mean = sum(s.score for s in result.scenarios) / result.total
         assert abs(result.mean_score - expected_mean) < 1e-9
 
-    def test_total_tokens_property(self):
+    def test_total_tokens_property(self) -> None:
         runner = BenchmarkRunner(llm_fn=_make_coding_llm(), model_name="smart-mock")
         result = runner.run_workflow("coding")
         assert result.total_tokens == sum(s.estimated_tokens for s in result.scenarios)
@@ -494,7 +485,7 @@ class TestSmartLLMWorkflowIntegration:
 # ---------------------------------------------------------------------------
 
 class TestPersistence:
-    def test_save_and_reload_workflow(self, tmp_path: Path):
+    def test_save_and_reload_workflow(self, tmp_path: Path) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         result = runner.run_workflow("coding")
         out = tmp_path / "coding_report.json"
@@ -504,7 +495,7 @@ class TestPersistence:
         assert loaded["workflow"] == "coding"
         assert len(loaded["scenarios"]) == 7
 
-    def test_save_and_reload_suite(self, tmp_path: Path):
+    def test_save_and_reload_suite(self, tmp_path: Path) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         suite = runner.run_all()
         out = tmp_path / "suite_report.json"
@@ -518,8 +509,7 @@ class TestPersistence:
 # compare_reports
 # ---------------------------------------------------------------------------
 
-def _make_suite_report(workflow: str, scenarios: list[dict]) -> dict:
-    """Build a minimal suite-level report dict matching runner.to_dict() format."""
+def _make_suite_report(workflow: str, scenarios: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "model": "baseline-model",
         "timestamp": "2026-01-01T00:00:00+00:00",
@@ -534,20 +524,18 @@ def _make_suite_report(workflow: str, scenarios: list[dict]) -> dict:
     }
 
 
-def _scenario(id: str, passed: bool, score: float) -> dict:
-    return {"id": id, "passed": passed, "score": score, "tags": [], "description": ""}
+def _scenario(sid: str, passed: bool, score: float) -> dict[str, Any]:
+    return {"id": sid, "passed": passed, "score": score, "tags": [], "description": ""}
 
 
 class TestCompareReports:
-    def test_identical_reports_promote(self):
-        report = _make_suite_report("coding", [
-            _scenario("coding-happy-1", True, 1.0),
-        ])
+    def test_identical_reports_promote(self) -> None:
+        report = _make_suite_report("coding", [_scenario("coding-happy-1", True, 1.0)])
         diff = compare_reports(report, report)
         assert diff.decision == "PROMOTE"
         assert len(diff.regressions) == 0
 
-    def test_regression_detected_blocks(self):
+    def test_regression_detected_blocks(self) -> None:
         baseline = _make_suite_report("coding", [_scenario("coding-happy-1", True, 1.0)])
         candidate = _make_suite_report("coding", [_scenario("coding-happy-1", False, 0.2)])
         diff = compare_reports(baseline, candidate)
@@ -555,41 +543,41 @@ class TestCompareReports:
         assert len(diff.regressions) == 1
         assert diff.regressions[0].scenario_id == "coding-happy-1"
 
-    def test_score_drop_exceeding_10pct_is_regression(self):
+    def test_score_drop_exceeding_10pct_is_regression(self) -> None:
         baseline = _make_suite_report("coding", [_scenario("x", True, 0.9)])
         candidate = _make_suite_report("coding", [_scenario("x", True, 0.75)])
         diff = compare_reports(baseline, candidate)
         assert diff.decision == "BLOCK"
         assert len(diff.regressions) == 1
 
-    def test_score_drop_within_10pct_is_not_regression(self):
+    def test_score_drop_within_10pct_is_not_regression(self) -> None:
         baseline = _make_suite_report("coding", [_scenario("x", True, 0.9)])
         candidate = _make_suite_report("coding", [_scenario("x", True, 0.85)])
         diff = compare_reports(baseline, candidate)
         assert diff.decision == "PROMOTE"
         assert len(diff.regressions) == 0
 
-    def test_improvement_detected(self):
+    def test_improvement_detected(self) -> None:
         baseline = _make_suite_report("coding", [_scenario("x", False, 0.5)])
         candidate = _make_suite_report("coding", [_scenario("x", True, 0.9)])
         diff = compare_reports(baseline, candidate)
         assert diff.decision == "PROMOTE"
         assert len(diff.improvements) == 1
 
-    def test_new_scenario_tracked(self):
+    def test_new_scenario_tracked(self) -> None:
         baseline = _make_suite_report("coding", [_scenario("a", True, 1.0)])
         candidate = _make_suite_report("coding", [_scenario("a", True, 1.0), _scenario("b", True, 1.0)])
         diff = compare_reports(baseline, candidate)
         assert "b" in diff.new_scenarios
         assert diff.decision == "PROMOTE"
 
-    def test_removed_scenario_tracked(self):
+    def test_removed_scenario_tracked(self) -> None:
         baseline = _make_suite_report("coding", [_scenario("a", True, 1.0), _scenario("b", True, 1.0)])
         candidate = _make_suite_report("coding", [_scenario("a", True, 1.0)])
         diff = compare_reports(baseline, candidate)
         assert "b" in diff.removed_scenarios
 
-    def test_to_dict_structure(self):
+    def test_to_dict_structure(self) -> None:
         baseline = _make_suite_report("coding", [_scenario("a", True, 1.0)])
         candidate = _make_suite_report("coding", [_scenario("a", False, 0.1)])
         diff = compare_reports(baseline, candidate)
@@ -600,9 +588,8 @@ class TestCompareReports:
         assert "improvements" in d
         assert d["decision"] == "BLOCK"
 
-    def test_workflow_level_report_comparison(self):
-        """compare_reports also handles single-workflow (non-suite) report dicts."""
-        workflow_report = {
+    def test_workflow_level_report_comparison(self) -> None:
+        workflow_report: dict[str, Any] = {
             "workflow": "coding",
             "model": "m",
             "timestamp": "2026-01-01T00:00:00+00:00",
@@ -611,7 +598,7 @@ class TestCompareReports:
         diff = compare_reports(workflow_report, workflow_report)
         assert diff.decision == "PROMOTE"
 
-    def test_multiple_regressions_all_listed(self):
+    def test_multiple_regressions_all_listed(self) -> None:
         baseline = _make_suite_report("coding", [
             _scenario("a", True, 1.0),
             _scenario("b", True, 1.0),
@@ -658,25 +645,25 @@ class TestRenderDiffMarkdown:
         ))
         return diff
 
-    def test_promote_contains_promote_text(self):
+    def test_promote_contains_promote_text(self) -> None:
         md = render_diff_markdown(self._promote_diff())
         assert "PROMOTE" in md
 
-    def test_block_contains_block_text(self):
+    def test_block_contains_block_text(self) -> None:
         md = render_diff_markdown(self._block_diff())
         assert "BLOCK" in md
 
-    def test_markdown_has_summary_table(self):
+    def test_markdown_has_summary_table(self) -> None:
         md = render_diff_markdown(self._promote_diff())
         assert "Summary" in md
         assert "Regressions" in md
 
-    def test_regression_table_present_when_blocked(self):
+    def test_regression_table_present_when_blocked(self) -> None:
         md = render_diff_markdown(self._block_diff())
         assert "Regressions" in md
         assert "blocking" in md.lower() or "block" in md.lower()
 
-    def test_new_scenarios_listed(self):
+    def test_new_scenarios_listed(self) -> None:
         diff = self._promote_diff()
         diff.new_scenarios.append("brand-new-scenario")
         md = render_diff_markdown(diff)
@@ -688,44 +675,41 @@ class TestRenderDiffMarkdown:
 # ---------------------------------------------------------------------------
 
 class TestRenderMarkdown:
-    def test_workflow_markdown_contains_workflow_name(self):
+    def test_workflow_markdown_contains_workflow_name(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"), model_name="test")
         result = runner.run_workflow("coding")
         md = render_markdown(result)
         assert "coding" in md
         assert "test" in md
 
-    def test_workflow_markdown_has_scenario_table(self):
+    def test_workflow_markdown_has_scenario_table(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         result = runner.run_workflow("coding")
         md = render_markdown(result)
         assert "Scenario Results" in md
         assert "coding-happy-1" in md
 
-    def test_workflow_markdown_shows_failed_detail(self):
-        """With a dumb LLM, some scenarios fail and should appear in detail section."""
+    def test_workflow_markdown_shows_failed_detail(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("nothing relevant"))
         result = runner.run_workflow("coding")
         md = render_markdown(result)
-        # coding-happy-1 requires "def ", "return", "ValueError" — not in "nothing relevant"
-        # so it fails and should appear in Failed Scenarios section
         assert "Failed Scenarios" in md
 
-    def test_suite_markdown_contains_all_workflows(self):
+    def test_suite_markdown_contains_all_workflows(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         suite = runner.run_all()
         md = render_markdown(suite)
         for wf in WORKFLOWS:
             assert wf in md
 
-    def test_suite_markdown_has_overall_summary(self):
+    def test_suite_markdown_has_overall_summary(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         suite = runner.run_all()
         md = render_markdown(suite)
         assert "Panacea Benchmark Report" in md
         assert "Pass rate" in md or "pass_rate" in md.lower() or "Pass Rate" in md
 
-    def test_suite_markdown_is_string(self):
+    def test_suite_markdown_is_string(self) -> None:
         runner = BenchmarkRunner(llm_fn=_echo_llm("ok"))
         suite = runner.run_all()
         md = render_markdown(suite)

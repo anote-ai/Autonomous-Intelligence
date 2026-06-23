@@ -27,9 +27,11 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
-from typing import Callable
+from typing import Any
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -85,7 +87,7 @@ class WorkflowBenchmarkResult:
     def total_tokens(self) -> int:
         return sum(s.estimated_tokens for s in self.scenarios)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "workflow": self.workflow,
             "model": self.model,
@@ -141,7 +143,7 @@ class BenchmarkSuiteResult:
     def total_tokens(self) -> int:
         return sum(w.total_tokens for w in self.workflows)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "model": self.model,
             "timestamp": self.timestamp,
@@ -213,12 +215,12 @@ class BenchmarkRunner:
     # Internal
     # ------------------------------------------------------------------ #
 
-    def _run_scenario(self, scenario: dict, workflow: str) -> ScenarioResult:
+    def _run_scenario(self, scenario: dict[str, Any], workflow: str) -> ScenarioResult:
         scenario_id: str = scenario["id"]
         tags: list[str] = scenario.get("tags", [])
         description: str = scenario.get("description", "")
-        inputs: dict = scenario.get("inputs", {})
-        expected: dict = scenario.get("expected", {})
+        inputs: dict[str, Any] = scenario.get("inputs", {})
+        expected: dict[str, Any] = scenario.get("expected", {})
 
         prompt = inputs.get("query", "")
         context = _build_context(inputs)
@@ -255,7 +257,7 @@ class BenchmarkRunner:
 # Helpers
 # ------------------------------------------------------------------ #
 
-def _build_context(inputs: dict) -> str:
+def _build_context(inputs: dict[str, Any]) -> str:
     """Concatenate context_documents into a single context string."""
     docs = inputs.get("context_documents", [])
     if not docs:
@@ -266,7 +268,7 @@ def _build_context(inputs: dict) -> str:
 
 def _evaluate(
     answer: str,
-    expected: dict,
+    expected: dict[str, Any],
 ) -> tuple[dict[str, bool], float, str]:
     """Check answer against expected spec.
 
@@ -320,8 +322,8 @@ def _estimate_tokens(text: str) -> int:
 
 
 def _utc_now() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
+    from datetime import datetime
+    return datetime.now(UTC).isoformat()
 
 
 # ------------------------------------------------------------------ #
@@ -376,7 +378,7 @@ def _build_real_llm(provider: str, model: str) -> LLMCallable:
         import os
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
-            raise EnvironmentError("ANTHROPIC_API_KEY not set")
+            raise OSError("ANTHROPIC_API_KEY not set")
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
@@ -396,7 +398,7 @@ def _build_real_llm(provider: str, model: str) -> LLMCallable:
         import os
         api_key = os.environ.get("OPENAI_API_KEY", "")
         if not api_key:
-            raise EnvironmentError("OPENAI_API_KEY not set")
+            raise OSError("OPENAI_API_KEY not set")
         import openai
         client = openai.OpenAI(api_key=api_key)
 

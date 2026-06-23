@@ -20,6 +20,7 @@ import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -68,7 +69,7 @@ class BenchmarkDiff:
         """PROMOTE if no regressions; BLOCK otherwise."""
         return "BLOCK" if self.regressions else "PROMOTE"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "decision": self.decision,
             "baseline_model": self.baseline_model,
@@ -109,7 +110,7 @@ class BenchmarkDiff:
         }
 
 
-def compare_reports(baseline: dict, candidate: dict) -> BenchmarkDiff:
+def compare_reports(baseline: dict[str, Any], candidate: dict[str, Any]) -> BenchmarkDiff:
     """Compare two benchmark report dicts (as produced by runner.to_dict())."""
     diff = BenchmarkDiff(
         baseline_model=baseline.get("model", "unknown"),
@@ -146,33 +147,33 @@ def compare_reports(baseline: dict, candidate: dict) -> BenchmarkDiff:
 def render_diff_markdown(diff: BenchmarkDiff) -> str:
     decision_icon = "✅" if diff.decision == "PROMOTE" else "🚫"
     lines: list[str] = [
-        f"# Benchmark Comparison Report",
-        f"",
+        "# Benchmark Comparison Report",
+        "",
         f"**Decision:** {decision_icon} **{diff.decision}**",
-        f"",
-        f"| | Baseline | Candidate |",
-        f"|--|----------|-----------|",
+        "",
+        "| | Baseline | Candidate |",
+        "|--|----------|-----------|",
         f"| Model | `{diff.baseline_model}` | `{diff.candidate_model}` |",
         f"| Timestamp | {diff.baseline_timestamp} | {diff.candidate_timestamp} |",
-        f"",
-        f"## Summary",
-        f"",
-        f"| Metric | Count |",
-        f"|--------|-------|",
+        "",
+        "## Summary",
+        "",
+        "| Metric | Count |",
+        "|--------|-------|",
         f"| Scenarios compared | {len(diff.scenario_diffs)} |",
         f"| Regressions | {len(diff.regressions)} |",
         f"| Improvements | {len(diff.improvements)} |",
         f"| New scenarios | {len(diff.new_scenarios)} |",
         f"| Removed scenarios | {len(diff.removed_scenarios)} |",
-        f"",
+        "",
     ]
 
     if diff.regressions:
         lines += [
-            f"## 🚨 Regressions (blocking)",
-            f"",
-            f"| Scenario | Workflow | Baseline Score | Candidate Score | Δ |",
-            f"|----------|----------|----------------|-----------------|---|",
+            "## 🚨 Regressions (blocking)",
+            "",
+            "| Scenario | Workflow | Baseline Score | Candidate Score | Δ |",
+            "|----------|----------|----------------|-----------------|---|",
         ]
         for r in diff.regressions:
             delta_str = f"{r.delta:+.2f}"
@@ -184,10 +185,10 @@ def render_diff_markdown(diff: BenchmarkDiff) -> str:
 
     if diff.improvements:
         lines += [
-            f"## 🎉 Improvements",
-            f"",
-            f"| Scenario | Workflow | Baseline Score | Candidate Score | Δ |",
-            f"|----------|----------|----------------|-----------------|---|",
+            "## 🎉 Improvements",
+            "",
+            "| Scenario | Workflow | Baseline Score | Candidate Score | Δ |",
+            "|----------|----------|----------------|-----------------|---|",
         ]
         for i in diff.improvements:
             delta_str = f"{i.delta:+.2f}"
@@ -199,26 +200,26 @@ def render_diff_markdown(diff: BenchmarkDiff) -> str:
 
     if diff.new_scenarios:
         lines += [
-            f"## New scenarios (not in baseline)",
-            f"",
+            "## New scenarios (not in baseline)",
+            "",
             *[f"- `{s}`" for s in diff.new_scenarios],
-            f"",
+            "",
         ]
 
     if diff.removed_scenarios:
         lines += [
-            f"## Removed scenarios (were in baseline)",
-            f"",
+            "## Removed scenarios (were in baseline)",
+            "",
             *[f"- `{s}`" for s in diff.removed_scenarios],
-            f"",
+            "",
         ]
 
     return "\n".join(lines)
 
 
-def _index_scenarios(report: dict) -> dict[str, dict]:
+def _index_scenarios(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Build a flat dict of scenario_id → scenario dict from a suite or workflow report."""
-    index: dict[str, dict] = {}
+    index: dict[str, dict[str, Any]] = {}
     # Suite-level report has "workflows" → each has "scenarios"
     if "workflows" in report:
         for wf in report["workflows"]:

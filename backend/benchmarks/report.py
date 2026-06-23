@@ -8,7 +8,7 @@ Usage:
 
 from __future__ import annotations
 
-from benchmarks.runner import BenchmarkSuiteResult, WorkflowBenchmarkResult, ScenarioResult
+from benchmarks.runner import BenchmarkSuiteResult, WorkflowBenchmarkResult
 
 
 def render_markdown(result: WorkflowBenchmarkResult | BenchmarkSuiteResult) -> str:
@@ -19,24 +19,24 @@ def render_markdown(result: WorkflowBenchmarkResult | BenchmarkSuiteResult) -> s
 
 def _render_suite(suite: BenchmarkSuiteResult) -> str:
     lines: list[str] = [
-        f"# Panacea Benchmark Report",
-        f"",
+        "# Panacea Benchmark Report",
+        "",
         f"**Model:** `{suite.model}`  ",
         f"**Timestamp:** {suite.timestamp}",
-        f"",
-        f"## Summary",
-        f"",
-        f"| Metric | Value |",
-        f"|--------|-------|",
+        "",
+        "## Summary",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
         f"| Total scenarios | {suite.total_scenarios} |",
         f"| Passed | {suite.total_passed} |",
         f"| Pass rate | {suite.overall_pass_rate:.1%} |",
         f"| Total tokens (est.) | {suite.total_tokens:,} |",
-        f"",
-        f"## Workflow Results",
-        f"",
-        f"| Workflow | Scenarios | Passed | Pass Rate | Mean Score | Avg Latency |",
-        f"|----------|-----------|--------|-----------|------------|-------------|",
+        "",
+        "## Workflow Results",
+        "",
+        "| Workflow | Scenarios | Passed | Pass Rate | Mean Score | Avg Latency |",
+        "|----------|-----------|--------|-----------|------------|-------------|",
     ]
     for wf in suite.workflows:
         icon = "✅" if wf.pass_rate == 1.0 else ("⚠️" if wf.pass_rate >= 0.7 else "❌")
@@ -55,22 +55,22 @@ def _render_suite(suite: BenchmarkSuiteResult) -> str:
 def _render_workflow(result: WorkflowBenchmarkResult) -> str:
     lines: list[str] = [
         f"## Workflow: `{result.workflow}`",
-        f"",
+        "",
         f"**Model:** `{result.model}` | **Timestamp:** {result.timestamp}",
-        f"",
-        f"| Metric | Value |",
-        f"|--------|-------|",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
         f"| Total | {result.total} |",
         f"| Passed | {result.passed} |",
         f"| Pass rate | {result.pass_rate:.1%} |",
         f"| Mean score | {result.mean_score:.2f} |",
         f"| Mean latency | {result.mean_latency_ms:.0f} ms |",
         f"| Total tokens (est.) | {result.total_tokens:,} |",
-        f"",
-        f"### Scenario Results",
-        f"",
-        f"| ID | Tags | Passed | Score | Latency | Failure |",
-        f"|----|------|--------|-------|---------|---------|",
+        "",
+        "### Scenario Results",
+        "",
+        "| ID | Tags | Passed | Score | Latency | Failure |",
+        "|----|------|--------|-------|---------|---------|",
     ]
     for s in result.scenarios:
         icon = "✅" if s.passed else "❌"
@@ -87,12 +87,12 @@ def _render_workflow(result: WorkflowBenchmarkResult) -> str:
         for s in failing:
             lines += [
                 f"#### `{s.scenario_id}`",
-                f"",
+                "",
                 f"**Description:** {s.description}  ",
                 f"**Score:** {s.score:.2f}  ",
                 f"**Failure:** {s.failure_reason}  ",
                 f"**Answer (first 300 chars):** `{s.answer[:300]}`",
-                f"",
+                "",
             ]
 
     lines.append("")
