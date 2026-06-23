@@ -7,7 +7,8 @@ import {
 import { router } from "expo-router";
 import { useAppTheme, useAppAuth } from "./_layout";
 import RocketLogo from "../src/components/RocketLogo";
-import { getSessions, getSession, deleteSession, Session, Message } from "../src/api";
+import { BottomNav } from "../src/components/BottomNav";
+import { getSessions, getSession, deleteSession, getPendingApprovals, Session, Message } from "../src/api";
 import { API_BASE, MODELS } from "../src/constants";
 
 export default function ChatScreen() {
@@ -21,6 +22,7 @@ export default function ChatScreen() {
   const [model, setModel] = useState(MODELS[0]);
   const [streaming, setStreaming] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const abortRef = useRef<boolean>(false);
 
@@ -28,11 +30,16 @@ export default function ChatScreen() {
     try { setSessions(await getSessions()); } catch {}
   }, []);
 
+  const loadPendingCount = useCallback(async () => {
+    try { setPendingApprovals((await getPendingApprovals()).length); } catch {}
+  }, []);
+
   const loadMessages = useCallback(async (id: string) => {
     try { setMessages(await getSession(id)); } catch {}
   }, []);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
+  useEffect(() => { loadPendingCount(); }, [loadPendingCount]);
 
   const openSession = async (id: string) => {
     setActiveSession(id);
@@ -258,6 +265,7 @@ export default function ChatScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+      <BottomNav active="chat" pendingApprovals={pendingApprovals} />
     </SafeAreaView>
   );
 }
