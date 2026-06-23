@@ -7,20 +7,10 @@ The conftest.py already adds the backend directory to sys.path.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import pytest
-
-from benchmarks.runner import (
-    WORKFLOWS,
-    BenchmarkRunner,
-    BenchmarkSuiteResult,
-    ScenarioResult,
-    WorkflowBenchmarkResult,
-    _evaluate,
-    _estimate_tokens,
-)
 from benchmarks.compare import (
     BenchmarkDiff,
     ScenarioDiff,
@@ -28,6 +18,15 @@ from benchmarks.compare import (
     render_diff_markdown,
 )
 from benchmarks.report import render_markdown
+from benchmarks.runner import (
+    WORKFLOWS,
+    BenchmarkRunner,
+    BenchmarkSuiteResult,
+    ScenarioResult,
+    WorkflowBenchmarkResult,
+    _estimate_tokens,
+    _evaluate,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers / fake LLMs
@@ -124,7 +123,7 @@ def _make_jobs_llm() -> LLMCallable:
             return "As a senior software engineer with 8 years of Python expertise, I'm excited to bring that experience to the Staff Engineer role at Stripe."
         if "keywords" in p or "missing" in p or "ats" in p:
             return "Missing keywords: Kubernetes, Terraform, microservices, Agile. These appear in the JD but not your resume."
-        if "better" in p and not "python" in p:
+        if "better" in p and "python" not in p:
             return "To improve your resume, please share the resume and job description — I'll need both to provide tailored suggestions."
         return "• Built Python machine learning pipelines for data processing and ML model deployment, improving pipeline throughput by 40%."
 
@@ -141,7 +140,7 @@ def _make_social_llm() -> LLMCallable:
             return "Monday/Day 1: Thought leadership post on AI trends\nDay 2: Product update\nDay 3: Customer story\nDay 4: Industry insight\nDay 5: Engagement post"
         if "twitter" in p or "tweet" in p or "thread" in p:
             return "1/ RAG (Retrieval Augmented Generation) is transforming enterprise AI.\n2/ Instead of training data alone, RAG retrieves relevant docs at query time.\n3/ This means answers grounded in your actual data — not hallucinations."
-        if "social media posts" in p and not "linkedin" in p:
+        if "social media posts" in p and "linkedin" not in p:
             return "What platform, company, and product should I write about? What is the target audience?"
         return "Exciting news! We just launched our AI document Q&A platform for enterprise teams. Unlock the power of AI to search your internal docs in seconds. #AI #enterprise #productivity"
 
