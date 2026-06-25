@@ -70,6 +70,19 @@ def test_enabled_writes_row(monkeypatch: Any) -> None:
     assert params[3] == '["c1", "c2"]'  # retrieved_chunks serialized to JSON
 
 
+def test_pre_serialized_string_chunks_stored_as_is(monkeypatch: Any) -> None:
+    # messages.relevant_chunks comes from the DB as an already-serialized string;
+    # it must be stored verbatim, not split into characters by list().
+    monkeypatch.setenv("ENABLE_RSI_FEEDBACK", "true")
+    conn = _install_fake(monkeypatch)
+    assert qa_feedback.log_qa_feedback(
+        chat_id=1, question="q", answer="a", feedback_signal="followup",
+        retrieved_chunks="chunk-a|chunk-b",
+    ) is True
+    _sql, params = conn.cursor_obj.executed[0]
+    assert params[3] == "chunk-a|chunk-b"
+
+
 def test_invalid_signal_rejected(monkeypatch: Any) -> None:
     monkeypatch.setenv("ENABLE_RSI_FEEDBACK", "true")
     conn = _install_fake(monkeypatch)
