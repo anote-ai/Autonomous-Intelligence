@@ -58,8 +58,8 @@ services:
 
   web:
     build:
-      context: ./packages/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: packages/web/Dockerfile
     restart: always
     ports:
       - "3000:3000"
