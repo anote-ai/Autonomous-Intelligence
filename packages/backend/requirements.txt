@@ -18,6 +18,9 @@ chromadb==0.5.3
 # Document processing
 PyPDF2==3.0.1
 
+# Database
+mysql-connector-python==8.4.0
+
 # Auth
 bcrypt==4.2.0
 
