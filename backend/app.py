@@ -70,6 +70,7 @@ from database.db import (
     update_chat_name as update_chat_name_in_db,
     update_user_profile,
 )
+from database.feedback_signals import record_followup_if_any
 from database.db_pool import get_db_connection
 from database.db_auth import (
     api_key_access_invalid,
@@ -953,6 +954,24 @@ def _parse_message_request(req):
     return message_text, chat_id, model_type, model_key, is_guest, media_attachments
 
 
+def _record_rsi_followup_feedback(user_email, chat_id, chat_type=0):
+    """Record an implicit follow-up signal before the new user turn is saved."""
+    try:
+        chat_id_int = int(chat_id)
+    except (TypeError, ValueError):
+        return False
+    if chat_id_int <= 0:
+        return False
+
+    if isinstance(chat_type, str):
+        clean_chat_type = chat_type.strip()
+        chat_type_value = int(clean_chat_type) if clean_chat_type.isdigit() else clean_chat_type or 0
+    else:
+        chat_type_value = chat_type or 0
+
+    return record_followup_if_any(user_email, chat_id_int, chat_type_value)
+
+
 @app.route('/process-message-pdf', methods=['POST'])
 def process_message_pdf():  # pragma: no cover
 
@@ -968,6 +987,7 @@ def process_message_pdf():  # pragma: no cover
         except Exception as e:
             print(f"Authentication error in process_message_pdf: {type(e).__name__}")
             return jsonify({"error": "Authentication error"}), 401
+        _record_rsi_followup_feedback(user_email, chat_id, 0)
 
     # Check if agents are enabled
     if AgentConfig.is_agent_enabled():
@@ -1574,6 +1594,7 @@ def public_ingest_pdf():  # pragma: no cover
     model_key = request.json.get('model_key')
 
     model_type, task_type, _ = get_chat_info(chat_id)
+    _record_rsi_followup_feedback(user_email, chat_id, task_type)
 
     if AgentConfig.is_agent_enabled():
         try:
@@ -2035,6 +2056,7 @@ def v1_chat_completions():  # pragma: no cover
             user_email = USER_EMAIL_API
             ensure_SDK_user_exists(user_email)
 
+            _record_rsi_followup_feedback(user_email, chat_id, 0)
             add_message_to_db(user_message, chat_id, 1)
             sources = get_relevant_chunks(2, user_message, chat_id, user_email, include_metadata=True)
             sources_str = sources_to_prompt_context(sources)
@@ -2245,6 +2267,7 @@ def v1_question_answer():  # pragma: no cover
     user_email = USER_EMAIL_API
     ensure_SDK_user_exists(user_email)
 
+    _record_rsi_followup_feedback(user_email, chat_id, 0)
     add_message_to_db(question, chat_id, 1)
     sources = get_relevant_chunks(2, question, chat_id, user_email, include_metadata=True)
     sources_str = sources_to_prompt_context(sources)

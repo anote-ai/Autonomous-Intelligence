@@ -9,11 +9,9 @@ soft-negative training signal for the RSI loop.
 Same constraints as slice 1: opt-in (`ENABLE_RSI_FEEDBACK`) and best-effort
 (detection/logging must never break a chat).
 
-Wiring (slice 2 integration, intentionally NOT done here): call
-`record_followup_if_any(user_email, chat_id, chat_type)` at the start of handling
-a new user turn, before the new message is persisted. Kept out of the live
-multi-agent path in this PR so the detection logic can land tested and reviewed
-first; the call site is a one-liner (see PR description).
+Wiring: call `record_followup_if_any(user_email, chat_id, chat_type)` at the
+start of handling a new user turn, before the new message is persisted. That
+scores the previous assistant answer instead of the new user question.
 """
 from __future__ import annotations
 
@@ -83,7 +81,7 @@ def detect_followup_signal(
 def record_followup_if_any(
     user_email: str,
     chat_id: int,
-    chat_type: int,
+    chat_type: int | str,
     now: datetime | None = None,
 ) -> bool:
     """Best-effort: detect a rapid follow-up against this chat's history and log it.

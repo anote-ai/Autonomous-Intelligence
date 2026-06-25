@@ -417,7 +417,13 @@ def test_infer_chat_name_invalid_token(client: Any, app_module: Any, monkeypatch
 
 
 def test_process_message_pdf_guest_fallback_success(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    rsi_calls: list[tuple[str, int, int]] = []
     monkeypatch.setattr(app_module.AgentConfig, "is_agent_enabled", staticmethod(lambda: False))
+    monkeypatch.setattr(
+        app_module,
+        "record_followup_if_any",
+        lambda user_email, chat_id, chat_type: rsi_calls.append((user_email, chat_id, chat_type)) or False,
+    )
     response = client.post(
         "/process-message-pdf",
         json={"message": "hello", "chat_id": 0, "model_type": 0, "is_guest": True},
@@ -426,6 +432,7 @@ def test_process_message_pdf_guest_fallback_success(client: Any, app_module: Any
     data = response.get_json()
     assert "guest mode" in data["answer"]
     assert data["suggested_follow_ups"] == []
+    assert rsi_calls == []
 
 
 def test_generate_follow_up_questions_returns_list(app_module: Any) -> None:
@@ -455,8 +462,29 @@ def test_generate_follow_up_questions_caps_at_three(app_module: Any, monkeypatch
     assert len(result) <= 3
 
 
+def test_record_rsi_followup_feedback_helper(app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, int, int]] = []
+
+    def _record(user_email: str, chat_id: int, chat_type: int) -> bool:
+        calls.append((user_email, chat_id, chat_type))
+        return True
+
+    monkeypatch.setattr(app_module, "record_followup_if_any", _record)
+
+    assert app_module._record_rsi_followup_feedback("u@example.com", "bad", 0) is False
+    assert app_module._record_rsi_followup_feedback("u@example.com", 0, 0) is False
+    assert calls == []
+
+    assert app_module._record_rsi_followup_feedback("u@example.com", "9", "2") is True
+    assert calls == [("u@example.com", 9, 2)]
+
+    assert app_module._record_rsi_followup_feedback("u@example.com", "10", "documents") is True
+    assert calls[-1] == ("u@example.com", 10, "documents")
+
+
 def test_process_message_pdf_authenticated_agent_stream(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]) -> None:
     _authenticate(monkeypatch, app_module)
+    rsi_calls: list[tuple[str, int, int]] = []
 
     class StreamingAgent:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -467,6 +495,11 @@ def test_process_message_pdf_authenticated_agent_stream(client: Any, app_module:
 
     monkeypatch.setattr(app_module.AgentConfig, "is_agent_enabled", staticmethod(lambda: True))
     monkeypatch.setattr(app_module, "AutonomousDocumentAgent", StreamingAgent)
+    monkeypatch.setattr(
+        app_module,
+        "record_followup_if_any",
+        lambda user_email, chat_id, chat_type: rsi_calls.append((user_email, chat_id, chat_type)) or False,
+    )
     response = client.post(
         "/process-message-pdf",
         json={"message": "hello", "chat_id": 1, "model_type": 0, "is_guest": False},
@@ -474,6 +507,7 @@ def test_process_message_pdf_authenticated_agent_stream(client: Any, app_module:
     )
     assert response.status_code == 200
     assert "chunk-1" in response.get_data(as_text=True)
+    assert rsi_calls == [("test@example.com", 1, 0)]
 
 
 def test_process_message_pdf_streaming_sets_sse_headers(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch, auth_headers: dict[str, str]) -> None:
@@ -572,6 +606,7 @@ def test_public_endpoints_require_valid_api_key(client: Any, app_module: Any, mo
 
 
 def test_public_chat_and_evaluate(client: Any, app_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    rsi_calls: list[tuple[str, int, int]] = []
     monkeypatch.setattr(app_module, "is_api_key_valid", lambda api_key: True)
     monkeypatch.setattr("database.db_auth.api_key_user_has_credits", lambda api_key, min_credits=1: True)
     monkeypatch.setattr("database.db_auth.deduct_credits_from_api_key_user", lambda api_key, credits: True)
@@ -594,6 +629,11 @@ def test_public_chat_and_evaluate(client: Any, app_module: Any, monkeypatch: pyt
     )
     monkeypatch.setattr(app_module, "add_message_to_db", lambda *args, **kwargs: 10)
     monkeypatch.setattr(app_module, "add_sources_to_db", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        app_module,
+        "record_followup_if_any",
+        lambda user_email, chat_id, chat_type: rsi_calls.append((user_email, chat_id, chat_type)) or False,
+    )
     monkeypatch.setattr(
         app_module,
         "get_message_info",
@@ -624,6 +664,7 @@ def test_public_chat_and_evaluate(client: Any, app_module: Any, monkeypatch: pyt
             }
         ],
     }
+    assert rsi_calls == [("api@example.com", 9, 0)]
 
     evaluate_response = client.post(
         "/public/evaluate",
