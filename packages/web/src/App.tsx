@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import ChatPage from "./pages/ChatPage";
+import DocumentsPage from "./pages/DocumentsPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import LandingPage from "./landing_page/LandingPage.js";
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/app" element={<RequireAuth><ChatPage /></RequireAuth>} />
             <Route path="/app/chat/:id" element={<RequireAuth><ChatPage /></RequireAuth>} />
+            <Route path="/documents" element={<RequireAuth><DocumentsPage /></RequireAuth>} />
           </Routes>
         </BrowserRouter>
       </AuthContext.Provider>
