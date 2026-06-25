@@ -9,11 +9,13 @@ from flask_jwt_extended import get_jwt_identity
 
 from database.db import (
     create_document,
-    delete_document as db_delete_document,
     get_connection,
     get_document_by_uuid,
     get_documents,
     move_document,
+)
+from database.db import (
+    delete_document as db_delete_document,
 )
 from middleware.auth import require_auth
 from services.rag import UPLOAD_FOLDER, ingest_document, query_documents
