@@ -337,7 +337,7 @@ export default function DocumentsPage() {
           <span className="font-semibold text-sm truncate">Anote AI</span>
         </div>
         <div className="px-2 pb-1 space-y-0.5">
-          <button onClick={() => nav("/")} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-[#2F2F2F] transition-colors flex items-center gap-2">
+          <button onClick={() => nav("/app")} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-[#2F2F2F] transition-colors flex items-center gap-2">
             <span>💬</span> Chat
           </button>
           <button onClick={() => nav("/documents")} className="w-full text-left px-3 py-2 rounded-lg text-sm bg-gray-200 dark:bg-[#2F2F2F] flex items-center gap-2">
