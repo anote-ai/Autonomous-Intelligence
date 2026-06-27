@@ -18,7 +18,11 @@ def test_require_auth_no_token(client):
 
 
 def test_require_auth_with_token(client, auth_headers):
-    resp = client.get("/api/documents", headers=auth_headers)
+    from unittest.mock import MagicMock, patch
+    mock_cnx = MagicMock()
+    mock_cnx.cursor.return_value.fetchall.return_value = []
+    with patch("api_endpoints.documents.handler.get_connection", return_value=mock_cnx):
+        resp = client.get("/api/documents", headers=auth_headers)
     assert resp.status_code == 200
 
 
