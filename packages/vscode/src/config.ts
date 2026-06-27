@@ -11,6 +11,20 @@ export type AnoteProvider =
 export const DEFAULT_PROVIDER: AnoteProvider = "anthropic";
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
 
+/** MCP server config, mirroring `@anthropic-ai/claude-agent-sdk`'s mcpServers shape. */
+export type McpServerConfig =
+  | { type?: "stdio"; command: string; args?: string[]; env?: Record<string, string> }
+  | { type: "sse"; url: string; headers?: Record<string, string> }
+  | { type: "http"; url: string; headers?: Record<string, string> };
+
+/** MCP servers from the `anote.mcpServers` setting (Anthropic runtime only). */
+export function getMcpServers(): Record<string, McpServerConfig> | undefined {
+  const servers = vscode.workspace
+    .getConfiguration("anote")
+    .get<Record<string, McpServerConfig>>("mcpServers");
+  return servers && Object.keys(servers).length ? servers : undefined;
+}
+
 export function getProvider(): AnoteProvider {
   return (
     vscode.workspace.getConfiguration("anote").get<AnoteProvider>("provider") ??

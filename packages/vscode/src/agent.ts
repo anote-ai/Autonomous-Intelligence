@@ -7,6 +7,7 @@ import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   directRuntimeSupportMessage,
   getConfiguredApiKey,
+  getMcpServers,
   getModel,
   getProvider,
   getServerUrl,
@@ -160,13 +161,18 @@ export class AnoteAgent {
       prompt = `Previous conversation:\n${history}\n\nUser: ${prompt}`;
     }
 
+    // Wire configured MCP servers and auto-allow their tools (mcp__<server>).
+    const mcpServers = getMcpServers();
+    const mcpAllow = mcpServers ? Object.keys(mcpServers).map((s) => `mcp__${s}`) : [];
+
     const options: Options = {
       cwd,
-      allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+      allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", ...mcpAllow],
       permissionMode: this.isAutoEdit() ? "acceptEdits" : "default",
       systemPrompt,
       maxTurns: this.getMaxTurns(),
       model: getModel(),
+      ...(mcpServers ? { mcpServers: mcpServers as Options["mcpServers"] } : {}),
     };
 
     try {
