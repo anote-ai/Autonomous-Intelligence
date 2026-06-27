@@ -86,12 +86,20 @@ export async function runAgentStream(opts: AgentRunOptions): Promise<string> {
   }
 
   // ── Anthropic path — claude-agent-sdk ────────────────────────────────────
+  // Wire configured MCP servers and auto-allow their tools (mcp__<server>).
+  const mcpServers = config.mcpServers;
+  const mcpAllow = mcpServers ? Object.keys(mcpServers).map((s) => `mcp__${s}`) : [];
+  if (mcpAllow.length) {
+    console.log(chalk.gray(`  (MCP: ${Object.keys(mcpServers!).join(", ")})\n`));
+  }
+
   const options: Options = {
     cwd,
-    allowedTools,
+    allowedTools: [...allowedTools, ...mcpAllow],
     permissionMode: opts.permissionMode ?? config.permissionMode ?? "default",
     systemPrompt,
     maxTurns,
+    ...(mcpServers ? { mcpServers: mcpServers as Options["mcpServers"] } : {}),
   };
 
   let result = "";

@@ -200,6 +200,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show Anote inline action buttons (CodeLens) above functions and classes"
+        },
+        "anote.mcpServers": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "MCP (Model Context Protocol) servers to expose as tools, keyed by name. Each value is a server config — stdio `{ \"command\": ..., \"args\": [...] }` or `{ \"type\": \"http\"|\"sse\", \"url\": ... }`. Anthropic runtime only. Example: `{ \"github\": { \"command\": \"npx\", \"args\": [\"-y\", \"@modelcontextprotocol/server-github\"] } }`"
         }
       }
     }
