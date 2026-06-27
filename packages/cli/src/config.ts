@@ -12,6 +12,17 @@ export interface HookConfig {
   postToolUse?: string[];
 }
 
+/**
+ * MCP (Model Context Protocol) server config. Mirrors the shape accepted by
+ * `@anthropic-ai/claude-agent-sdk`'s `mcpServers` option so external tool
+ * servers (GitHub, Slack, databases, browsers, …) can be wired in. Only the
+ * Anthropic runtime path supports MCP; OpenAI/Gemini adapters ignore it.
+ */
+export type McpServerConfig =
+  | { type?: "stdio"; command: string; args?: string[]; env?: Record<string, string> }
+  | { type: "sse"; url: string; headers?: Record<string, string> }
+  | { type: "http"; url: string; headers?: Record<string, string> };
+
 export interface AnoteConfig {
   model?: string;
   permissionMode?: "default" | "acceptEdits" | "bypassPermissions";
@@ -22,6 +33,11 @@ export interface AnoteConfig {
   provider?: string;
   /** Base URL for OpenAI-compatible endpoints (e.g. http://localhost:11434/v1 for Ollama). */
   baseUrl?: string;
+  /**
+   * MCP servers to expose as tools, keyed by server name. Tools are surfaced to
+   * the model as `mcp__<server>__<tool>`. Anthropic runtime only.
+   */
+  mcpServers?: Record<string, McpServerConfig>;
 }
 
 const CONFIG_FILENAMES = [".anote.json", ".claw.json", "anote.config.json"];

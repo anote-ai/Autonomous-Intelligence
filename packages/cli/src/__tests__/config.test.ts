@@ -41,4 +41,27 @@ describe("loadConfig()", () => {
     const config = loadConfig(tmpDir);
     expect(config).toEqual({});
   });
+
+  it("loads MCP server config (stdio + http)", () => {
+    const configData = {
+      mcpServers: {
+        github: { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+        docs: { type: "http", url: "https://example.com/mcp" },
+      },
+    };
+    fs.writeFileSync(
+      path.join(tmpDir, ".anote.json"),
+      JSON.stringify(configData),
+      "utf8"
+    );
+    const config = loadConfig(tmpDir);
+    expect(config.mcpServers?.github).toEqual({
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-github"],
+    });
+    expect(config.mcpServers?.docs).toEqual({
+      type: "http",
+      url: "https://example.com/mcp",
+    });
+  });
 });

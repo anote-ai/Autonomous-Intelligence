@@ -24,6 +24,7 @@ import { docsCommand } from "./commands/docs.js";
 import { changelogCommand } from "./commands/changelog.js";
 import { securityCommand } from "./commands/security.js";
 import { perfCommand } from "./commands/perf.js";
+import { mcpCommand } from "./commands/mcp.js";
 
 const LOGO = chalk.cyan(`
    ___                    _          _    ___
@@ -45,8 +46,11 @@ program
 
 program.addHelpText("beforeAll", LOGO);
 
-program.hook("preAction", (thisCommand) => {
-  if (thisCommand.name() === "init" || thisCommand.name() === "doctor") return;
+program.hook("preAction", () => {
+  // Setup/config-management commands don't talk to a model — skip the key gate.
+  // Use argv (not thisCommand.name()) so nested subcommands like `mcp list` match.
+  const topCmd = process.argv[2];
+  if (topCmd === "init" || topCmd === "doctor" || topCmd === "mcp") return;
   if (!process.env.ANTHROPIC_API_KEY) {
     console.error(
       chalk.red("\n✗ ANTHROPIC_API_KEY is not set.\n") +
@@ -84,6 +88,7 @@ program.addCommand(docsCommand());
 program.addCommand(changelogCommand());
 program.addCommand(securityCommand());
 program.addCommand(perfCommand());
+program.addCommand(mcpCommand());
 
 program.parseAsync(process.argv).catch((err: Error) => {
   console.error(chalk.red("Error:"), err.message);
