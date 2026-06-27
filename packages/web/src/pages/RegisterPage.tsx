@@ -21,7 +21,7 @@ export default function RegisterPage() {
     setError("");
     try {
       const res = await axios.post("/auth/register", { email, password, name });
-      setToken(res.data.access_token);
+      setToken(res.data.token);
       nav("/app");
     } catch (err: any) {
       setError(err.response?.data?.error || "Registration failed");

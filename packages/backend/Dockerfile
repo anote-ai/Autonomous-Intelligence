@@ -4,7 +4,10 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
     pkg-config \
+    build-essential \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -14,4 +17,4 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "app:create_app()"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "300", "app:create_app()"]

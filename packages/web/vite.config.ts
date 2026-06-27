@@ -27,9 +27,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      "/api": "http://localhost:5000",
-      "/auth": "http://localhost:5000",
-      "/health": "http://localhost:5000",
+      "/api": { target: "http://localhost:5000", changeOrigin: true, timeout: 120000 },
+      "/auth": { target: "http://localhost:5000", changeOrigin: true, timeout: 120000 },
+      "/health": { target: "http://localhost:5000", changeOrigin: true, timeout: 120000 },
     },
   },
 });
