@@ -14,7 +14,7 @@ export interface HookConfig {
 
 export interface AnoteConfig {
   model?: string;
-  permissionMode?: "default" | "acceptEdits" | "bypassPermissions";
+  permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan";
   hooks?: HookConfig;
   maxTurns?: number;
   compactAfterMessages?: number;
