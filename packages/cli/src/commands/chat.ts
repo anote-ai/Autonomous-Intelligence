@@ -9,6 +9,7 @@ export function chatCommand(): Command {
     .description("Start an interactive chat session with the AI assistant")
     .option("-d, --dir <path>", "working directory", process.cwd())
     .option("-m, --model <model>", "model to use", "claude-sonnet-4-6")
+    .option("--plan", "planning mode: reason through the task read-only, no edits or commands")
     .action(async (opts) => {
       const cwd = opts.dir as string;
       const model = opts.model as string;
@@ -44,8 +45,8 @@ export function chatCommand(): Command {
               prompt: message,
               cwd,
               model,
-              allowedTools: ["Read", "Glob", "Grep"],
-              permissionMode: "default",
+              allowedTools: ["Read", "Glob", "Grep", "WebSearch", "WebFetch"],
+              permissionMode: opts.plan ? "plan" : "default",
             });
           } catch (err) {
             console.error(chalk.red(`\nError: ${err instanceof Error ? err.message : String(err)}`));

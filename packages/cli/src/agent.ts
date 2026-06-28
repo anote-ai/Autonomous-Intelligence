@@ -12,7 +12,7 @@ export interface AgentRunOptions {
   prompt: string;
   cwd?: string;
   allowedTools?: string[];
-  permissionMode?: "default" | "acceptEdits" | "bypassPermissions";
+  permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan";
   systemPrompt?: string;
   maxTurns?: number;
   model?: string;
@@ -65,7 +65,7 @@ export async function runAgentStream(opts: AgentRunOptions): Promise<string> {
     }
   }
 
-  const allowedTools = opts.allowedTools ?? ["Read", "Write", "Edit", "Bash", "Glob", "Grep"];
+  const allowedTools = opts.allowedTools ?? ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"];
   const maxTurns = opts.maxTurns ?? config.maxTurns ?? 30;
   const model = opts.model ?? config.model ?? "";
 

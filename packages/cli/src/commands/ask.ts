@@ -30,6 +30,7 @@ export function askCommand(): Command {
     .option("-d, --dir <path>", "working directory", process.cwd())
     .option("-f, --file <path>", "focus on a specific file")
     .option("--no-edit", "read-only mode, no file modifications")
+    .option("--plan", "planning mode: reason through the task read-only, no edits or commands")
     .option("--compare", "run the same prompt across multiple models side by side")
     .option(
       "--models <list>",
@@ -109,9 +110,9 @@ export function askCommand(): Command {
               cwd,
               model,
               allowedTools: opts.edit
-                ? ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
-                : ["Read", "Glob", "Grep"],
-              permissionMode: "default",
+                ? ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"]
+                : ["Read", "Glob", "Grep", "WebSearch", "WebFetch"],
+              permissionMode: opts.plan ? "plan" : "default",
               showToolUse: false,
             });
           } catch (err) {
